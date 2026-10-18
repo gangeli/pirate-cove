@@ -4,3 +4,4 @@ dist
 *.local
 test-results
 shots/
+__pycache__/
