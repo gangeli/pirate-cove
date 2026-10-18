@@ -13,7 +13,7 @@ TEXTURES = ['coast_sand_01','coast_sand_02','aerial_sand','damp_beach_sand','lea
   'forrest_ground_01','brown_mud_leaves_01','rock_boulder_dry','aerial_rocks_02','reed_roof_03','reed_roof_04','palm_bark',
   'brown_planks_05','brown_planks_09','old_planks_02','weathered_planks','raw_plank_wall','plastered_stone_wall','plaster_stone_wall_01',
   'clay_roof_tiles_02','coral_stone_wall','large_sandstone_blocks','mossy_cobblestone','dirt','raked_dirt','red_mud_stones',
-  'fabric_pattern_05','denim_fabric','rough_wood','wood_planks','dark_wooden_planks','bark_brown_02','castle_brick_01','gravelly_sand','rocky_trail']
+  'clay_plaster','beige_wall_001','coral_fort_wall_01','coral_fort_wall_02','blue_plaster_weathered','castle_brick_02_white','bamboo_wall','bamboo_wall_02','fabric_pattern_05','denim_fabric','rough_wood','wood_planks','dark_wooden_planks','bark_brown_02','castle_brick_01','gravelly_sand','rocky_trail']
 def get(url, path):
     if os.path.exists(path) and os.path.getsize(path) > 0: return
     os.makedirs(os.path.dirname(path), exist_ok=True)

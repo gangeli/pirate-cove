@@ -1,0 +1,344 @@
+{
+ "thirdParty": [
+  {
+   "asset": "Bananas",
+   "kind": "model",
+   "authors": [
+    "Alexander Shulha"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/bananas",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Barrel_01",
+   "kind": "model",
+   "authors": [
+    "Jorge Camacho"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/Barrel_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Dutch Ship Large 01",
+   "kind": "model",
+   "authors": [
+    "James Ray Cock",
+    "Rico Cilliers",
+    "Nicol\u00f2 Zubbini"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/dutch_ship_large_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Dutch Ship Large 02",
+   "kind": "model",
+   "authors": [
+    "James Ray Cock",
+    "Rico Cilliers",
+    "Nicol\u00f2 Zubbini"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/dutch_ship_large_02",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Dutch Ship Medium",
+   "kind": "model",
+   "authors": [
+    "James Ray Cock",
+    "Rico Cilliers",
+    "Nicol\u00f2 Zubbini"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/dutch_ship_medium",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Lantern 01",
+   "kind": "model",
+   "authors": [
+    "Rajil Jose Macatangay"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/Lantern_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Modular Fort 01",
+   "kind": "model",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/modular_fort_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Modular Wooden Pier",
+   "kind": "model",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/modular_wooden_pier",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Round Wooden Table 01",
+   "kind": "model",
+   "authors": [
+    "Ulan Cabanilla"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/round_wooden_table_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Ship Pinnace",
+   "kind": "model",
+   "authors": [
+    "James Ray Cock",
+    "Rico Cilliers",
+    "Nicol\u00f2 Zubbini",
+    "Yann Kervran"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/ship_pinnace",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Stone Fire Pit",
+   "kind": "model",
+   "authors": [
+    "Sebastian Platen"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/stone_fire_pit",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Treasure Chest",
+   "kind": "model",
+   "authors": [
+    "Rico Cilliers"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/treasure_chest",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Wicker Basket 01",
+   "kind": "model",
+   "authors": [
+    "Kuutti Siitonen"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/wicker_basket_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Wine Barrel 01",
+   "kind": "model",
+   "authors": [
+    "James Ray Cock"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/wine_barrel_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Wooden Barrels 01",
+   "kind": "model",
+   "authors": [
+    "James Ray Cock"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/wooden_barrels_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Wooden Bucket 01",
+   "kind": "model",
+   "authors": [
+    "James Ray Cock"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/wooden_bucket_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Wooden Crate 01",
+   "kind": "model",
+   "authors": [
+    "James Ray Cock"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/wooden_crate_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Wooden Picnic Table",
+   "kind": "model",
+   "authors": [
+    "Ulan Cabanilla"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/wooden_picnic_table",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Wooden Stool 01",
+   "kind": "model",
+   "authors": [
+    "Kuutti Siitonen"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/wooden_stool_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Aerial Rocks 02",
+   "kind": "texture",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/aerial_rocks_02",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Aerial Sand",
+   "kind": "texture",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/aerial_sand",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Brown Mud Leaves 01",
+   "kind": "texture",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/brown_mud_leaves_01",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Brown Planks 05",
+   "kind": "texture",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/brown_planks_05",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Clay Roof Tiles 02",
+   "kind": "texture",
+   "authors": [
+    "Amal Kumar"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/clay_roof_tiles_02",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Damp Beach Sand",
+   "kind": "texture",
+   "authors": [
+    "Dimitrios Savva"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/damp_beach_sand",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Large Sandstone Blocks",
+   "kind": "texture",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/large_sandstone_blocks",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Leafy Grass",
+   "kind": "texture",
+   "authors": [
+    "Charlotte Baglioni"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/leafy_grass",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Old Planks 02",
+   "kind": "texture",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/old_planks_02",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Palm Bark",
+   "kind": "texture",
+   "authors": [
+    "Charlotte Baglioni"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/palm_bark",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Plastered Stone Wall",
+   "kind": "texture",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/plastered_stone_wall",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Reed Roof 04",
+   "kind": "texture",
+   "authors": [
+    "Rob Tuytel"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/reed_roof_04",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Rock Boulder Dry",
+   "kind": "texture",
+   "authors": [
+    "Dimitrios Savva",
+    "Rico Cilliers"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/rock_boulder_dry",
+   "license": "CC0 1.0"
+  },
+  {
+   "asset": "Rocky Trail",
+   "kind": "texture",
+   "authors": [
+    "Amal Kumar"
+   ],
+   "source": "Poly Haven",
+   "url": "https://polyhaven.com/a/rocky_trail",
+   "license": "CC0 1.0"
+  }
+ ]
+}

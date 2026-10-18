@@ -137,7 +137,7 @@ vWNorm = normalize(mat3(modelMatrix) * objectNormal);`,
           '#include <common>',
           `#include <common>
 ${decl}
-uniform float uTime;
+uniform float uTime; uniform sampler2D uRoads; uniform float uMapN;
 varying vec4 vSplat; varying float vDirt; varying vec3 vWPos; varying vec3 vWNorm;
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
@@ -172,20 +172,25 @@ float slope = 1.0 - clamp(vWNorm.y, 0.0, 1.0);
 float cliffW = smoothstep(0.35, 0.6, slope);
 w.w += cliffW*1.5;
 w = max(w, 0.0); w /= max(0.0001, w.x+w.y+w.z+w.w);
-float dirtW = smoothstep(0.1, 0.9, vDirt + (nz-0.5)*0.5) ;
+float roadV = texture2D(uRoads, vWPos.xz / uMapN).r;
+float roadW = smoothstep(0.32, 0.6, roadV + (vnoise(vWPos.xz*2.3)-0.5)*0.25);
+float dirtW = max(smoothstep(0.3, 0.95, vDirt + (nz-0.5)*0.5) * 0.75, roadW);
 float wet = 1.0 - smoothstep(0.0, 0.45, vWPos.y);
-vec3 sand = antiTile(t_sand, tuv*0.8).rgb * vec3(1.08,1.02,0.9);
+vec3 sand = antiTile(t_sand, tuv*0.8).rgb;
+sand = mix(vec3(dot(sand, vec3(0.33))), sand, 0.5) * vec3(1.42,1.26,0.98);
 vec3 wets = antiTile(t_wetsand, tuv).rgb * vec3(0.95,0.9,0.8);
 sand = mix(sand, wets, wet);
 vec3 grass = antiTile(t_grass, tuv).rgb;
 // push grass toward lush tropical green
 float gl = dot(grass, vec3(0.3,0.59,0.11));
-grass = mix(vec3(gl), grass, 1.6) * vec3(0.78, 1.12, 0.55);
-vec3 jung = antiTile(t_jungle, tuv*1.2).rgb * vec3(0.8, 0.95, 0.6);
+grass = mix(vec3(gl), grass, 1.25) * vec3(0.62, 0.98, 0.42);
+vec3 jung = antiTile(t_jungle, tuv*1.2).rgb * vec3(0.62, 0.78, 0.45);
 vec3 rock = mix(antiTile(t_rock, tuv*0.6).rgb, antiTile(t_cliff, tuv*0.35).rgb * vec3(0.85,0.8,0.72), cliffW);
 vec3 dirt = antiTile(t_dirt, tuv*0.9).rgb * vec3(1.05,0.92,0.78);
 vec3 col = sand*w.x + grass*w.y + jung*w.z + rock*w.w;
-col = mix(col, dirt, dirtW*0.92);
+col = mix(col, dirt, dirtW*0.95);
+// worn wheel ruts darken the road centre slightly
+col *= 1.0 - roadW * smoothstep(0.75, 1.0, roadV) * 0.12;
 // underwater tint + caustics
 float depth = -vWPos.y;
 if (depth > 0.0) {

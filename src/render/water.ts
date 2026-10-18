@@ -28,8 +28,8 @@ export class Water {
         uSunColor: { value: new THREE.Color(1, 0.95, 0.85) },
         uSkyTop: { value: new THREE.Color(0.25, 0.5, 0.85) },
         uSkyHorizon: { value: new THREE.Color(0.75, 0.85, 0.95) },
-        uShallow: { value: new THREE.Color(0.1, 0.78, 0.72) },
-        uDeep: { value: new THREE.Color(0.0, 0.16, 0.32) },
+        uShallow: { value: new THREE.Color(0.08, 0.62, 0.6) },
+        uDeep: { value: new THREE.Color(0.0, 0.07, 0.17) },
         uNight: { value: 0 },
       },
     ]);
@@ -104,7 +104,7 @@ void main(){
   vec3 N = waveNormal(vWPos.xz);
   vec3 V = normalize(cameraPosition - vWPos);
   // water colour by depth (Beer-Lambert-ish)
-  float dk = 1.0 - exp(-depth*0.28);
+  float dk = 1.0 - exp(-depth*0.45);
   vec3 body = mix(uShallow, uDeep, dk);
   // subsurface brightening on wave crests facing sun
   body += uShallow * 0.15 * max(0.0, N.x*uSunDir.x + N.z*uSunDir.z) * (1.0-dk);
@@ -113,10 +113,10 @@ void main(){
   float hz = clamp(R.y, 0.0, 1.0);
   vec3 sky = mix(uSkyHorizon, uSkyTop, pow(hz, 0.6));
   float fres = 0.02 + 0.98*pow(1.0 - max(dot(N, V), 0.0), 5.0);
-  vec3 col = mix(body, sky, fres*0.85);
+  vec3 col = mix(body, sky * 0.8, fres*0.7);
   // sun glint
   vec3 H = normalize(uSunDir + V);
-  float spec = pow(max(dot(N, H), 0.0), 420.0) * 6.0 + pow(max(dot(N,H),0.0), 60.0)*0.25;
+  float spec = pow(max(dot(N, H), 0.0), 600.0) * 2.5 + pow(max(dot(N,H),0.0), 80.0)*0.12;
   col += uSunColor * spec * (1.0 - uNight*0.9);
   // shoreline foam: bands moving toward shore plus noise
   float shore = 1.0 - smoothstep(0.0, 1.4, depth);
