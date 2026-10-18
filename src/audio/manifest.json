@@ -1,0 +1,548 @@
+{
+  "voices": {
+    "adv_welcome": {
+      "file": "audio/voice/adv_welcome.mp3",
+      "speaker": "barnaby",
+      "text": "Welcome ashore, Cap'n! Captives do the work, pirates bring the gold. Keep the lads merry and the captives cowed, and we'll all die rich."
+    },
+    "adv_lumber_low": {
+      "file": "audio/voice/adv_lumber_low.mp3",
+      "speaker": "barnaby",
+      "text": "Can't shiver me timbers without timber, Cap'n! We're near out of lumber."
+    },
+    "adv_food_low": {
+      "file": "audio/voice/adv_food_low.mp3",
+      "speaker": "barnaby",
+      "text": "The captives are starving, Cap'n. More corn, more chuck tents!"
+    },
+    "adv_no_captain": {
+      "file": "audio/voice/adv_no_captain.mp3",
+      "speaker": "barnaby",
+      "text": "There's a fine ship rotting at the dock with no captain. Recruit one!"
+    },
+    "adv_idle_ship": {
+      "file": "audio/voice/adv_idle_ship.mp3",
+      "speaker": "barnaby",
+      "text": "A ship in harbour makes no gold, Cap'n. Send her out!"
+    },
+    "adv_homeless": {
+      "file": "audio/voice/adv_homeless.mp3",
+      "speaker": "barnaby",
+      "text": "Half the crew's sleeping in the dirt. Lay out some housing plots, eh?"
+    },
+    "adv_company": {
+      "file": "audio/voice/adv_company.mp3",
+      "speaker": "barnaby",
+      "text": "The lads are lonely, if you take my meaning. More wenches, Cap'n."
+    },
+    "adv_drink": {
+      "file": "audio/voice/adv_drink.mp3",
+      "speaker": "barnaby",
+      "text": "A thirsty pirate is a dangerous pirate. We need more grog!"
+    },
+    "adv_gamble": {
+      "file": "audio/voice/adv_gamble.mp3",
+      "speaker": "barnaby",
+      "text": "The crews are bored stiff. Give 'em something to wager on."
+    },
+    "adv_broke": {
+      "file": "audio/voice/adv_broke.mp3",
+      "speaker": "barnaby",
+      "text": "The lads haven't a coin between 'em. Send the ships out, or loosen your purse strings."
+    },
+    "adv_unemployed": {
+      "file": "audio/voice/adv_unemployed.mp3",
+      "speaker": "barnaby",
+      "text": "There's a mob of captives loafing about the stockade. Put 'em to work!"
+    },
+    "adv_idle_skilled": {
+      "file": "audio/voice/adv_idle_skilled.mp3",
+      "speaker": "barnaby",
+      "text": "We've a skilled craftsman sitting on his hands. Build him a workshop!"
+    },
+    "adv_no_cave": {
+      "file": "audio/voice/adv_no_cave.mp3",
+      "speaker": "barnaby",
+      "text": "Don't forget yourself, Cap'n. Build a Pirate Cave and start filling your own hoard."
+    },
+    "adv_escapes": {
+      "file": "audio/voice/adv_escapes.mp3",
+      "speaker": "barnaby",
+      "text": "Captives keep running off! We need more fear about the place."
+    },
+    "adv_unhappy": {
+      "file": "audio/voice/adv_unhappy.mp3",
+      "speaker": "barnaby",
+      "text": "The pirates are grumbling, Cap'n. Mind their needs, or mind your neck."
+    },
+    "adv_debt": {
+      "file": "audio/voice/adv_debt.mp3",
+      "speaker": "barnaby",
+      "text": "The treasury's bare and we're spending like admirals. No more building for now!"
+    },
+    "adv_church": {
+      "file": "audio/voice/adv_church.mp3",
+      "speaker": "barnaby",
+      "text": "The captives are asking for a church. Let the priest preach, eh?"
+    },
+    "adv_notice": {
+      "file": "audio/voice/adv_notice.mp3",
+      "speaker": "barnaby",
+      "text": "One of the Powers knows where we are and hates us. Build defences, or make peace."
+    },
+    "set_sail": {
+      "file": "audio/voice/set_sail.mp3",
+      "speaker": "barnaby",
+      "text": "Anchors aweigh! Fair winds to 'em."
+    },
+    "sail_ho": {
+      "file": "audio/voice/sail_ho.mp3",
+      "speaker": "polly",
+      "text": "Sail ho! Sail ho! Squawk!"
+    },
+    "ship_returns": {
+      "file": "audio/voice/ship_returns.mp3",
+      "speaker": "barnaby",
+      "text": "Our ship's back, Cap'n, and not empty-handed!"
+    },
+    "ship_returns_empty": {
+      "file": "audio/voice/ship_returns_empty.mp3",
+      "speaker": "barnaby",
+      "text": "Back already, and nothing to show for it but sunburn."
+    },
+    "big_plunder": {
+      "file": "audio/voice/big_plunder.mp3",
+      "speaker": "barnaby",
+      "text": "Ha-HAR! Look at all that gold! Now that's a proper haul!"
+    },
+    "ship_launched": {
+      "file": "audio/voice/ship_launched.mp3",
+      "speaker": "barnaby",
+      "text": "A new ship slides down the slipway. Ain't she a beauty?"
+    },
+    "ship_sunk": {
+      "file": "audio/voice/ship_sunk.mp3",
+      "speaker": "barnaby",
+      "text": "We've lost a ship, Cap'n. Davy Jones takes his due."
+    },
+    "mutiny": {
+      "file": "audio/voice/mutiny.mp3",
+      "speaker": "barnaby",
+      "text": "Mutiny! Starving crews don't stay loyal for long."
+    },
+    "free_ship": {
+      "file": "audio/voice/free_ship.mp3",
+      "speaker": "barnaby",
+      "text": "Would you look at that, a ship's limped into our new dock. Finders keepers!"
+    },
+    "new_captain": {
+      "file": "audio/voice/new_captain.mp3",
+      "speaker": "barnaby",
+      "text": "A new captain's signed on. Infamous, they say. Good."
+    },
+    "captain_returns": {
+      "file": "audio/voice/captain_returns.mp3",
+      "speaker": "barnaby",
+      "text": "Our captain's escaped his captors and come home!"
+    },
+    "escape": {
+      "file": "audio/voice/escape.mp3",
+      "speaker": "polly",
+      "text": "Runaway! Runaway! Squawk!"
+    },
+    "escaped": {
+      "file": "audio/voice/escaped.mp3",
+      "speaker": "barnaby",
+      "text": "One got away, Cap'n. Let's hope they don't talk."
+    },
+    "rebellion": {
+      "file": "audio/voice/rebellion.mp3",
+      "speaker": "polly",
+      "text": "Rebellion! Rebellion! Guard the palace! Squawk!"
+    },
+    "murder": {
+      "file": "audio/voice/murder.mp3",
+      "speaker": "barnaby",
+      "text": "There's been a killing. Tempers are short on this island."
+    },
+    "starvation": {
+      "file": "audio/voice/starvation.mp3",
+      "speaker": "barnaby",
+      "text": "A captive's starved to death, Cap'n. Bad for business."
+    },
+    "discovered": {
+      "file": "audio/voice/discovered.mp3",
+      "speaker": "barnaby",
+      "text": "They know where we are, Cap'n. That's trouble."
+    },
+    "invasion_rumour": {
+      "file": "audio/voice/invasion_rumour.mp3",
+      "speaker": "barnaby",
+      "text": "Rumours in the taverns, Cap'n. Someone means to come for us."
+    },
+    "invasion_fleet": {
+      "file": "audio/voice/invasion_fleet.mp3",
+      "speaker": "barnaby",
+      "text": "An invasion fleet's gathering. Man the forts!"
+    },
+    "invasion": {
+      "file": "audio/voice/invasion.mp3",
+      "speaker": "polly",
+      "text": "Invasion! Invasion! All hands! Squawk!"
+    },
+    "invasion_repelled": {
+      "file": "audio/voice/invasion_repelled.mp3",
+      "speaker": "barnaby",
+      "text": "We sent 'em packing! They'll think twice before they come again!"
+    },
+    "invasion_cancelled": {
+      "file": "audio/voice/invasion_cancelled.mp3",
+      "speaker": "barnaby",
+      "text": "Looks like they've called off the attack. Phew."
+    },
+    "enemy_sunk": {
+      "file": "audio/voice/enemy_sunk.mp3",
+      "speaker": "barnaby",
+      "text": "Down she goes! Good shooting, lads!"
+    },
+    "coup_warning1": {
+      "file": "audio/voice/coup_warning1.mp3",
+      "speaker": "barnaby",
+      "text": "The lads are muttering about mutiny, Cap'n. Mind how you go."
+    },
+    "coup_warning2": {
+      "file": "audio/voice/coup_warning2.mp3",
+      "speaker": "barnaby",
+      "text": "They're sharpening their cutlasses, Cap'n. Fix this, quick, or it's your head!"
+    },
+    "peace": {
+      "file": "audio/voice/peace.mp3",
+      "speaker": "barnaby",
+      "text": "Peace it is, then. I'll tell the captains to behave."
+    },
+    "peace_broken": {
+      "file": "audio/voice/peace_broken.mp3",
+      "speaker": "barnaby",
+      "text": "We broke our word, Cap'n. They won't forget it."
+    },
+    "patron": {
+      "file": "audio/voice/patron.mp3",
+      "speaker": "barnaby",
+      "text": "We're under royal protection now. Respectable! Ugh."
+    },
+    "patron_gift": {
+      "file": "audio/voice/patron_gift.mp3",
+      "speaker": "barnaby",
+      "text": "Our patron's sent us some coin. Generous of 'em."
+    },
+    "jolly_roger": {
+      "file": "audio/voice/jolly_roger.mp3",
+      "speaker": "barnaby",
+      "text": "The Jolly Roger flies! We bow to no king!"
+    },
+    "war_declared": {
+      "file": "audio/voice/war_declared.mp3",
+      "speaker": "barnaby",
+      "text": "There's war in Europe, Cap'n. Good for business!"
+    },
+    "festival": {
+      "file": "audio/voice/festival.mp3",
+      "speaker": "barnaby",
+      "text": "A festival! Rum, fiddles and bonfires! The lads will love you for this!"
+    },
+    "free_grog": {
+      "file": "audio/voice/free_grog.mp3",
+      "speaker": "barnaby",
+      "text": "Free grog for all! Three cheers for the Cap'n!"
+    },
+    "ransom": {
+      "file": "audio/voice/ransom.mp3",
+      "speaker": "barnaby",
+      "text": "The ransom's paid. Pleasure doing business."
+    },
+    "free_all": {
+      "file": "audio/voice/free_all.mp3",
+      "speaker": "barnaby",
+      "text": "Off they go, singing your praises. Soft, if you ask me."
+    },
+    "betray": {
+      "file": "audio/voice/betray.mp3",
+      "speaker": "barnaby",
+      "text": "Hanged them, did they? Remind me never to cross you, Cap'n."
+    },
+    "raise_dead": {
+      "file": "audio/voice/raise_dead.mp3",
+      "speaker": "barnaby",
+      "text": "The dead walk! I'll never get used to that."
+    },
+    "assassination": {
+      "file": "audio/voice/assassination.mp3",
+      "speaker": "barnaby",
+      "text": "It's done, Cap'n. Quiet as a cat."
+    },
+    "assassination_failed": {
+      "file": "audio/voice/assassination_failed.mp3",
+      "speaker": "barnaby",
+      "text": "Our man didn't come back, Cap'n. The target fought him off."
+    },
+    "castaways": {
+      "file": "audio/voice/castaways.mp3",
+      "speaker": "barnaby",
+      "text": "Castaways on the beach, Cap'n! More hands for the fields."
+    },
+    "accessory_pegleg": {
+      "file": "audio/voice/accessory_pegleg.mp3",
+      "speaker": "barnaby",
+      "text": "A fine new peg leg's been carved. Very fashionable."
+    },
+    "accessory_hat": {
+      "file": "audio/voice/accessory_hat.mp3",
+      "speaker": "barnaby",
+      "text": "A splendid new hat is ready, Cap'n."
+    },
+    "accessory_parrot": {
+      "file": "audio/voice/accessory_parrot.mp3",
+      "speaker": "polly",
+      "text": "Pretty bird! Pretty bird! Squawk!"
+    },
+    "edict": {
+      "file": "audio/voice/edict.mp3",
+      "speaker": "barnaby",
+      "text": "It's done, Cap'n. Your word is law."
+    },
+    "victory": {
+      "file": "audio/voice/victory.mp3",
+      "speaker": "barnaby",
+      "text": "That's it, Cap'n! Your reign's complete. They'll sing songs about you!"
+    },
+    "defeat": {
+      "file": "audio/voice/defeat.mp3",
+      "speaker": "barnaby",
+      "text": "It's all over, Cap'n. It was a good run while it lasted."
+    },
+    "construction_done": {
+      "file": "audio/voice/construction_done.mp3",
+      "speaker": "barnaby",
+      "text": "Another one finished, Cap'n."
+    }
+  },
+  "barks": {
+    "pirate_m1": [
+      "audio/voice/bark_pirate_m1_1.mp3",
+      "audio/voice/bark_pirate_m1_2.mp3",
+      "audio/voice/bark_pirate_m1_3.mp3",
+      "audio/voice/bark_pirate_m1_4.mp3",
+      "audio/voice/bark_pirate_m1_5.mp3",
+      "audio/voice/bark_pirate_m1_6.mp3"
+    ],
+    "pirate_m2": [
+      "audio/voice/bark_pirate_m2_1.mp3",
+      "audio/voice/bark_pirate_m2_2.mp3",
+      "audio/voice/bark_pirate_m2_3.mp3",
+      "audio/voice/bark_pirate_m2_4.mp3",
+      "audio/voice/bark_pirate_m2_5.mp3",
+      "audio/voice/bark_pirate_m2_6.mp3"
+    ],
+    "pirate_m3": [
+      "audio/voice/bark_pirate_m3_1.mp3",
+      "audio/voice/bark_pirate_m3_2.mp3",
+      "audio/voice/bark_pirate_m3_3.mp3",
+      "audio/voice/bark_pirate_m3_4.mp3",
+      "audio/voice/bark_pirate_m3_5.mp3",
+      "audio/voice/bark_pirate_m3_6.mp3"
+    ],
+    "pirate_f1": [
+      "audio/voice/bark_pirate_f1_1.mp3",
+      "audio/voice/bark_pirate_f1_2.mp3",
+      "audio/voice/bark_pirate_f1_3.mp3",
+      "audio/voice/bark_pirate_f1_4.mp3",
+      "audio/voice/bark_pirate_f1_5.mp3",
+      "audio/voice/bark_pirate_f1_6.mp3"
+    ],
+    "captive_m": [
+      "audio/voice/bark_captive_m_1.mp3",
+      "audio/voice/bark_captive_m_2.mp3",
+      "audio/voice/bark_captive_m_3.mp3",
+      "audio/voice/bark_captive_m_4.mp3",
+      "audio/voice/bark_captive_m_5.mp3"
+    ],
+    "captive_f": [
+      "audio/voice/bark_captive_f_1.mp3",
+      "audio/voice/bark_captive_f_2.mp3",
+      "audio/voice/bark_captive_f_3.mp3",
+      "audio/voice/bark_captive_f_4.mp3",
+      "audio/voice/bark_captive_f_5.mp3"
+    ],
+    "soldier": [
+      "audio/voice/bark_soldier_1.mp3",
+      "audio/voice/bark_soldier_2.mp3",
+      "audio/voice/bark_soldier_3.mp3",
+      "audio/voice/bark_soldier_4.mp3"
+    ],
+    "wealthy": [
+      "audio/voice/bark_wealthy_1.mp3",
+      "audio/voice/bark_wealthy_2.mp3",
+      "audio/voice/bark_wealthy_3.mp3",
+      "audio/voice/bark_wealthy_4.mp3"
+    ],
+    "polly": [
+      "audio/voice/bark_polly_1.mp3",
+      "audio/voice/bark_polly_2.mp3",
+      "audio/voice/bark_polly_3.mp3",
+      "audio/voice/bark_polly_4.mp3"
+    ]
+  },
+  "sfx": {
+    "ui_click": [
+      "audio/sfx/ui_click.mp3",
+      "audio/sfx/ui_click_2.mp3"
+    ],
+    "ui_open": [
+      "audio/sfx/ui_open.mp3"
+    ],
+    "ui_close": [
+      "audio/sfx/ui_close.mp3"
+    ],
+    "ui_error": [
+      "audio/sfx/ui_error.mp3"
+    ],
+    "build_place": [
+      "audio/sfx/build_place.mp3",
+      "audio/sfx/build_place_2.mp3"
+    ],
+    "build_complete": [
+      "audio/sfx/build_complete.mp3"
+    ],
+    "demolish": [
+      "audio/sfx/demolish.mp3"
+    ],
+    "hammer_loop": [
+      "audio/sfx/hammer_loop.mp3"
+    ],
+    "saw_loop": [
+      "audio/sfx/saw_loop.mp3"
+    ],
+    "axe_chop": [
+      "audio/sfx/axe_chop.mp3",
+      "audio/sfx/axe_chop_2.mp3"
+    ],
+    "ship_bell": [
+      "audio/sfx/ship_bell.mp3"
+    ],
+    "cannon_fire": [
+      "audio/sfx/cannon_fire.mp3",
+      "audio/sfx/cannon_fire_2.mp3"
+    ],
+    "cannon_impact": [
+      "audio/sfx/cannon_impact.mp3",
+      "audio/sfx/cannon_impact_2.mp3"
+    ],
+    "explosion": [
+      "audio/sfx/explosion.mp3"
+    ],
+    "splash": [
+      "audio/sfx/splash.mp3",
+      "audio/sfx/splash_2.mp3"
+    ],
+    "sword_clash": [
+      "audio/sfx/sword_clash.mp3",
+      "audio/sfx/sword_clash_2.mp3",
+      "audio/sfx/sword_clash_3.mp3"
+    ],
+    "musket_shot": [
+      "audio/sfx/musket_shot.mp3",
+      "audio/sfx/musket_shot_2.mp3"
+    ],
+    "scream_m": [
+      "audio/sfx/scream_m.mp3"
+    ],
+    "scream_f": [
+      "audio/sfx/scream_f.mp3"
+    ],
+    "cheer_crowd": [
+      "audio/sfx/cheer_crowd.mp3"
+    ],
+    "coins": [
+      "audio/sfx/coins.mp3",
+      "audio/sfx/coins_2.mp3"
+    ],
+    "chest_open": [
+      "audio/sfx/chest_open.mp3"
+    ],
+    "parchment": [
+      "audio/sfx/parchment.mp3"
+    ],
+    "quill": [
+      "audio/sfx/quill.mp3"
+    ],
+    "horn_alert": [
+      "audio/sfx/horn_alert.mp3"
+    ],
+    "drums_festival": [
+      "audio/sfx/drums_festival.mp3"
+    ],
+    "parrot_squawk": [
+      "audio/sfx/parrot_squawk.mp3",
+      "audio/sfx/parrot_squawk_2.mp3"
+    ],
+    "rooster": [
+      "audio/sfx/rooster.mp3"
+    ],
+    "fire_crackle_loop": [
+      "audio/sfx/fire_crackle_loop.mp3"
+    ],
+    "tavern_murmur_loop": [
+      "audio/sfx/tavern_murmur_loop.mp3"
+    ],
+    "waves_loop": [
+      "audio/sfx/waves_loop.mp3"
+    ],
+    "jungle_loop": [
+      "audio/sfx/jungle_loop.mp3"
+    ],
+    "seagulls": [
+      "audio/sfx/seagulls.mp3"
+    ],
+    "wind_loop": [
+      "audio/sfx/wind_loop.mp3"
+    ]
+  },
+  "music": {
+    "theme": "audio/music/theme.mp3",
+    "island_1": "audio/music/island_1.mp3",
+    "island_2": "audio/music/island_2.mp3",
+    "island_3": "audio/music/island_3.mp3",
+    "tension": "audio/music/tension.mp3",
+    "victory": "audio/music/victory.mp3",
+    "defeat": "audio/music/defeat.mp3"
+  },
+  "credits": [
+    {
+      "asset": "Character voices (Barnaby, Polly, pirates, captives, soldier, aristocrat)",
+      "source": "ElevenLabs (generated)",
+      "license": "ElevenLabs Terms of Service (generated on a paid Creator plan; commercial use permitted)",
+      "url": "https://elevenlabs.io",
+      "authors": [
+        "ElevenLabs Voice Design + Eleven v3 text to speech"
+      ]
+    },
+    {
+      "asset": "Sound effects and ambience loops",
+      "source": "ElevenLabs (generated)",
+      "license": "ElevenLabs Terms of Service (generated on a paid Creator plan; commercial use permitted)",
+      "url": "https://elevenlabs.io",
+      "authors": [
+        "ElevenLabs Sound Effects (eleven_text_to_sound_v2)"
+      ]
+    },
+    {
+      "asset": "Music (theme, island_1-3, tension, victory, defeat)",
+      "source": "ElevenLabs (generated)",
+      "license": "ElevenLabs Terms of Service (generated on a paid Creator plan; commercial use permitted)",
+      "url": "https://elevenlabs.io",
+      "authors": [
+        "Eleven Music (music_v2_5)"
+      ]
+    }
+  ]
+}
