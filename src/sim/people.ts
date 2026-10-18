@@ -128,6 +128,9 @@ export function killPerson(g: Game, p: Person, cause: string): void {
   p.dyingTimer = 6;
   p.path = null;
   g.stats.deaths++;
+  const k = `${p.kind}:${cause}`;
+  (g.stats as any).causes ??= {};
+  (g.stats as any).causes[k] = ((g.stats as any).causes[k] ?? 0) + 1;
   if (p.kind === 'pirate') {
     g.stats.piratesDied++;
     if (g.buildingCount('graveyard')) g.graveyard.push({ name: p.name, nat: p.nat });
@@ -231,6 +234,7 @@ export function updatePeople(g: Game, dt: number): void {
     }
     if (p.task.kind === 'atsea') continue;
     decayNeeds(g, p, dt);
+    if ((p.task.kind as string) === 'dead') continue;
     if (slowTick) {
       absorbEnv(g, p, 0.5);
       if (p.kind === 'pirate' || p.kind === 'wealthy') updatePirateMood(g, p, 0.5);
@@ -751,7 +755,7 @@ function arrive(g: Game, p: Person): void {
           return q && q.task.kind !== 'dead' && Math.hypot(q.x - p.x, q.y - p.y) < 12;
         }).length : 0;
         const attackers = [...g.people.values()].filter((q) => (q.kind === 'soldier' || q.rebel) && q.task.kind !== 'dead' && palace && Math.hypot(q.x - palace.door[0], q.y - palace.door[1]) < 4).length;
-        if (attackers > guards + 1) {
+        if (attackers >= 5 && attackers > guards * 2 + 1) {
           g.endGame(false, p.kind === 'soldier' ? 'Enemy soldiers have stormed your palace. You will hang in Port Royal.' : 'The captives have stormed the palace. You are now their prisoner!');
           return;
         }
@@ -772,7 +776,7 @@ function act(g: Game, p: Person, dt: number): void {
   if (t.kind === 'chase' || t.kind === 'fight') {
     let target = t.target ? g.people.get(t.target) : undefined;
     if ((!target || target.task.kind === 'dead') && t.kind === 'fight') {
-      target = nearestFoe(g, p, 15) ?? undefined;
+      target = nearestFoe(g, p, p.kind === 'pirate' ? 80 : 15) ?? undefined;
       if (target) t.target = target.id;
     }
     if (!target || target.task.kind === 'dead' || target.task.kind === 'atsea') {

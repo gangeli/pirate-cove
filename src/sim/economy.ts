@@ -9,6 +9,11 @@ import { SHIPS } from './data/ships';
 import { NATIONS } from './data/kings';
 import { Terrain } from './map';
 
+/** global production speed: def times are "seconds per unit at perfect staffing" divided by this */
+export const PROD_SPEED = 5;
+/** how much a hauler can carry per trip */
+export const HAUL_LOAD = 20;
+
 // ------------------------------------------------------------------------------------------- fertility
 
 function hash2(x: number, y: number, s: number): number {
@@ -97,11 +102,11 @@ function haulWants(g: Game, b: Building): [Good, number][] {
   const out: [Good, number][] = [];
   if (def.recipe) for (const k in def.recipe.in) {
     const have = b.inv[k as Good] ?? 0;
-    if (have < 8) out.push([k as Good, 10 - have]);
+    if (have < 16) out.push([k as Good, 24 - have]);
   }
   if (def.service) for (const good of def.service.bonus) {
     const have = b.inv[good] ?? 0;
-    if (have < 6) out.push([good, 8 - have]);
+    if (have < 8) out.push([good, 16 - have]);
   }
   if (def.id === 'dock' && b.ship) {
     const s = g.ships.get(b.ship);
@@ -145,7 +150,7 @@ export function haulerTask(g: Game, b: Building, p: Person): Task | null {
     const [good, n] = wants[(i + offs) % wants.length];
     const src = findSource(g, b, good, def.id === 'smugglers_cove');
     if (!src) continue;
-    return { kind: 'haul', bld: b.id, src: src.id, good, amount: Math.max(1, Math.min(n, 10)), tx: src.door[0], ty: src.door[1], timer: 2 };
+    return { kind: 'haul', bld: b.id, src: src.id, good, amount: Math.max(1, Math.min(n, HAUL_LOAD)), tx: src.door[0], ty: src.door[1], timer: 2 };
   }
   // nothing to do: wait at home building
   return { kind: 'work', bld: b.id, tx: b.door[0], ty: b.door[1], timer: 8 };
@@ -264,9 +269,9 @@ export function updateEconomy(g: Game, dt: number): void {
       let ok = true;
       for (const k in r.in) if ((b.inv[k as Good] ?? 0) < r.in[k as Good]!) ok = false;
       if (!ok || (b.inv[r.out] ?? 0) >= cap) continue;
-      b.progress += (dt * e) / r.time;
+      b.progress += (dt * e * PROD_SPEED) / r.time;
       if (b.progress >= 1) {
-        b.progress -= 1;
+        b.progress = Math.min(b.progress - 1, 0.99);
         for (const k in r.in) b.inv[k as Good]! -= r.in[k as Good]!;
         b.inv[r.out] = (b.inv[r.out] ?? 0) + 1;
         g.events.push({ type: 'produced', id: b.id, good: r.out });
@@ -279,9 +284,9 @@ export function updateEconomy(g: Game, dt: number): void {
       if (gd.from === 'trees') k = Math.min(1, treesNear(g, b, 9) / 50);
       if (gd.from === 'ore') k = Math.max(0.15, oreNear(g, b));
       if (k <= 0.02) continue;
-      b.progress += (dt * e * k) / gd.time;
+      b.progress += (dt * e * k * PROD_SPEED) / gd.time;
       if (b.progress >= 1) {
-        b.progress -= 1;
+        b.progress = Math.min(b.progress - 1, 0.99);
         b.inv[gd.out] = (b.inv[gd.out] ?? 0) + 1;
         g.events.push({ type: 'produced', id: b.id, good: gd.out });
         if (gd.from === 'trees' && g.rng.chance(0.35)) fellTree(g, b);
@@ -338,6 +343,14 @@ function fellTree(g: Game, b: Building): void {
 
 // ------------------------------------------------------------------------------------------- employment
 
+/** a producer whose store is full has nothing for its workers to do */
+function outputFull(b: Building): boolean {
+  const def = BUILDING[b.def];
+  const out = def.recipe?.out ?? def.gather?.out;
+  if (!out || def.captiveService) return false;
+  return (b.inv[out] ?? 0) >= storageOf(def) * 0.95;
+}
+
 function canDoJob(p: Person, job: Job): boolean {
   if (p.kind === 'skeleton') return job === 'hauler';
   if (p.kind !== 'captive' || p.rebel) return false;
@@ -348,7 +361,10 @@ function canDoJob(p: Person, job: Job): boolean {
 }
 
 function employ(g: Game): void {
-  const bl = [...g.buildings.values()].filter((b) => b.built >= 1 && !b.condemned).sort((a, b) => b.priority - a.priority);
+  const sitesAny = [...g.buildings.values()].some((x) => x.built < 1);
+  // effective priority: idle builders and producers with full stores yield their workers
+  const eff = (b: Building) => b.priority - (outputFull(b) ? 2.5 : 0) - (b.def === 'construction_tent' && !sitesAny ? 3.5 : 0);
+  const bl = [...g.buildings.values()].filter((b) => b.built >= 1 && !b.condemned).sort((a, b) => eff(b) - eff(a));
   const free: Person[] = [];
   const freePirates: Person[] = [];
   for (const p of g.people.values()) {
@@ -376,11 +392,12 @@ function employ(g: Game): void {
     if (JOB_SEX[job] === 'F') femaleDemand--;
     return p;
   };
-  // take a worker from a lower-priority building
+  // take a worker from a building with lower effective priority
   const poach = (b: Building, job: Job): Person | null => {
+    const mine = eff(b);
     for (let i = bl.length - 1; i >= 0; i--) {
       const o = bl[i];
-      if (o.priority >= b.priority) break;
+      if (o === b || eff(o) >= mine) continue;
       for (const id of o.workers) {
         const q = g.people.get(id);
         if (!q || !canDoJob(q, job)) continue;
@@ -507,6 +524,8 @@ export function monthlyEconomy(g: Game): void {
   for (const k in g.blackMarketMarkup) g.blackMarketMarkup[k as Good] = Math.max(0, (g.blackMarketMarkup[k as Good] ?? 0) - 0.04);
   g.effects.recentEscapes *= 0.6;
   g.effects.recentKills *= 0.6;
+  // word of a free pirate haven spreads: would-be buccaneers drift in when the island is merry
+  immigration(g);
   // shipwreck advantage: castaways
   if (g.settings.advantage === 'shipwreck' && g.rng.chance(0.25)) castaways(g);
 }
@@ -529,4 +548,23 @@ function castaways(g: Game): void {
     g.msg('good', 'Castaways!', `${n} shipwrecked souls have washed up on your beach. Welcome to your new life.`, 'castaways', { x, y });
     return;
   }
+}
+
+function immigration(g: Game): void {
+  const pir = g.pirates();
+  const hap = pir.length ? g.avgHappiness() : 0.6;
+  const notoriety = pir.filter((p) => p.captain).reduce((a, p) => a + p.traits.notoriety, 0);
+  const cap = 12 + g.buildingCount('housing_plot') * 1.2 + g.ships.size * 6;
+  if (pir.length >= cap) return;
+  const chance = Math.max(0, hap - 0.35) * 1.4 + Math.min(0.3, notoriety * 0.02) + (pir.length < 6 ? 0.4 : 0);
+  if (!g.rng.chance(Math.min(0.9, chance))) return;
+  const dock = g.findBuilding('dock') ?? g.findBuilding('palace');
+  if (!dock) return;
+  const n = g.rng.int(1, pir.length < 6 ? 4 : 2);
+  for (let i = 0; i < n; i++) {
+    const p = createPerson(g, 'pirate', dock.door[0], dock.door[1]);
+    p.earned = g.rng.int(0, 120);
+    p.gold = g.rng.int(10, 60);
+  }
+  g.msg('good', 'New Arrivals', `${n === 1 ? 'A would-be buccaneer has' : `${n} would-be buccaneers have`} come ashore, drawn by tales of your free and merry island.`, undefined, { x: dock.door[0], y: dock.door[1] });
 }

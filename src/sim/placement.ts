@@ -73,7 +73,7 @@ export function canPlace(g: Game, def: BuildingDef, x: number, y: number, rot: n
     }
     // road within 8 tiles of ramp
     const cx = front[Math.floor(front.length / 2)];
-    const road = autoRoadPath(g, cx[0], cx[1], 9);
+    const road = autoRoadPath(g, cx[0], cx[1], 9, { x, y, w, h });
     if (!road && !hasAnyRoad(g)) {
       res.ok = true;
       res.door = cx;
@@ -85,8 +85,14 @@ export function canPlace(g: Game, def: BuildingDef, x: number, y: number, rot: n
     res.ok = true;
     return res;
   }
-  if (water > 0) return fail('Must be built on dry land.');
-  if (m.slopeOf(x, y, w, h) > (def.size[0] * def.size[1] > 20 ? 1.6 : 1.1)) return fail('The ground is too steep.');
+  let shallowOnly = true;
+  if (def.water === 'shore') {
+    for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) if (m.terrain[m.idx(i, j)] === Terrain.DeepWater) shallowOnly = false;
+    const front = edgeTiles(x, y, w, h, rot);
+    if (front.some(([i, j]) => !m.isLand(i, j))) return fail('The front of a shipyard must be on land.');
+    if (!shallowOnly || water > w * h * 0.55) return fail('A shipyard must sit at the water\'s edge, not out at sea.');
+  } else if (water > 0) return fail('Must be built on dry land.');
+  if (m.slopeOf(x, y, w, h) > (def.size[0] * def.size[1] > 20 ? 2.6 : 1.8)) return fail('The ground is too steep.');
   if (def.water === 'shore') {
     const back = edgeTiles(x, y, w, h, (rot + 2) % 4);
     const wet = back.filter(([i, j]) => !m.isLand(i, j)).length;
@@ -109,6 +115,16 @@ export function canPlace(g: Game, def: BuildingDef, x: number, y: number, rot: n
   }
   // must touch the road network
   const adj = ring(x, y, w, h).filter(([i, j]) => m.inBounds(i, j) && m.path[m.idx(i, j)]);
+  if (!adj.length && def.water === 'shore') {
+    const front = edgeTiles(x, y, w, h, rot);
+    const fc = front[Math.floor(front.length / 2)];
+    const road = autoRoadPath(g, fc[0], fc[1], 9, { x, y, w, h });
+    if (!road) return fail('A shipyard must be within 8 tiles of a road.');
+    res.autoRoad = road;
+    res.door = fc;
+    res.ok = true;
+    return res;
+  }
   if (!adj.length && !g.cheats.freebuild) return fail('Must be next to a road.');
   // door: prefer road tiles on the front side, nearest the centre
   const [fx, fy] = FRONT[rot];
@@ -136,7 +152,7 @@ function hasAnyRoad(g: Game): boolean {
 }
 
 /** BFS from (x,y) to nearest road over buildable land; returns tiles to pave (excluding existing road) */
-export function autoRoadPath(g: Game, sx: number, sy: number, maxLen: number): [number, number][] | null {
+export function autoRoadPath(g: Game, sx: number, sy: number, maxLen: number, avoid?: { x: number; y: number; w: number; h: number }): [number, number][] | null {
   const m = g.map, n = m.size;
   const prev = new Int32Array(n * n).fill(-2);
   const q = [sy * n + sx];
@@ -159,6 +175,7 @@ export function autoRoadPath(g: Game, sx: number, sy: number, maxLen: number): [
       const k = ny * n + nx;
       if (prev[k] !== -2) continue;
       if (!m.isWalkable(nx, ny) || m.occupied[k]) continue;
+      if (avoid && nx >= avoid.x && ny >= avoid.y && nx < avoid.x + avoid.w && ny < avoid.y + avoid.h) continue;
       prev[k] = c;
       dist.set(k, d + 1);
       q.push(k);
@@ -172,9 +189,10 @@ export function placeBuilding(g: Game, def: BuildingDef, pl: Placement, instant 
   const id = g.nextId++;
   const b: Building = {
     id, def: def.id, x: pl.x, y: pl.y, w: pl.w, h: pl.h, rot: pl.rot, door: pl.door ?? [pl.x, pl.y + pl.h],
-    built: def.instant || instant ? 1 : 0, priority: defaultPriority(def), wage: 4, workers: [], blocked: 0, haulers: [], overseer: 0, guards: [],
+    built: def.instant || instant ? 1 : 0, priority: defaultPriority(def), wage: 2, workers: [], blocked: 0, haulers: [], overseer: 0, guards: [],
     customers: [], inv: {}, progress: 0, quality: 0, price: 0, income: 0, lastIncome: 0, hp: 0, staff: 0,
   };
+  (b as any).placedAt = g.time;
   if (def.service) b.name = g.rng.pick(ENTERTAINMENT_NAMES);
   if (def.house) b.houseLevel = 1;
   if (def.water !== 'dock') m.flatten(pl.x, pl.y, pl.w, pl.h);
@@ -423,8 +441,8 @@ export function setupStartingIsland(g: Game): void {
   if (chuck) (chuck.inv.slop = 30), (chuck.inv.corn = 20);
   // people
   const s = g.settings;
-  const nCaptives = { botany_bay: 34, standard: 22, shipwreck: 20, skeleton_island: 18, bare_bones: 12 }[s.advantage];
-  const nPirates = { botany_bay: 14, standard: 10, shipwreck: 10, skeleton_island: 10, bare_bones: 7 }[s.advantage];
+  const nCaptives = { botany_bay: 40, standard: 28, shipwreck: 24, skeleton_island: 22, bare_bones: 14 }[s.advantage];
+  const nPirates = { botany_bay: 18, standard: 14, shipwreck: 13, skeleton_island: 13, bare_bones: 9 }[s.advantage];
   const home = palace.door;
   for (let i = 0; i < nCaptives; i++) createPerson(g, 'captive', home[0] + g.rng.int(-3, 3), home[1] + g.rng.int(-3, 3));
   // skilled bonus from background
@@ -442,7 +460,12 @@ export function setupStartingIsland(g: Game): void {
   if (s.advantage === 'skeleton_island') for (let i = 0; i < 10; i++) g.graveyard.push({ name: `Old Bones ${i + 1}`, nat: 'eng' });
   for (let i = 0; i < nPirates; i++) createPerson(g, 'pirate', home[0] + g.rng.int(-4, 4), home[1] + g.rng.int(-4, 4));
   if (dock) {
+    dock.inv.ration = 30;
     const ship = createShip(g, 'sloop', dock);
+    ship.rations = 10;
+    ship.cannons = 16;
+    ship.cutlasses = 10;
+    ship.muskets = 6;
     const cap = createCaptain(g, dock.door[0], dock.door[1]);
     ship.captain = cap.id;
     cap.ship = ship.id;

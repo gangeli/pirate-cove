@@ -13,7 +13,7 @@ export class MainMenu {
   private root: HTMLElement;
   private setup: HTMLElement;
   private credits: HTMLElement;
-  private s: Partial<Settings> = { size: 'medium', mountains: 0.5, vegetation: 0.5, minerals: 0.5, years: 20, stability: 2, advantage: 'standard', bonus: 'hoard', region: 6, startGold: 1500 };
+  private s: Partial<Settings> = { size: 'medium', mountains: 0.5, vegetation: 0.5, minerals: 0.5, years: 20, stability: 2, advantage: 'standard', bonus: 'hoard', region: 6, startGold: 2500 };
   private king: KingDef = KINGS[2];
   private custom = false;
   private tab: 'island' | 'conditions' | 'king' = 'island';
@@ -126,7 +126,7 @@ export class MainMenu {
         ${field('Island size', 'size', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']])}
         ${field('Mountains', 'mountains', [[0.2, 'Few'], [0.5, 'Some'], [0.85, 'Many']])}
         ${field('Vegetation', 'vegetation', [[0.25, 'Sparse'], [0.5, 'Normal'], [0.8, 'Lush']], 'Lumber limits everything. Sparse islands are much harder.')}
-        ${field('Starting gold', 'startGold', [[800, '800'], [1500, '1,500'], [3000, '3,000']])}
+        ${field('Starting gold', 'startGold', [[1200, '1,200'], [2500, '2,500'], [5000, '5,000']])}
         <div class="field"><label>Island location</label><select data-region>${REGION_NAMES.map((n, i) => html`<option value="${i}" ${s.region === i ? raw('selected') : ''}>${n}</option>`)}</select>
           <div class="hintx">Small ships can only reach seas near home, so location matters.</div></div>
         <div class="field"><label>Map seed</label><div class="row"><span class="chip">${s.seed}</span><button class="btn small" data-act="seed">Reroll</button></div></div></div>`;

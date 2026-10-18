@@ -198,6 +198,14 @@ export function updateInvasion(g: Game, dt: number): void {
         v.timer = 0;
         const shore = g.pf.nearestWalkable(Math.floor(v.x), Math.floor(v.y), 8);
         if (shore) {
+          if (!(g as any).callToArms || g.time - (g as any).callToArms > 60) {
+            (g as any).callToArms = g.time;
+            // every able pirate ashore grabs a cutlass
+            for (const p of g.people.values()) if (p.kind === 'pirate' && p.task.kind !== 'atsea' && p.task.kind !== 'dead' && p.mood !== 'disgruntled') {
+              p.task = { kind: 'fight', phase: 1, timer: 120 };
+            }
+            g.msg('alert', 'To Arms!', 'Enemy marines are coming ashore! Every pirate on the island is grabbing a cutlass.', undefined, { x: shore[0], y: shore[1] });
+          }
           const s = createPerson(g, 'soldier', shore[0], shore[1], { nat: v.nat, sex: 'M' });
           s.name = `${NATION_ADJ[v.nat]} Marine`;
           s.hp = 1.4;

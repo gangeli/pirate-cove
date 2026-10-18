@@ -95,7 +95,7 @@ export class Game {
   constructor(settings: Partial<Settings> = {}, king: KingDef | KingState = KINGS[2]) {
     this.settings = {
       seed: 12345, size: 'medium', mountains: 0.5, vegetation: 0.5, minerals: 0.5, years: 20, stability: 2,
-      advantage: 'standard', bonus: 'hoard', region: 6, startGold: 1500, ...settings,
+      advantage: 'standard', bonus: 'hoard', region: 6, startGold: 2500, ...settings,
     };
     const s = this.settings;
     this.rng = new Rng(s.seed * 7919 + 13);
@@ -329,7 +329,7 @@ export class Game {
         const miss = this.missingReqs(def);
         if (miss.length) return { ok: false, reason: miss[0] === 'unique' ? 'You may only build one of these.' : `Requires a skilled ${miss.join(', ')}.` };
         const cost = this.costOf(def);
-        if (this.treasury < cost.gold && !this.cheats.freebuild) return { ok: false, reason: 'Not enough gold.' };
+        if (cost.gold > 0 && this.treasury < cost.gold && !this.cheats.freebuild) return { ok: false, reason: 'Not enough gold.' };
         if (this.lumber() < cost.lumber && !this.cheats.freebuild) return { ok: false, reason: 'Not enough lumber.' };
         if (cost.gold) this.spend(cost.gold, 'construction');
         consumeLumber(this, cost.lumber);

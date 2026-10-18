@@ -51,12 +51,12 @@ export interface PreyDef {
   skilled: number; // chance of skilled captives
 }
 export const PREY: PreyDef[] = [
-  { id: 'fishing_schooner', name: 'Fishing Schooner', naval: false, crew: 6, cannons: 2, tons: 60, speed: 27, gold: [20, 80], passengers: 0, skilled: 0.1 },
-  { id: 'brig', name: 'Merchant Brig', naval: false, crew: 10, cannons: 6, tons: 120, speed: 25, gold: [120, 350], passengers: 0.2, skilled: 0.25 },
-  { id: 'fluyt', name: 'Fluyt', naval: false, crew: 14, cannons: 8, tons: 250, speed: 20, gold: [300, 800], passengers: 0.35, skilled: 0.35 },
-  { id: 'merchant_galleon', name: 'Treasure Galleon', naval: false, crew: 30, cannons: 24, tons: 500, speed: 14, gold: [900, 2600], passengers: 0.6, skilled: 0.4 },
-  { id: 'naval_sloop', name: 'Naval Sloop', naval: true, crew: 14, cannons: 14, tons: 110, speed: 29, gold: [40, 160], passengers: 0.05, skilled: 0.45 },
-  { id: 'naval_frigate', name: 'Naval Frigate', naval: true, crew: 28, cannons: 30, tons: 380, speed: 23, gold: [100, 400], passengers: 0.1, skilled: 0.5 },
-  { id: 'naval_galleon', name: 'Naval Galleon', naval: true, crew: 40, cannons: 44, tons: 480, speed: 16, gold: [300, 900], passengers: 0.15, skilled: 0.5 },
-  { id: 'pirate', name: 'Rival Pirate', naval: false, crew: 16, cannons: 12, tons: 120, speed: 28, gold: [100, 600], passengers: 0, skilled: 0.15 },
+  { id: 'fishing_schooner', name: 'Fishing Schooner', naval: false, crew: 6, cannons: 2, tons: 60, speed: 24, gold: [75, 300], passengers: 0, skilled: 0.1 },
+  { id: 'brig', name: 'Merchant Brig', naval: false, crew: 10, cannons: 6, tons: 120, speed: 22, gold: [450, 1312], passengers: 0.2, skilled: 0.25 },
+  { id: 'fluyt', name: 'Fluyt', naval: false, crew: 14, cannons: 8, tons: 250, speed: 18, gold: [1125, 3000], passengers: 0.35, skilled: 0.35 },
+  { id: 'merchant_galleon', name: 'Treasure Galleon', naval: false, crew: 30, cannons: 24, tons: 500, speed: 14, gold: [3375, 9750], passengers: 0.6, skilled: 0.4 },
+  { id: 'naval_sloop', name: 'Naval Sloop', naval: true, crew: 14, cannons: 14, tons: 110, speed: 29, gold: [150, 600], passengers: 0.05, skilled: 0.45 },
+  { id: 'naval_frigate', name: 'Naval Frigate', naval: true, crew: 28, cannons: 30, tons: 380, speed: 23, gold: [375, 1500], passengers: 0.1, skilled: 0.5 },
+  { id: 'naval_galleon', name: 'Naval Galleon', naval: true, crew: 40, cannons: 44, tons: 480, speed: 16, gold: [1125, 3375], passengers: 0.15, skilled: 0.5 },
+  { id: 'pirate', name: 'Rival Pirate', naval: false, crew: 16, cannons: 12, tons: 120, speed: 28, gold: [375, 2250], passengers: 0, skilled: 0.15 },
 ];

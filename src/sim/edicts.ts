@@ -15,7 +15,7 @@ export interface Availability {
 }
 
 function recruitCost(g: Game): number {
-  let c = 1500;
+  let c = 1200;
   if (g.has('always_pirate')) c *= 1.5;
   if (g.has('once_captain')) c *= 0.5;
   if (g.has('once_mutineer')) c *= 1.25;

@@ -53,6 +53,11 @@ export function makeRegions(r: Rng, home: number): Region[] {
       if (type === 'military') g.naval[nat] = Math.min(1.2, g.naval[nat] + 0.3);
     }
   }
+  // home waters are a pirate haven: little naval presence close by
+  for (const id of [home, ...regs[home].neighbors]) {
+    for (const n of NATIONS) regs[id].naval[n] *= id === home ? 0.3 : 0.6;
+    regs[id].pirates *= id === home ? 0.2 : 0.5;
+  }
   regs[home].knowledge = 3;
   for (const nb of regs[home].neighbors) regs[nb].knowledge = Math.max(regs[nb].knowledge, 1);
   return regs;
@@ -133,7 +138,7 @@ export function commissionShip(g: Game, yardId: number, type: ShipType): CmdResu
   const freeDocks = docks.filter((b) => !b.ship).length;
   const queued = [...g.buildings.values()].filter((b) => b.building_ship).length;
   if (freeDocks - queued <= 0) return { ok: false, reason: 'Every ship needs its own dock. Build another dock first.' };
-  if (g.treasury < d.gold) return { ok: false, reason: 'Not enough gold.' };
+  if (d.gold > 0 && g.treasury < d.gold) return { ok: false, reason: 'Not enough gold.' };
   if (g.lumber() < d.lumber) return { ok: false, reason: 'Not enough lumber.' };
   g.spend(d.gold, 'shipbuilding');
   consumeLumber(g, d.lumber);
@@ -178,8 +183,13 @@ export function launchShip(g: Game, id: number, force: boolean): CmdResult {
   const minCrew = Math.ceil(d.men / 2);
   if (s.crew.length < minCrew) return { ok: false, reason: `Not enough hands to man the rigging (need ${minCrew}).` };
   if (s.rations < 1) return { ok: false, reason: 'No sea rations aboard.' };
+  {
+    const out = s.mission === 'raid' || s.mission === 'kidnap' ? MONTH * 0.8 : transitTime(g, s, s.region);
+    const need = out * 2 * rationRate(s) * 1.1;
+    if (s.rations < need) return { ok: false, reason: `Not enough rations for the round trip (${Math.ceil(need)} needed, ${Math.floor(s.rations)} aboard).` };
+  }
   if (s.mission === 'cruise') {
-    if (s.orders === 'board' && s.cutlasses < 1) return { ok: false, reason: "Boarding needs cutlasses." };
+
     if (s.orders === 'pound' && s.cannons < 1) return { ok: false, reason: 'Pounding needs cannons.' };
     if (s.orders === 'harass' && (s.cannons < 1 || s.muskets < 1)) return { ok: false, reason: 'Harassing needs cannons and muskets.' };
     const reach = regionReachable(g, s, s.region);
@@ -313,14 +323,23 @@ export function updateShips(g: Game, dt: number): void {
         }
         const [tx, ty] = path[i];
         const dx = tx - s.vx, dy = ty - s.vy, d = Math.hypot(dx, dy);
-        const sp = 3.2 * dt * (i < 2 || i > path.length - 3 ? 0.6 : 1);
-        if (d < sp + 0.5) s.pathI = i + 1;
-        else {
+        const last = i === path.length - 1;
+        const sp = 3.2 * dt * (i < 2 || (s.status === 'returning' && i > path.length - 3) ? 0.6 : 1);
+        if (d < sp + (last ? 0.3 : 2.2)) {
+          s.pathI = i + 1;
+          if (last && s.status === 'returning') {
+            s.vx = tx;
+            s.vy = ty;
+            s.vdir = (s as any).berthDir ?? s.vdir;
+          }
+        } else {
           const want = Math.atan2(dy, dx);
           let da = want - s.vdir;
           while (da > Math.PI) da -= Math.PI * 2;
           while (da < -Math.PI) da += Math.PI * 2;
-          s.vdir += Math.max(-dt * 0.8, Math.min(dt * 0.8, da));
+          // turn harder when the waypoint is close so we never orbit it
+          const turn = d < 5 ? 2.5 : 0.8;
+          s.vdir += Math.max(-dt * turn, Math.min(dt * turn, da));
           s.vx += Math.cos(s.vdir) * sp;
           s.vy += Math.sin(s.vdir) * sp;
         }
@@ -329,6 +348,19 @@ export function updateShips(g: Game, dt: number): void {
       case 'atsea':
         voyageTick(g, s, dt);
         break;
+      case 'docked':
+      case 'boarding': {
+        // a dock's own stores go straight aboard
+        const dock = g.buildings.get(s.dock);
+        const have = dock?.inv.ration ?? 0;
+        const room = SHIPS[s.type].rations - s.rations;
+        if (dock && have > 0 && room > 0) {
+          const t = Math.min(have, room);
+          dock.inv.ration = have - t;
+          s.rations += t;
+        }
+        break;
+      }
       case 'repairing': {
         if (s.hull >= 1) {
           s.status = 'docked';
@@ -379,7 +411,7 @@ function voyageTick(g: Game, s: Ship, dt: number): void {
     const nav = Math.max(cap?.skills.navigation ?? 0, ...s.officers.map((id) => g.people.get(id)?.skills.navigation ?? 0));
     if (g.rng.chance(Math.max(0.005, 0.07 - nav * 0.013))) {
       v.lost = true;
-      v.back += MONTH * g.rng.range(0.3, 1);
+      v.back += MONTH * g.rng.range(0.15, 0.5);
       logV(g, s, 'Fog and bad reckoning: we are lost! Rations are running low.');
     }
   }
@@ -394,7 +426,7 @@ function voyageTick(g: Game, s: Ship, dt: number): void {
     onStation(g, s);
   }
   if (v.station && v.t > phaseOut) {
-    const returnNeed = v.back * v.rationRate + 0.5;
+    const returnNeed = v.back * v.rationRate * 1.6 + 1 + (v.lost ? MONTH * 0.5 * v.rationRate : 0);
     const done = s.mission !== 'cruise' || s.rations <= returnNeed || s.hull < 0.45 || v.sunk || crew.length < Math.ceil(SHIPS[s.type].men / 3);
     if (s.mission === 'cruise' && !done) {
       v.nextEncounter -= dt;
@@ -435,7 +467,7 @@ function onStation(g: Game, s: Ship): void {
     const caught = { farmstead: [3, 6], trade: [5, 10], military: [8, 15] }[type];
     const n = g.rng.int(caught[0], caught[1]);
     const crew = crewOf(g, s);
-    const deaths = type === 'military' ? g.rng.int(1, 3) : type === 'trade' ? g.rng.int(0, 2) : g.rng.int(0, 1);
+    const deaths = type === 'military' ? g.rng.int(0, 2) : type === 'trade' ? g.rng.int(0, 1) : 0;
     for (let i = 0; i < deaths && crew.length; i++) {
       const victim = crew.splice(g.rng.int(0, crew.length - 1), 1)[0];
       dieAtSea(g, s, victim);
@@ -598,7 +630,7 @@ export function patronOf(g: Game): Nation | null {
   return null;
 }
 
-function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): void {
+export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): void {
   const crew = crewOf(g, s);
   const cap = g.people.get(s.captain);
   const d = SHIPS[s.type];
@@ -623,8 +655,10 @@ function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): void {
   let wePursue = (us.courage + (cap?.traits.courage ?? 5)) / 2 + (ourStr / theirStr - 1) * 4 > 3.5;
   if (g.has('suicidal')) wePursue = true;
   if (g.has('cowardly') && ourStr < theirStr * 1.3) wePursue = false;
-  if (!naval && prey.id !== 'pirate') wePursue = wePursue || ourStr > theirStr * 0.6;
-  const theyPursue = (naval || prey.id === 'pirate') && theirStr > ourStr * 0.7;
+  if (!naval && prey.id !== 'pirate') wePursue = (wePursue && ourStr > theirStr * 0.75) || ourStr > theirStr * 1.1 || g.has('suicidal');
+  const rg = g.regions[s.region];
+  const zeal = naval ? 0.3 + Math.min(0.5, rg.heat * 0.12) + us.notoriety * 0.03 : 0.5;
+  const theyPursue = (naval || prey.id === 'pirate') && theirStr > ourStr * 0.7 && g.rng.chance(zeal);
   if (!wePursue && !theyPursue) {
     logV(g, s, `Sighted a ${label}; both ships kept their distance.`);
     return;
@@ -641,6 +675,8 @@ function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): void {
   let boarding = false;
   let usFled = 0, themFled = 0;
   let ourDead = 0, theirDead = 0;
+  const startFighting = us.fighting;
+  let fled = false;
   const kill = (side: Side, n: number) => {
     n = Math.min(side.fighting, Math.max(0, Math.round(n)));
     side.fighting -= n;
@@ -673,7 +709,7 @@ function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): void {
     if (boarding) {
       const ourArmed = Math.min(us.fighting, us.cutlasses);
       const ourBlows = ourArmed * (0.25 + us.sword * 0.07) + (us.fighting - ourArmed) * 0.08;
-      const theirBlows = them.fighting * (0.2 + them.sword * 0.06);
+      const theirBlows = them.fighting * (0.2 + them.sword * 0.06) * (naval || prey.id === 'pirate' ? 1 : 0.5);
       theirDead += kill(them, ourBlows * g.rng.range(0.6, 1.3) * 0.5);
       ourDead += kill(us, theirBlows * g.rng.range(0.6, 1.3) * 0.45);
     }
@@ -690,6 +726,15 @@ function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): void {
     usFled += loss(us, ourMorale);
     themFled += loss(them, theirMorale);
     if (them.fighting <= 0 || them.hull <= 0 || us.fighting <= 0 || us.hull <= 0) break;
+    // a beaten crew tries to break off (only possible before boarders are locked together)
+    const losing = us.fighting < startFighting * 0.45 || us.hull < d.tons * 0.35;
+    if (losing && !g.has('suicidal') && (!boarding || g.rng.chance(0.3))) {
+      const roll = us.speed * (0.8 + us.seaman * 0.1) * g.rng.range(0.7, 1.4) - them.speed * (0.8 + them.seaman * 0.08) * g.rng.range(0.7, 1.3);
+      if (roll > -6) {
+        fled = true;
+        break;
+      }
+    }
   }
   // apply our casualties to real crew
   const realDead = Math.min(crew.length, ourDead);
@@ -714,6 +759,10 @@ function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): void {
     shipLost(g, s, label, nat);
     return;
   }
+  if (fled) {
+    logV(g, s, `Outgunned by a ${label}, we cut and ran. Lost ${realDead} men.`);
+    return;
+  }
   if (them.fighting > 0 && them.hull > 0) {
     logV(g, s, `Traded broadsides with a ${label}; both ships broke off. Lost ${realDead} men.`);
     return;
@@ -730,8 +779,8 @@ function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): void {
   let recruits = 0, captives = 0, wealthy = 0;
   const skilled: Job[] = [];
   if (!plank && !sunk) {
-    const recruitRate = (1.2 - generosity) * 0.45 * (g.has('always_pirate') ? 2 : 1) * (g.has('once_captain') ? 0.9 : 1) * (g.has('once_mutineer') ? 1.1 : 1);
-    recruits = Math.round(survivors * Math.min(0.7, recruitRate) * g.rng.range(0.5, 1));
+    const recruitRate = (1.25 - generosity) * 0.75 * (g.has('always_pirate') ? 2 : 1) * (g.has('once_captain') ? 0.9 : 1) * (g.has('once_mutineer') ? 1.1 : 1);
+    recruits = Math.round(survivors * Math.min(0.85, recruitRate) * g.rng.range(0.6, 1));
     const rest = survivors - recruits;
     captives = Math.round(rest * g.rng.range(0.3, 0.7));
     if (g.rng.chance(prey.passengers)) wealthy = g.rng.int(1, prey.tons > 300 ? 3 : 1);

@@ -577,7 +577,7 @@ export class App {
       const miss = this.game.missingReqs(def);
       const cost = this.game.costOf(def);
       if (!reason && miss.length) reason = miss[0] === 'unique' ? 'Only one allowed.' : `Requires a skilled ${miss.join(', ')}.`;
-      if (!reason && this.game.treasury < cost.gold) reason = 'Not enough gold.';
+      if (!reason && cost.gold > 0 && this.game.treasury < cost.gold) reason = 'Not enough gold.';
       if (!reason && this.game.lumber() < cost.lumber) reason = 'Not enough lumber.';
       this.cursorTip.textContent = reason || `${def.name}  ·  ${cost.gold ? cost.gold + ' gold  ' : ''}${cost.lumber ? cost.lumber + ' lumber' : ''}`;
       this.cursorTip.classList.toggle('ok', !reason);
