@@ -114,6 +114,8 @@ export class World {
     this.ships = new ShipsView(this, game);
     this.effects = new Effects(this, game);
     this.updateRoadTex();
+    this.overlayTex = undefined;
+    this.setOverlay(null);
     this.scene.add(this.terrain.mesh, this.terrain.skirt, this.water.mesh, this.veg.group, this.buildings.group, this.people.group, this.ships.group, this.effects.group);
     this.rig.bounds = { min: 4, max: m.size - 4 };
     this.rig.heightAt = (x, z) => m.heightAt(x, z);
@@ -160,6 +162,23 @@ export class World {
       (this.terrain.uniforms as any).uMapN = { value: n };
     } else (this.roadTex.image.data as Uint8Array).set(data);
     this.roadTex.needsUpdate = true;
+  }
+
+  private overlayTex?: THREE.DataTexture;
+  /** tile-resolution RGBA overlay tint on the terrain (null to clear) */
+  setOverlay(data: Uint8Array | null): void {
+    const n = this.game.map.size;
+    const u = this.terrain.uniforms as any;
+    if (!this.overlayTex || this.overlayTex.image.width !== n) {
+      this.overlayTex = new THREE.DataTexture(new Uint8Array(n * n * 4), n, n, THREE.RGBAFormat);
+      this.overlayTex.magFilter = THREE.LinearFilter;
+      this.overlayTex.minFilter = THREE.LinearFilter;
+      u.uOverlay = { value: this.overlayTex };
+      u.uOverlayOn = { value: 0 };
+    }
+    if (data) (this.overlayTex.image.data as Uint8Array).set(data);
+    this.overlayTex.needsUpdate = true;
+    u.uOverlayOn.value = data ? 1 : 0;
   }
 
   /** process sim events relevant to visuals */

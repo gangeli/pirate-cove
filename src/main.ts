@@ -1,57 +1,74 @@
-import { Game } from './sim/game';
-import { World } from './render/world';
-import { props } from './render/props';
+import { App } from './ui/app';
 import { pending } from './render/textures';
+import { props } from './render/props';
+import { Game } from './sim/game';
 
+/** Entry point. URL parameters (for testing): ?play=1 starts a game immediately; ?shot=1 renders a still. */
 async function boot() {
   const params = new URLSearchParams(location.search);
   const canvas = document.getElementById('view') as HTMLCanvasElement;
-  const q = params.get('q');
-  const world = new World(canvas, q === 'low' ? { ao: false, bloom: false, shadows: false, pixelRatio: 1 } : {});
+  const ui = document.getElementById('ui')!;
+  const loading = document.createElement('div');
+  loading.className = 'loading';
+  loading.innerHTML = '<div style="text-align:center"><div class="t">Buccaneer Cove</div><div class="pbar"><div></div></div><div style="margin-top:8px;font-family:var(--body);opacity:.8" class="lt">Hoisting the sails...</div></div>';
+  document.body.appendChild(loading);
+  const bar = loading.querySelector('.pbar > div') as HTMLElement;
+  bar.style.width = '15%';
+  const app = new App(canvas, ui);
+  if (params.get('q')) app.quality = params.get('q') as any;
+  await app.init();
   await props.load();
-  const game = new Game({ seed: +(params.get('seed') ?? 7) });
-  world.attach(game);
-  await world.ships.ready;
-  await world.people.ready;
+  bar.style.width = '50%';
+  (window as any).__app = app;
+  const seed = params.get('seed');
+  if (params.get('play') || params.get('shot')) {
+    await app.newGame({ seed: seed ? +seed : 7, ...(params.get('adv') ? { advantage: params.get('adv') as any } : {}) }, (await import('./sim/data/kings')).KINGS[2]);
+    if (params.get('run')) app.game.run(+params.get('run')!);
+  } else await app.showMenu();
+  bar.style.width = '85%';
   await Promise.all(pending);
-  (window as any).__game = game;
-  (window as any).__world = world;
-  if (params.get('run')) game.run(+params.get('run')!);
+  bar.style.width = '100%';
+  const g: Game = app.game;
   if (params.get('focus')) {
-    const b = [...game.buildings.values()].find((x) => x.def === params.get('focus'));
-    if (b) world.rig.lookAt(b.x + b.w / 2, b.y + b.h / 2, true);
-    world.rig.setDist(+(params.get('dist') ?? 25), true);
-    if (params.get('yaw')) world.rig.yaw = +params.get('yaw')!;
+    const b = [...g.buildings.values()].find((x) => x.def === params.get('focus'));
+    if (b) app.world.rig.lookAt(b.x + b.w / 2, b.y + b.h / 2, true);
   }
+  if (params.get('dist')) app.world.rig.setDist(+params.get('dist')!, true);
+  if (params.get('yaw')) app.world.rig.yaw = +params.get('yaw')!;
   if (params.get('cam')) {
-    const [x, z, d, yaw] = params.get('cam')!.split(',').map(Number);
-    world.rig.lookAt(x, z, true);
-    world.rig.setDist(d, true);
-    if (!isNaN(yaw)) world.rig.yaw = yaw;
+    const [x, z, d] = params.get('cam')!.split(',').map(Number);
+    app.world.rig.lookAt(x, z, true);
+    if (d) app.world.rig.setDist(d, true);
   }
+  setTimeout(() => loading.remove(), 200);
+  (window as any).__ready = true;
   if (params.get('shot')) {
-    // deterministic capture mode: render a few frames synchronously, then stop
     const frames = +(params.get('frames') ?? 3);
+    const ui2 = params.get('ui');
+    if (ui2 === 'build') app.build.show();
+    if (ui2 === 'chart') app.chart.show();
+    if (ui2 === 'log') app.log.show();
+    if (ui2 === 'edicts') app.edicts.show();
+    if (ui2 === 'menu') {
+      app.state = 'menu';
+      app.hud.show(false);
+      await app.menu.show();
+    }
+    if (params.get('sel')) {
+      const b = [...g.buildings.values()].find((x) => x.def === params.get('sel'));
+      if (b) app.select({ type: 'building', id: b.id });
+    }
     for (let i = 0; i < frames; i++) {
-      game.advance(1 / 30);
-      world.render(1 / 30);
-      game.events.length = 0;
+      app.frame(performance.now());
       await new Promise((r) => setTimeout(r, 0));
     }
-    (window as any).__ready = true;
     (window as any).__shotDone = true;
     return;
   }
-  let last = performance.now();
-  const frame = (now: number) => {
-    const dt = Math.min(0.1, (now - last) / 1000);
-    last = now;
-    game.advance(dt);
-    world.render(dt);
-    game.events.length = 0;
-    requestAnimationFrame(frame);
+  const loop = (now: number) => {
+    app.frame(now);
+    requestAnimationFrame(loop);
   };
-  requestAnimationFrame(frame);
-  (window as any).__ready = true;
+  requestAnimationFrame(loop);
 }
 boot();

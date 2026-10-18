@@ -137,7 +137,7 @@ vWNorm = normalize(mat3(modelMatrix) * objectNormal);`,
           '#include <common>',
           `#include <common>
 ${decl}
-uniform float uTime; uniform sampler2D uRoads; uniform float uMapN;
+uniform float uTime; uniform sampler2D uRoads; uniform float uMapN; uniform sampler2D uOverlay; uniform float uOverlayOn;
 varying vec4 vSplat; varying float vDirt; varying vec3 vWPos; varying vec3 vWNorm;
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
@@ -199,6 +199,10 @@ if (depth > 0.0) {
   col += caustic(vWPos.xz*0.9, uTime*1.2) * vec3(0.55,0.75,0.7) * (1.0-k) * smoothstep(0.0,0.4,depth);
 }
 gW = w;
+if (uOverlayOn > 0.5) {
+  vec4 ov = texture2D(uOverlay, vWPos.xz / uMapN);
+  col = mix(col * 0.55 + 0.12, ov.rgb, ov.a * 0.75);
+}
 diffuseColor.rgb *= col;
 `,
         )
