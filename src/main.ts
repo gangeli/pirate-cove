@@ -36,12 +36,14 @@ async function boot() {
     if (b) app.world.rig.lookAt(b.x + b.w / 2, b.y + b.h / 2, true);
   }
   if (params.get('dist')) app.world.rig.setDist(+params.get('dist')!, true);
-  if (params.get('yaw')) app.world.rig.yaw = +params.get('yaw')!;
+  if (params.get('yaw')) app.world.rig.yaw = app.world.rig.yawGoal = +params.get('yaw')!;
   if (params.get('cam')) {
     const [x, z, d] = params.get('cam')!.split(',').map(Number);
     app.world.rig.lookAt(x, z, true);
     if (d) app.world.rig.setDist(d, true);
   }
+  if (params.get('lineup')) await lineup(app, params);
+  if (params.get('nohud')) ui.style.display = 'none';
   setTimeout(() => loading.remove(), 200);
   (window as any).__ready = true;
   if (params.get('shot')) {
@@ -74,3 +76,41 @@ async function boot() {
   requestAnimationFrame(loop);
 }
 boot();
+
+/** Debug: a row of characters near the palace, e.g. ?lineup=pirate:walk,captive_f:idle&t=0.4&dist=4 */
+async function lineup(app: App, params: URLSearchParams) {
+  const THREE = await import('three');
+  const g = app.game;
+  g.paused = true;
+  const pal = [...g.buildings.values()].find((b) => b.def === 'palace') ?? [...g.buildings.values()][0];
+  const items = params.get('lineup')!.split(',').map((s) => s.split(':'));
+  const cx = pal.x + pal.w / 2, cz = pal.y + pal.h + 3;
+  const yaw = +(params.get('yaw') ?? app.world.rig.yaw);
+  app.world.rig.yaw = app.world.rig.yawGoal = yaw;
+  const t = params.get('t') ? +params.get('t')! : undefined;
+  const C = (h: number) => new THREE.Color(h);
+  const looks = [
+    { skin: C(0xe0ac88), shirt: C(0xe8e0cc), pants: C(0x3a3a4a), hair: C(0x3a2414), beard: true, hat: C(0xa02020), hat2: null, sash: C(0x8a1a1a), boots: C(0x221510), coat: C(0x6a1a14) },
+    { skin: C(0xa0663e), shirt: C(0x8a2a20), pants: C(0x5a4a3a), hair: C(0x1a1210), beard: false, hat: null, hat2: C(0x1a140e), sash: C(0xc09030), boots: C(0x221510), coat: C(0x1c2a5a) },
+    { skin: C(0xf1c8a8), shirt: C(0xd8ccb0), pants: C(0x6a645a), hair: C(0x8a5a2a), beard: true, hat: null, hat2: null, sash: C(0x6a5a40), boots: C(0x221510), coat: C(0xa81c1c) },
+  ];
+  const n = items.length;
+  const spacing = +(params.get('sp') ?? 1.1);
+  const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+  app.world.rig.minDist = 1.5;
+  app.world.rig.lift = +(params.get('lift') ?? 0.6);
+  if (params.get('pitch')) app.world.rig.pitch = +params.get('pitch')!;
+  app.world.rig.lookAt(cx, cz, true);
+  app.world.rig.setDist(+(params.get('dist') ?? 4), true);
+  for (let i = 0; i < 30; i++) app.world.rig.update(0.2, innerWidth, innerHeight);
+  const cam = app.world.rig.camera.position;
+  const turn = params.get('turn') ? +params.get('turn')! : 0.35;
+  app.world.people.debug = items.map(([model, clip], i) => {
+    const o = (i - (n - 1) / 2) * spacing;
+    const x = cx + right.x * o, z = cz + right.z * o;
+    // models face +Z; turn each toward the camera (plus a little three-quarter turn)
+    const bone = C(0xe8dcc0);
+    const look = model === 'skeleton' ? { ...looks[0], skin: bone } : looks[i % looks.length];
+    return { model: model as any, clip: clip ?? 'idle', x, z, dir: Math.atan2(cam.x - x, cam.z - z) + turn, look, t: t !== undefined ? t + i * 0.13 : undefined };
+  });
+}

@@ -7,6 +7,8 @@ import type { Settings } from '../sim/types';
 import { audio } from '../audio/audio';
 import credits from '../credits.json';
 
+const charCreditFiles = import.meta.glob('../charcredits/*.json', { eager: true }) as Record<string, { default: { asset: string; id: string; author: string; license: string; url: string }[] }>;
+
 const REGION_NAMES = ['Gulf of Mexico', 'Bay of Campeche', 'Yucatán Channel', 'Florida Straits', 'The Bahamas', 'Cayman Deep', 'Windward Passage', 'Tortuga Waters', 'Jamaica Channel', 'Mona Passage', 'Virgin Islands', 'Leeward Islands', 'Windward Islands', 'Spanish Main', 'Curaçao Banks', 'Cartagena Roads', 'Darién Gap', 'Mosquito Coast'];
 
 export class MainMenu {
@@ -187,6 +189,9 @@ export class MainMenu {
         <h3>3D models & textures</h3>
         <p>These assets come from <a href="https://polyhaven.com" target="_blank" rel="noopener">Poly Haven</a> and are released under <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener">CC0 1.0</a>. Thanks to their artists:</p>
         <ul>${items.map((c) => html`<li><b>${c.asset}</b> (${c.kind}) by ${c.authors.join(', ')}: <a href="${c.url}" target="_blank" rel="noopener">${c.source}</a>, ${c.license}</li>`)}</ul>
+        <h3>People</h3>
+        <p>Bodies, skins, hair and clothing are <a href="https://static.makehumancommunity.org/assets/assetpacks.html" target="_blank" rel="noopener">MakeHuman community assets</a>, assembled with MPFB. Motion capture from the <a href="http://mocap.cs.cmu.edu/" target="_blank" rel="noopener">CMU Graphics Lab Motion Capture Database</a> (created with funding from NSF EIA-0196217), retargeted for this game. Hats, sashes, beards and the skeletons were modelled for this project.</p>
+        <ul>${charCredits().map((c) => html`<li><b>${c.asset}</b> by ${c.author}: ${c.license === 'CC-BY' ? html`<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>` : 'CC0'}</li>`)}</ul>
         <h3>Fonts</h3>
         <ul><li><b>IM Fell English</b>, <b>IM Fell English SC</b> and <b>IM Fell Great Primer SC</b> by Igino Marini: SIL Open Font License 1.1, self-hosted from Google Fonts</li></ul>
         <h3>Software</h3>
@@ -194,4 +199,10 @@ export class MainMenu {
       </div>`);
     this.credits.classList.remove('hidden');
   }
+}
+
+function charCredits() {
+  const seen = new Map<string, { asset: string; author: string; license: string }>();
+  for (const f of Object.values(charCreditFiles)) for (const c of f.default) if (!seen.has(c.id)) seen.set(c.id, c);
+  return [...seen.values()].sort((a, b) => (a.license === b.license ? a.asset.localeCompare(b.asset) : a.license === 'CC-BY' ? -1 : 1));
 }

@@ -5,7 +5,6 @@ import type { Message } from '../sim/types';
 import { audio } from '../audio/audio';
 import { listSaves } from './saves';
 import { portrait, BARNABY } from './portraits';
-import { SKINS, installTheme, type Skin } from './theme';
 
 export class Modal {
   private wrap: HTMLElement;
@@ -143,7 +142,6 @@ export class Modal {
     this.show(html`<h2>Settings</h2><hr class="rule">
       <h3>Sound</h3>${slider('master', 'Master')}${slider('music', 'Music')}${slider('voice', 'Voices')}${slider('sfx', 'Effects')}${slider('ambient', 'Ambience')}
       <h3>Graphics</h3><div class="row">${(['low', 'medium', 'high'] as const).map((x) => html`<button class="btn small ${q === x ? 'on' : ''}" data-act="do:q_${x}">${x[0].toUpperCase() + x.slice(1)}</button>`)}<span class="sub">(applies after reload)</span></div>
-      <h3>Interface</h3><div class="row">${(Object.keys(SKINS) as Skin[]).map((x) => html`<button class="btn small ${document.documentElement.dataset.skin === x ? 'on' : ''}" data-act="do:s_${x}">${SKINS[x]}</button>`)}</div>
       <h3>Advisor</h3><div class="row">${(['full', 'brief', 'off'] as const).map((x) => html`<button class="btn small ${adv === x ? 'on' : ''}" data-act="do:a_${x}">${x === 'full' ? 'Chatty' : x === 'brief' ? 'Brief' : 'Silent'}</button>`)}</div>
       <h3>Camera</h3><label><input type="checkbox" data-edge ${this.app.world.rig.edgeScroll ? 'checked' : ''}> Scroll at the screen edges</label>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn green" data-act="do:done">Done</button></div>`, {
@@ -154,7 +152,6 @@ export class Modal {
       a_full: () => this.setAdvisor('full'),
       a_brief: () => this.setAdvisor('brief'),
       a_off: () => this.setAdvisor('off'),
-      ...Object.fromEntries((Object.keys(SKINS) as Skin[]).map((x) => [`s_${x}`, () => this.setSkin(x)])),
     });
     for (const inp of this.box.querySelectorAll<HTMLInputElement>('[data-vol]')) {
       inp.oninput = () => {
@@ -173,16 +170,6 @@ export class Modal {
     } catch {
       /* ignore */
     }
-    this.close();
-    this.settings();
-  }
-  private setSkin(s: Skin): void {
-    try {
-      localStorage.setItem('bc_skin', s);
-    } catch {
-      /* ignore */
-    }
-    installTheme(s);
     this.close();
     this.settings();
   }

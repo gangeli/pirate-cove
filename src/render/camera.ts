@@ -5,7 +5,9 @@ export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
   target = new THREE.Vector3(80, 0, 80);
   yaw = Math.PI / 4; // radians; 45° = classic iso
-  private yawGoal = Math.PI / 4;
+  yawGoal = Math.PI / 4;
+  /** extra height added to the look-at point (debug close-ups) */
+  lift = 0;
   dist = 60;
   private distGoal = 60;
   pitch = 0.92; // radians from horizontal
@@ -118,7 +120,7 @@ export class CameraRig {
     this.target.z = THREE.MathUtils.clamp(this.target.z, this.bounds.min, this.bounds.max);
     this.yaw += (this.yawGoal - this.yaw) * (1 - Math.exp(-dt * 8));
     this.dist += (this.distGoal - this.dist) * (1 - Math.exp(-dt * 10));
-    const ground = Math.max(0, this.heightAt(this.target.x, this.target.z));
+    const ground = Math.max(0, this.heightAt(this.target.x, this.target.z)) + this.lift;
     this.target.y += (ground - this.target.y) * (1 - Math.exp(-dt * 4));
     // slightly flatter pitch when zoomed in for a nicer view of characters
     const pitch = this.pitch - (1 - THREE.MathUtils.smoothstep(this.dist, this.minDist, 60)) * 0.25;

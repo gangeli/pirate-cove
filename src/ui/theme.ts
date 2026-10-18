@@ -146,12 +146,8 @@ export type Skin = 'timber' | 'admiralty' | 'blackflag';
 export const SKINS: Record<Skin, string> = { timber: 'Timber & Parchment', admiralty: 'Admiralty Chart', blackflag: 'Black Flag' };
 
 export function currentSkin(): Skin {
-  let s: string | null = new URLSearchParams(location.search).get('skin');
-  try {
-    s ??= localStorage.getItem('bc_skin');
-  } catch {
-    /* ignore */
-  }
+  // skins are a development aid for comparing looks (?skin=...); players get the default
+  const s = new URLSearchParams(location.search).get('skin');
   return s && s in SKINS ? (s as Skin) : 'timber';
 }
 

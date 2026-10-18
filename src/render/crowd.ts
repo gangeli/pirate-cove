@@ -8,10 +8,10 @@ import { assetUrl } from './textures';
  * from a per-instance data texture, so hundreds of animated people cost one draw call per model.
  */
 
-export const CLIPS = ['idle', 'walk', 'run', 'carry', 'swing', 'farm', 'drink', 'cheer', 'fight', 'die', 'sleep', 'sit', 'dance', 'talk'] as const;
+export const CLIPS = ['idle', 'walk', 'run', 'carry', 'swing', 'farm', 'drink', 'cheer', 'fight', 'die', 'sleep', 'sit', 'dance', 'talk', 'limp', 'swagger', 'march'] as const;
 export type ClipName = (typeof CLIPS)[number];
 const BAKE_FPS = 30;
-const DATA_W = 8; // texels per instance
+const DATA_W = 9; // texels per instance
 
 interface ClipInfo {
   start: number;
@@ -30,6 +30,7 @@ export interface Look {
   hat2: THREE.Color | null; // tricorn
   sash: THREE.Color;
   boots: THREE.Color;
+  coat?: THREE.Color;
 }
 
 export class CrowdModel {
@@ -41,6 +42,7 @@ export class CrowdModel {
   count = 0;
   readonly cap: number;
   private bones = 0;
+  textured = false;
 
   constructor(cap: number) {
     this.cap = cap;
@@ -94,7 +96,15 @@ export class CrowdModel {
     this.dataTex.needsUpdate = true;
 
     const geo = skinned.geometry;
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0 });
+    // the atlas holds linear detail multipliers (x2), not colours
+    const map = (skinned.material as THREE.MeshStandardMaterial).map;
+    if (map) {
+      map.colorSpace = THREE.NoColorSpace;
+      map.anisotropy = 4;
+      map.needsUpdate = true;
+    }
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, map, alphaTest: map ? 0.5 : 0, side: map ? THREE.DoubleSide : THREE.FrontSide });
+    this.textured = !!map;
     this.inject(mat, false);
     this.mesh = new THREE.InstancedMesh(geo, mat, this.cap);
     this.mesh.count = 0;
@@ -142,12 +152,12 @@ vec3 rc = vec3(1.0);
 if (region == 0) rc = idat(1).rgb;
 else if (region == 1) rc = idat(2).rgb;
 else if (region == 2) rc = idat(3).rgb;
-else if (region == 3) rc = vec3(0.13, 0.09, 0.06);
+else if (region == 3) rc = ${this.textured ? 'vec3(0.16, 0.10, 0.065)' : 'vec3(0.13, 0.09, 0.06)'};
 else if (region == 4) rc = idat(4).rgb;
 else if (region == 5) { vec4 h = idat(5); rc = h.rgb; hide = 1.0 - h.a; }
 else if (region == 6) rc = idat(7).rgb;
-else if (region == 7) rc = idat(2).rgb;
-else if (region == 8) rc = vec3(0.03);
+else if (region == 7) rc = idat(8).rgb;
+else if (region == 8) rc = ${this.textured ? 'vec3(1.0)' : 'vec3(0.03)'};
 else if (region == 9) { vec4 h = idat(6); rc = h.rgb; hide = 1.0 - h.a; }
 else if (region == 10) { vec4 h = idat(4); rc = h.rgb * 0.85; hide = 1.0 - h.a; }
 ${depthOnly ? '' : 'vRC = rc;'}`,
@@ -157,10 +167,11 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
       if (!depthOnly) {
         sh.fragmentShader = sh.fragmentShader
           .replace('#include <common>', '#include <common>\nflat varying vec3 vRC;')
+          .replace('#include <map_fragment>', `#include <map_fragment>\n${this.textured ? 'diffuseColor.rgb *= 2.0;' : ''}`)
           .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb *= vRC;');
       }
     };
-    mat.customProgramCacheKey = () => 'crowd' + (depthOnly ? 'd' : 'c');
+    mat.customProgramCacheKey = () => 'crowd' + (depthOnly ? 'd' : 'c') + (this.textured ? 't' : '');
   }
 
   /** begin a frame */
@@ -195,6 +206,7 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
     put(5, look.hat ?? look.hair, look.hat ? 1 : 0);
     put(6, look.hat2 ?? look.hair, look.hat2 ? 1 : 0);
     put(7, look.sash);
+    put(8, look.coat ?? look.shirt);
   }
 
   commit(): void {
@@ -204,12 +216,19 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
   }
 }
 
-export async function loadCrowd(cap = 1200): Promise<Record<'male' | 'female' | 'soldier', CrowdModel>> {
-  const out: any = {};
-  await Promise.all((['male', 'female', 'soldier'] as const).map(async (k) => {
+export const MODELS = ['pirate', 'pirate_f', 'captive', 'captive_f', 'soldier', 'skeleton'] as const;
+export type ModelName = (typeof MODELS)[number];
+
+export async function loadCrowd(cap = 1200): Promise<Partial<Record<ModelName, CrowdModel>>> {
+  const out: Partial<Record<ModelName, CrowdModel>> = {};
+  await Promise.all(MODELS.map(async (k) => {
     const m = new CrowdModel(cap);
-    await m.load(assetUrl(`chars/${k}.glb`));
-    out[k] = m;
+    try {
+      await m.load(assetUrl(`chars/${k}.glb`));
+      out[k] = m;
+    } catch (e) {
+      console.warn('crowd model missing', k, e);
+    }
   }));
   return out;
 }

@@ -3,7 +3,7 @@ import type { Game } from '../sim/game';
 import type { Person } from '../sim/types';
 import { BUILDING } from '../sim/data/buildings';
 import type { World } from './world';
-import { loadCrowd, type CrowdModel, type Look } from './crowd';
+import { loadCrowd, type CrowdModel, type Look, type ModelName } from './crowd';
 
 /** Is this person drawn in the world right now (vs inside a building / at sea)? */
 export function isVisible(g: Game, p: Person): boolean {
@@ -48,7 +48,7 @@ const SOLDIER_COAT: Record<string, number> = { eng: 0xa81c1c, fra: 0x1c3a8a, spa
 
 export class PeopleView {
   readonly group = new THREE.Group();
-  private models: Record<'male' | 'female' | 'soldier', CrowdModel> | null = null;
+  private models: Partial<Record<ModelName, CrowdModel>> | null = null;
   ready: Promise<void>;
   selected = 0;
   private ring: THREE.Mesh;
@@ -56,6 +56,8 @@ export class PeopleView {
   private looks = new Map<number, Look>();
   /** per-frame list of drawn people for picking */
   private drawn: { id: number; x: number; y: number; z: number }[] = [];
+  /** debug: draw these instead of the simulation's people (?lineup=...) */
+  debug: { model: ModelName; clip: string; x: number; z: number; dir: number; look: Look; t?: number }[] | null = null;
   /** visual scale of characters (model is ~1.82 m tall; tiles are 2 m) */
   scale = 0.68;
 
@@ -66,7 +68,7 @@ export class PeopleView {
     this.group.add(this.ring);
     this.ready = loadCrowd().then((m) => {
       this.models = m;
-      for (const k of Object.values(m)) this.group.add(k.mesh);
+      for (const k of Object.values(m)) if (k) this.group.add(k.mesh);
     });
   }
 
@@ -130,14 +132,32 @@ export class PeopleView {
     return l;
   }
 
+  modelOf(p: Person): ModelName {
+    switch (p.kind) {
+      case 'pirate':
+        return p.sex === 'F' ? 'pirate_f' : 'pirate';
+      case 'soldier':
+        return 'soldier';
+      case 'skeleton':
+        return this.models?.skeleton ? 'skeleton' : 'captive';
+      case 'wealthy':
+        return p.sex === 'F' ? 'captive_f' : 'soldier';
+      default:
+        return p.sex === 'F' ? 'captive_f' : 'captive';
+    }
+  }
+
   /** choose the animation clip and playback speed for what the person is doing */
   private clipFor(p: Person): [string, number] {
     const t = p.task;
     if (t.kind === 'dead') return ['die', 1];
     if (t.phase === 0) {
-      if (t.kind === 'escape' || t.kind === 'flee' || t.kind === 'rebel' || p.kind === 'soldier') return ['run', 1];
+      if (t.kind === 'escape' || t.kind === 'flee' || t.kind === 'rebel') return ['run', 1];
+      if (p.kind === 'soldier') return ['march', 1];
       if (p.carrying) return ['carry', 1];
-      return ['walk', p.accessories.pegleg ? 0.8 : 1];
+      if (p.accessories.pegleg) return ['limp', 1];
+      if (p.kind === 'pirate' && hash(p.id, 23) < 0.5) return ['swagger', 1];
+      return ['walk', 1];
     }
     switch (t.kind) {
       case 'chase':
@@ -175,13 +195,23 @@ export class PeopleView {
     const g = this.game;
     if (!this.models) return;
     const ms = this.models;
-    for (const m of Object.values(ms)) m.reset();
+    for (const m of Object.values(ms)) m!.reset();
     this.drawn.length = 0;
     const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p3 = new THREE.Vector3();
     const up = new THREE.Vector3(0, 1, 0);
     const cam = this.world.rig.camera.position;
     let selPos: THREE.Vector3 | null = null;
-    for (const per of g.people.values()) {
+    if (this.debug) {
+      for (const d of this.debug) {
+        const m = ms[d.model];
+        if (!m) continue;
+        q.setFromAxisAngle(up, d.dir);
+        const y = g.map.heightAt(d.x, d.z);
+        mtx.compose(p3.set(d.x, y, d.z), q, s.set(this.scale, this.scale, this.scale));
+        m.add(mtx, d.clip, d.t ?? this.t, d.look);
+      }
+    }
+    for (const per of this.debug ? [] : g.people.values()) {
       if (!isVisible(g, per)) continue;
       // distance cull for very far zoom
       if (Math.abs(per.x - cam.x) > 200 || Math.abs(per.y - cam.z) > 200) continue;
@@ -195,12 +225,13 @@ export class PeopleView {
       q.setFromAxisAngle(up, Math.PI / 2 - per.dir);
       const sc = this.scale * (per.kind === 'soldier' ? 1.02 : 0.94 + hash(per.id, 31) * 0.12) * (per.sex === 'F' ? 0.95 : 1);
       mtx.compose(p3.set(per.x, y, per.y), q, s.set(sc, sc, sc));
-      const model = per.kind === 'soldier' ? ms.soldier : per.sex === 'F' ? ms.female : ms.male;
+      const model = ms[this.modelOf(per)] ?? ms.captive;
+      if (!model) continue;
       model.add(mtx, clip, tt, this.lookOf(per));
       this.drawn.push({ id: per.id, x: per.x, y, z: per.y });
       if (per.id === this.selected) selPos = new THREE.Vector3(per.x, y + 0.04, per.y);
     }
-    for (const m of Object.values(ms)) m.commit();
+    for (const m of Object.values(ms)) m!.commit();
     this.ring.visible = !!selPos;
     if (selPos) this.ring.position.copy(selPos);
   }
