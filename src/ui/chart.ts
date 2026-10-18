@@ -227,7 +227,7 @@ export class SeaChart {
     g.fillText('N', 0, -R - 4);
     g.restore();
     // title cartouche
-    g.font = `${Math.round(H * 0.035)}px "Pirata One", Georgia`;
+    g.font = `${Math.round(H * 0.035)}px "IM Fell English SC", Georgia`;
     g.fillStyle = '#4a2a10';
     g.textAlign = 'left';
     g.fillText('Mare Caribbeum', W * 0.04, H * 0.62);

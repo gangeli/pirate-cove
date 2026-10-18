@@ -438,7 +438,7 @@ export class Inspector {
     const parts = [];
     const region = g.regions[s.region];
     const statusText = { docked: 'In port', boarding: 'Ringing the bell. Crew coming aboard', departing: 'Setting sail', atsea: 'At sea', returning: 'Returning to port', repairing: 'Under repair', building: 'Being built', lost: 'Lost' }[s.status];
-    parts.push(html`<div class="head"><div style="width:72px;height:72px;display:grid;place-items:center;border:2px solid var(--wood);border-radius:6px;background:#2a5a7a">${icon('ship', 56)}</div>
+    parts.push(html`<div class="head"><div style="width:72px;height:72px;display:grid;place-items:center;border:1px solid var(--ink);background:#1e2c34;color:#e2c88e;box-shadow:0 0 0 3px rgba(226,210,170,.6),0 0 0 4px var(--ink2)">${icon('ship', 56)}</div>
       <div><h2>${s.name}</h2><div class="sub">${d.name} · ${statusText}</div><div style="font-size:14px">Captain: ${cap ? html`<a data-act="goto:${cap.id}" style="cursor:pointer;text-decoration:underline">${cap.name}</a>` : html`<b style="color:#a01010">none!</b>`}</div></div></div>`);
     const supp = (label: string, have: number, max: number) => html`<span>${label}</span>${bar(have / Math.max(1, max))}<span>${Math.floor(have)}/${max}</span>`;
     const crewAbove = s.crew.filter((id) => g.people.get(id)?.task.kind === 'atsea').length;

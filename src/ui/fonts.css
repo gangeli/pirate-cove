@@ -1,0 +1,5 @@
+/* IM Fell types by Igino Marini, SIL Open Font License 1.1 (self-hosted, Latin subset). */
+@font-face { font-family: 'IM Fell English'; font-style: normal; font-weight: 400; font-display: swap; src: url(./fonts/fell.woff2) format('woff2'); }
+@font-face { font-family: 'IM Fell English'; font-style: italic; font-weight: 400; font-display: swap; src: url(./fonts/fell-italic.woff2) format('woff2'); }
+@font-face { font-family: 'IM Fell English SC'; font-style: normal; font-weight: 400; font-display: swap; src: url(./fonts/fell-sc.woff2) format('woff2'); }
+@font-face { font-family: 'IM Fell Great Primer SC'; font-style: normal; font-weight: 400; font-display: swap; src: url(./fonts/fell-primer-sc.woff2) format('woff2'); }

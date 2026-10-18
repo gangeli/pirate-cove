@@ -188,8 +188,7 @@ export class MainMenu {
         <p>These assets come from <a href="https://polyhaven.com" target="_blank" rel="noopener">Poly Haven</a> and are released under <a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener">CC0 1.0</a>. Thanks to their artists:</p>
         <ul>${items.map((c) => html`<li><b>${c.asset}</b> (${c.kind}) by ${c.authors.join(', ')}: <a href="${c.url}" target="_blank" rel="noopener">${c.source}</a>, ${c.license}</li>`)}</ul>
         <h3>Fonts</h3>
-        <ul><li><b>Pirata One</b> by Rodolfo Pregliasco: SIL Open Font License 1.1, via Google Fonts</li>
-        <li><b>IM Fell English</b> by Igino Marini: SIL Open Font License 1.1, via Google Fonts</li></ul>
+        <ul><li><b>IM Fell English</b>, <b>IM Fell English SC</b> and <b>IM Fell Great Primer SC</b> by Igino Marini: SIL Open Font License 1.1, self-hosted from Google Fonts</li></ul>
         <h3>Software</h3>
         <ul><li><b>three.js</b>: MIT License, © three.js authors</li><li><b>Blender</b> was used to build and process the 3D assets (GPL; it does not cover the output)</li><li><b>Vite</b> & <b>TypeScript</b>: MIT / Apache-2.0</li></ul>
       </div>`);

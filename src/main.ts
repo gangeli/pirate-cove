@@ -1,10 +1,12 @@
 import { App } from './ui/app';
+import { installTheme } from './ui/theme';
 import { pending } from './render/textures';
 import { props } from './render/props';
 import { Game } from './sim/game';
 
 /** Entry point. URL parameters (for testing): ?play=1 starts a game immediately; ?shot=1 renders a still. */
 async function boot() {
+  installTheme();
   const params = new URLSearchParams(location.search);
   const canvas = document.getElementById('view') as HTMLCanvasElement;
   const ui = document.getElementById('ui')!;
