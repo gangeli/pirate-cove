@@ -124,7 +124,7 @@ export function monthlyDiplomacy(g: Game): void {
   }
 }
 
-function launchInvasion(g: Game, nat: Nation, strength: number): void {
+export function launchInvasion(g: Game, nat: Nation, strength: number): void {
   g.invaders ??= [];
   const palace = g.findBuilding('palace');
   if (!palace) return;
@@ -164,7 +164,11 @@ export function updateInvasion(g: Game, dt: number): void {
     c.t += dt;
   }
   g.cannonballs = g.cannonballs.filter((c) => c.z > -1 && c.t < 6);
-  if (!g.invaders.length) return;
+  if (!g.invaders.length) {
+    // ships gone (sunk or sailed off) but marines may still be fighting ashore
+    if (NATIONS.some((n) => g.nations[n].invasion.stage === 3)) endInvasionIfOver(g);
+    return;
+  }
   const m = g.map;
   const forts = [...g.buildings.values()].filter((b) => b.built >= 1 && (b.def === 'fort' || b.def === 'watch_tower' || b.def === 'protective_cannon'));
   for (const v of g.invaders) {
@@ -258,10 +262,13 @@ export function updateInvasion(g: Game, dt: number): void {
     g.events.push({ type: 'shipSunk', x: v.x, y: v.y });
     g.msg('good', 'Enemy Ship Sunk!', `A ${NATION_ADJ[v.nat]} warship goes down with ${v.soldiers} soldiers still aboard!`, 'enemy_sunk', { x: v.x, y: v.y });
   }
-  // end of invasion
+  g.invaders = g.invaders.filter((v) => !(v.state === 'sunk' && v.timer > 20) && !(v.state === 'leaving' && Math.hypot(v.x - m.size / 2, v.y - m.size / 2) > m.size));
+  endInvasionIfOver(g);
+}
+
+function endInvasionIfOver(g: Game): void {
   const soldiersAlive = [...g.people.values()].some((p) => p.kind === 'soldier' && p.task.kind !== 'dead');
   const shipsActive = g.invaders.some((v) => v.state === 'approach' || v.state === 'landing');
-  g.invaders = g.invaders.filter((v) => !(v.state === 'sunk' && v.timer > 20) && !(v.state === 'leaving' && Math.hypot(v.x - m.size / 2, v.y - m.size / 2) > m.size));
   if (!soldiersAlive && !shipsActive) {
     for (const n of NATIONS) if (g.nations[n].invasion.stage === 3) {
       g.nations[n].invasion.stage = 0;

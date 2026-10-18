@@ -160,7 +160,7 @@ for i in range(9):
             y = cy + 0.035 - (dpt + 0.035) * (1 - math.cos(a)) / 2
             zz = z - 0.045 * (1 - math.cos(a)) / 2
             arc.append(Vector((x, y, zz)))
-        tube(arc, 0.0055, 4)
+        tube(arc, 0.0075, 4)
 use('Spine1')
 tube([Vector((0, cy - 0.105, chest_top - 0.005)), Vector((0, cy - 0.11, chest_top - 0.07)), Vector((0, cy - 0.1, chest_top - 0.13))], 0.012, 5)  # sternum
 
@@ -172,11 +172,11 @@ for side, sx in (('Left', 1), ('Right', -1)):
     sc = H(side + 'Arm') + Vector((-sx * 0.05, 0.07, -0.06))
     ellipsoid(sc, (0.045, 0.01, 0.06), (8, 5))  # scapula
     use(side + 'Arm')
-    rod(H(side + 'Arm'), T(side + 'Arm'), 0.013, 0.011)
+    rod(H(side + 'Arm'), T(side + 'Arm'), 0.017, 0.014)
     use(side + 'ForeArm')
     a, b = H(side + 'ForeArm'), T(side + 'ForeArm')
-    rod(a + Vector((sx * 0.008, 0, 0)), b + Vector((sx * 0.01, 0, 0)), 0.007, 0.009, knob=1.3)
-    rod(a - Vector((sx * 0.006, 0, 0)), b - Vector((sx * 0.006, 0, 0)), 0.008, 0.006, knob=1.3)
+    rod(a + Vector((sx * 0.009, 0, 0)), b + Vector((sx * 0.011, 0, 0)), 0.009, 0.011, knob=1.3)
+    rod(a - Vector((sx * 0.007, 0, 0)), b - Vector((sx * 0.007, 0, 0)), 0.01, 0.008, knob=1.3)
     use(side + 'Hand')
     hd = T(side + 'ForeArm')
     fwd = (T(side + 'ForeArm') - H(side + 'ForeArm')).normalized()
@@ -196,16 +196,19 @@ for sx in (1, -1):
     for k in range(6):
         a = math.pi * (0.1 + 0.8 * k / 5)
         wing.append(Vector((sx * (0.04 + 0.08 * math.sin(a)), hp.y + 0.03 * math.cos(a), hp.z + 0.06 - 0.02 * math.sin(a))))
-    tube(wing, 0.012, 5)
+    tube(wing, 0.016, 5)
     tube([Vector((sx * 0.1, hp.y - 0.01, hp.z + 0.02)), H(('Left' if sx > 0 else 'Right') + 'UpLeg') + Vector((0, -0.01, 0.01)), Vector((sx * 0.025, hp.y - 0.06, hp.z - 0.07))], 0.011, 5)
-ellipsoid(Vector((0, hp.y + 0.045, hp.z - 0.01)), (0.03, 0.015, 0.05), (8, 5))  # sacrum
+ellipsoid(Vector((0, hp.y + 0.045, hp.z - 0.01)), (0.035, 0.018, 0.055), (8, 5))  # sacrum
+for sx in (1, -1):
+    ellipsoid(Vector((sx * 0.075, hp.y + 0.01, hp.z + 0.035)), (0.05, 0.022, 0.045), (8, 6), rot=Matrix.Rotation(sx * 0.5, 3, 'Z'))  # iliac blade
+ellipsoid(Vector((0, hp.y - 0.055, hp.z - 0.06)), (0.04, 0.012, 0.02), (8, 4))  # pubic arch
 for side in ('Left', 'Right'):
     use(side + 'UpLeg')
-    rod(H(side + 'UpLeg'), T(side + 'UpLeg'), 0.016, 0.014)
+    rod(H(side + 'UpLeg'), T(side + 'UpLeg'), 0.021, 0.018)
     use(side + 'Leg')
     a, b = H(side + 'Leg'), T(side + 'Leg')
     ellipsoid(a + Vector((0, -0.03, 0)), (0.017, 0.01, 0.02), (6, 4))  # kneecap
-    rod(a, b, 0.014, 0.01, knob=1.5)
+    rod(a, b, 0.018, 0.013, knob=1.5)
     rod(a + Vector((0.012 if side == 'Left' else -0.012, 0.01, -0.03)), b + Vector((0.01 if side == 'Left' else -0.01, 0.005, 0.02)), 0.005, 0.005, knob=1.2)
     use(side + 'Foot')
     fa, fb = H(side + 'Foot'), T(side + 'Foot')

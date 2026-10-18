@@ -4,7 +4,7 @@ import { icon } from './icons';
 import type { Message } from '../sim/types';
 import { audio } from '../audio/audio';
 import { listSaves } from './saves';
-import { portrait, BARNABY } from './portraits';
+import { portraitImg } from './portraits';
 
 export class Modal {
   private wrap: HTMLElement;
@@ -185,7 +185,7 @@ export class Modal {
   }
 
   help(): void {
-    this.show(html`<div style="display:flex;gap:12px;align-items:center">${raw(portrait(BARNABY, 72))}<div><h2>How to Rule</h2><div class="sub">A word from Barnaby</div></div></div><div class="body" style="font-size:15px">
+    this.show(html`<div style="display:flex;gap:12px;align-items:center">${raw(portraitImg('barnaby', 64))}<div><h2>How to Rule</h2><div class="sub">A word from Barnaby</div></div></div><div class="body" style="font-size:15px">
 <b>The reverse economy.</b> Your island makes no money by itself. Gold comes from <b>plunder</b>: send ships out on cruises from the Sea Chart (M). When they return, the crew takes its share. Pirates then spend that share in your taverns, dives, brothels and gambling dens, and the fees flow back into your treasury.
 
 <b>Pirates</b> want food, grog, company, gambling, a bed and somewhere to stash their gold. They also like <b>anarchy</b> and feel safer with <b>defense</b>. If most of them are miserable, they will overthrow you.

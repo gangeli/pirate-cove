@@ -128,3 +128,36 @@ export const KING_LOOKS: Record<string, PortraitSpec> = {
   delahaye: { sex: 'F', skin: '#e8b890', hair: '#a03010', hairStyle: 'curly', hat: 'scarf', hatColor: '#3a1a3a', coat: '#3a1a3a', earring: true, bg: '#3a1a2a' },
   kidd: { sex: 'M', skin: '#e8c0a0', hair: '#5a3a1a', hairStyle: 'long', beard: 'goatee', hat: 'feather', hatColor: '#1a1a1a', coat: '#1a3a2a', bg: '#2a3a2a', age: 0.6 },
 };
+
+// ------------------------------------------------------------------------------------------- painted portraits
+/** Painted portraits rendered offline (scripts/blender/mh_portraits.py) into public/assets/portraits. */
+const POOL = {
+  pm: 14, pf: 6, cm: 8, cf: 6, wm: 3, wf: 3,
+};
+
+function poolId(prefix: keyof typeof POOL, n: number): string {
+  return `${prefix}${String(n % POOL[prefix]).padStart(prefix === 'wm' || prefix === 'wf' ? 1 : 2, '0')}`;
+}
+
+/** Which painted portrait shows a given person (stable per person). */
+export function portraitIdFor(p: { id: number; kind: string; sex: 'M' | 'F'; nat: string }): string | null {
+  const h = (Math.imul(p.id, 2654435761) >>> 0) % 997;
+  switch (p.kind) {
+    case 'pirate':
+      return p.sex === 'F' ? poolId('pf', h) : poolId('pm', h);
+    case 'captive':
+      return p.sex === 'F' ? poolId('cf', h) : poolId('cm', h);
+    case 'wealthy':
+      return p.sex === 'F' ? poolId('wf', h) : poolId('wm', h);
+    case 'soldier':
+      return `s${['eng', 'fra', 'spa'].includes(p.nat) ? p.nat : 'eng'}${h % 2}`;
+    default:
+      return null;
+  }
+}
+
+/** An <img> for a painted portrait; height is 5:4 of the width. */
+export function portraitImg(id: string, width = 96, cls = ''): string {
+  const src = `${import.meta.env.BASE_URL}assets/portraits/${id}.jpg`;
+  return `<img class="portrait-img ${cls}" src="${src}" width="${width}" height="${Math.round(width * 1.25)}" alt="" draggable="false" loading="lazy">`;
+}

@@ -1,7 +1,7 @@
 import type { App } from './app';
 import { el, html, setHTML, delegate, fmt, raw } from './dom';
 import { icon } from './icons';
-import { portrait, BARNABY, parrotSvg } from './portraits';
+import { portraitImg, parrotSvg } from './portraits';
 import type { Message } from '../sim/types';
 import { audio } from '../audio/audio';
 import { Minimap } from './minimap';
@@ -233,7 +233,7 @@ export class Hud {
       return;
     }
     const parrot = PARROT_KEYS.has(m.voice ?? '');
-    setHTML(this.adv, html`<div class="face">${raw(parrot ? parrotSvg(84) : portrait(BARNABY, 84))}</div>
+    setHTML(this.adv, html`<div class="face">${raw(parrot ? parrotSvg(84) : portraitImg('barnaby', 80))}</div>
       <div class="panel bubble" style="position:relative">
         <div class="who">${parrot ? 'Polly the parrot' : `${ADVISOR_NAME}, your first mate`}</div>
         <h4>${m.title}</h4><p>${this.advisorMode === 'brief' ? m.text.split('. ')[0] + '.' : m.text}</p>

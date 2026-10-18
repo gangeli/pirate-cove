@@ -232,6 +232,19 @@ function depart(g: Game, s: Ship, force: boolean): void {
     }
   }
   s.officers = s.officers.filter((o) => s.crew.includes(o));
+  // too few hands turned up: the voyage is called off rather than sailing a ghost ship
+  const minCrew = Math.ceil(SHIPS[s.type].men / 2);
+  if (s.crew.length < minCrew) {
+    s.status = 'docked';
+    if (cap) cap.task = { kind: 'idle' };
+    for (const id of s.crew) {
+      const p = g.people.get(id);
+      if (p) p.task = { kind: 'idle' };
+    }
+    g.msg('bad', 'Voyage Called Off', `Only ${s.crew.length} hands answered the ${s.name}'s bell. She needs at least ${minCrew} to sail.`, undefined, { x: s.vx, y: s.vy });
+    assignCrews(g);
+    return;
+  }
   if (s.mission === 'kidnap') g.spend(250, 'kidnapping');
   const out = s.mission === 'raid' || s.mission === 'kidnap' ? MONTH * 0.8 : transitTime(g, s, s.region);
   s.voyage = {
@@ -300,11 +313,24 @@ export function seaPath(g: Game, x: number, y: number): [number, number][] {
 
 // --------------------------------------------------------------------------------------------- per tick
 
+/** a dock's own stores go straight aboard */
+function loadDockStores(g: Game, s: Ship): void {
+  const dock = g.buildings.get(s.dock);
+  const have = dock?.inv.ration ?? 0;
+  const room = SHIPS[s.type].rations - s.rations;
+  if (dock && have > 0 && room > 0) {
+    const t = Math.min(have, room);
+    dock.inv.ration = have - t;
+    s.rations += t;
+  }
+}
+
 export function updateShips(g: Game, dt: number): void {
   updateYards(g, dt);
   for (const s of g.ships.values()) {
     switch (s.status) {
       case 'boarding': {
+        loadDockStores(g, s);
         const crewAboard = [s.captain, ...s.crew].every((id) => {
           const p = g.people.get(id);
           return !p || p.task.kind === 'atsea' || p.mood === 'disgruntled';
@@ -349,18 +375,8 @@ export function updateShips(g: Game, dt: number): void {
         voyageTick(g, s, dt);
         break;
       case 'docked':
-      case 'boarding': {
-        // a dock's own stores go straight aboard
-        const dock = g.buildings.get(s.dock);
-        const have = dock?.inv.ration ?? 0;
-        const room = SHIPS[s.type].rations - s.rations;
-        if (dock && have > 0 && room > 0) {
-          const t = Math.min(have, room);
-          dock.inv.ration = have - t;
-          s.rations += t;
-        }
+        loadDockStores(g, s);
         break;
-      }
       case 'repairing': {
         if (s.hull >= 1) {
           s.status = 'docked';
@@ -465,8 +481,9 @@ function onStation(g: Game, s: Ship): void {
     const type = pick?.x.type ?? 'farmstead';
     const nat = pick?.x.nat ?? g.rng.pick(NATIONS);
     const caught = { farmstead: [3, 6], trade: [5, 10], military: [8, 15] }[type];
-    const n = g.rng.int(caught[0], caught[1]);
     const crew = crewOf(g, s);
+    const party = Math.min(1, (crew.length + 1) / (SHIPS[s.type].men + SHIPS[s.type].officers));
+    const n = Math.max(1, Math.round(g.rng.int(caught[0], caught[1]) * (0.4 + 0.6 * party)));
     const deaths = type === 'military' ? g.rng.int(0, 2) : type === 'trade' ? g.rng.int(0, 1) : 0;
     for (let i = 0; i < deaths && crew.length; i++) {
       const victim = crew.splice(g.rng.int(0, crew.length - 1), 1)[0];

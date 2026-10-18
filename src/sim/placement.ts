@@ -4,6 +4,7 @@ import type { Game, CmdResult } from './game';
 import { markBlocked } from './game';
 import type { Building } from './types';
 import { createPerson, createCaptain, createShip } from './people';
+import { assignCrews } from './sea';
 import { cropFertility } from './economy';
 import { ENTERTAINMENT_NAMES } from './names';
 
@@ -469,6 +470,8 @@ export function setupStartingIsland(g: Game): void {
     const cap = createCaptain(g, dock.door[0], dock.door[1]);
     ship.captain = cap.id;
     cap.ship = ship.id;
+    // muster a crew straight away so the first cruise can sail on day one
+    assignCrews(g);
   }
   g.events.push({ type: 'roads' });
 }

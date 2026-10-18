@@ -10,7 +10,7 @@ import { canPlace, placeBuilding, removeBuilding, placeRoad, removeRoad, setupSt
 import { updatePeople, createPerson, killPerson } from './people';
 import { updateEconomy, monthlyEconomy, lumberTotal, consumeLumber, goodTotal } from './economy';
 import { updateShips, makeRegions, launchShip, commissionShip, assignCrews } from './sea';
-import { monthlyDiplomacy, updateInvasion } from './diplomacy';
+import { monthlyDiplomacy, updateInvasion, launchInvasion } from './diplomacy';
 import { issueEdict, edictAvailability } from './edicts';
 import { computeScore, type ScoreBreakdown } from './score';
 import { checkAdvisor } from './advisor';
@@ -498,6 +498,7 @@ export class Game {
         const n: Nation = code === 'britinv' ? 'eng' : code === 'frenchinv' ? 'fra' : 'spa';
         this.nations[n].knows = true;
         this.nations[n].invasion = { stage: 3, timer: 0, strength: 8 };
+        launchInvasion(this, n, 8);
         return { ok: true };
       }
       case 'captives': {

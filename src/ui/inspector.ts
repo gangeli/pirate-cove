@@ -8,7 +8,7 @@ import { NATION_ADJ, NATION_NAMES, NATIONS } from '../sim/data/kings';
 import type { Building, Person, Ship } from '../sim/types';
 import { serviceFee, serviceBand, pirateFactors } from '../sim/people';
 import { farmFertility, treesNear } from '../sim/economy';
-import { portrait, type PortraitSpec } from './portraits';
+import { portrait, portraitImg, portraitIdFor, type PortraitSpec } from './portraits';
 import { audio } from '../audio/audio';
 import { regionReachable, transitTime } from '../sim/sea';
 import { MONTH } from '../sim/time';
@@ -342,7 +342,7 @@ export class Inspector {
     const tabs = p.kind === 'pirate' ? ['overview', 'happiness', 'skills', 'thoughts'] : p.kind === 'captive' ? ['overview', 'resignation', 'thoughts'] : ['overview'];
     if (!tabs.includes(this.tab)) this.tab = 'overview';
     const parts = [];
-    parts.push(html`<div class="head">${raw(portrait(lookSpec(p), 72))}<div><h2 style="font-size:23px">${p.name}</h2><div class="sub">${kindName} · ${NATION_ADJ[p.nat]} · age ${p.age}${p.mood !== 'ok' && p.kind === 'pirate' ? html` · <b style="color:#a01010">${p.mood}</b>` : ''}</div>
+    parts.push(html`<div class="head">${raw(portraitIdFor(p) ? portraitImg(portraitIdFor(p)!, 64, 'portrait') : portrait(lookSpec(p), 72))}<div><h2 style="font-size:23px">${p.name}</h2><div class="sub">${kindName} · ${NATION_ADJ[p.nat]} · age ${p.age}${p.mood !== 'ok' && p.kind === 'pirate' ? html` · <b style="color:#a01010">${p.mood}</b>` : ''}</div>
       <div style="font-size:14px;margin-top:2px">${activityText(this.app, p)}</div></div></div>`);
     parts.push(html`<div class="tabs">${tabs.map((t) => html`<div class="t ${this.tab === t ? 'on' : ''}" data-act="tab:${t}">${t[0].toUpperCase() + t.slice(1)}</div>`)}</div>`);
     if (this.tab === 'overview') {

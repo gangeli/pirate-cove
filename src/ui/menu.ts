@@ -2,7 +2,7 @@ import type { App } from './app';
 import { el, html, setHTML, delegate, raw } from './dom';
 import { icon } from './icons';
 import { KINGS, BACKGROUNDS, QUALITIES, FLAWS, NATION_ADJ, type KingDef, type Background, type Quality, type Flaw } from '../sim/data/kings';
-import { portrait, KING_LOOKS } from './portraits';
+import { portraitImg } from './portraits';
 import type { Settings } from '../sim/types';
 import { audio } from '../audio/audio';
 import credits from '../credits.json';
@@ -141,9 +141,8 @@ export class MainMenu {
         </div>`;
     } else {
       const k = this.king;
-      const look = KING_LOOKS[k.id] ?? KING_LOOKS.blackbeard;
-      body = html`<div class="kings">${KINGS.map((x) => html`<div class="k ${x.id === k.id ? 'on' : ''}" data-act="king:${x.id}">${raw(portrait(KING_LOOKS[x.id], 96))}${x.name}</div>`)}</div>
-        <div style="display:flex;gap:16px;margin-top:12px;align-items:flex-start">${raw(portrait(look, 120))}<div style="flex:1">
+      body = html`<div class="kings">${KINGS.map((x) => html`<div class="k ${x.id === k.id ? 'on' : ''}" data-act="king:${x.id}">${raw(portraitImg(x.id, 96))}${x.name}</div>`)}</div>
+        <div style="display:flex;gap:16px;margin-top:12px;align-items:flex-start">${raw(portraitImg(k.id, 120))}<div style="flex:1">
           <h3 style="margin-top:0">${k.name} <span class="sub">${NATION_ADJ[k.nat]}</span></h3><div style="font-style:italic">${k.bio}</div>
           ${this.custom ? html`<div class="grid2" style="margin-top:6px;gap:6px 12px">
             <div class="field"><label>Background</label><select data-bg>${Object.entries(BACKGROUNDS).map(([id, b]) => html`<option value="${id}" ${k.bg === id ? raw('selected') : ''}>${b.name}</option>`)}</select><div class="hintx">${BACKGROUNDS[k.bg].desc}</div></div>
