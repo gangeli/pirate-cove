@@ -5,6 +5,15 @@ import { props } from './render/props';
 import { Game } from './sim/game';
 
 /** Entry point. URL parameters (for testing): ?play=1 starts a game immediately; ?shot=1 renders a still. */
+function registerServiceWorker() {
+  // only for real builds: the dev server serves modules that must not be cached
+  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((e) => console.warn('service worker', e));
+  });
+}
+registerServiceWorker();
+
 async function boot() {
   installTheme();
   const params = new URLSearchParams(location.search);

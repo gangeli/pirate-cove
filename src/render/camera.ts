@@ -18,6 +18,13 @@ export class CameraRig {
   private dragging: null | { x: number; y: number; t: THREE.Vector3 } = null;
   edgeScroll = true;
   private mouse = { x: -1, y: -1, inside: false };
+  /** touch: one finger pans unless the active tool wants drags (roads, clearing) */
+  touchPan = true;
+  /** set when the current touch gesture moved the camera, so the app ignores it as a tap */
+  gesture = false;
+  private touches = new Map<number, { x: number; y: number }>();
+  private pinch: { d: number; a: number; mx: number; my: number; dist: number; t: THREE.Vector3; rot: number } | null = null;
+  private pan1: { x: number; y: number; t: THREE.Vector3 } | null = null;
   follow: (() => THREE.Vector3 | null) | null = null;
   heightAt: (x: number, z: number) => number = () => 0;
 
@@ -36,12 +43,14 @@ export class CameraRig {
       this.distGoal = THREE.MathUtils.clamp(this.distGoal * Math.pow(1.0015, e.deltaY), this.minDist, this.maxDist);
     }, { passive: false });
     dom.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') return this.touchDown(e);
       if (e.button === 1 || e.button === 2) {
         this.dragging = { x: e.clientX, y: e.clientY, t: this.target.clone() };
         dom.setPointerCapture(e.pointerId);
       }
     });
     dom.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch') return this.touchMove(e);
       this.mouse.x = e.clientX;
       this.mouse.y = e.clientY;
       this.mouse.inside = true;
@@ -54,10 +63,63 @@ export class CameraRig {
       }
     });
     dom.addEventListener('pointerup', (e) => {
+      if (e.pointerType === 'touch') return this.touchUp(e);
       if (this.dragging && (e.button === 1 || e.button === 2)) this.dragging = null;
+    });
+    dom.addEventListener('pointercancel', (e) => {
+      if (e.pointerType === 'touch') this.touchUp(e);
     });
     dom.addEventListener('pointerleave', () => (this.mouse.inside = false));
     dom.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  private touchDown(e: PointerEvent): void {
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.touches.size === 1) {
+      this.gesture = false;
+      this.pan1 = this.touchPan ? { x: e.clientX, y: e.clientY, t: this.target.clone() } : null;
+    } else if (this.touches.size === 2) {
+      const [a, b] = [...this.touches.values()];
+      this.pan1 = null;
+      this.gesture = true;
+      this.pinch = { d: Math.hypot(b.x - a.x, b.y - a.y), a: Math.atan2(b.y - a.y, b.x - a.x), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, dist: this.distGoal, t: this.target.clone(), rot: 0 };
+    }
+  }
+
+  private touchMove(e: PointerEvent): void {
+    if (!this.touches.has(e.pointerId)) return;
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const f = this.forward(), r = this.right();
+    if (this.pinch && this.touches.size >= 2) {
+      const [a, b] = [...this.touches.values()];
+      const d = Math.hypot(b.x - a.x, b.y - a.y);
+      this.distGoal = THREE.MathUtils.clamp(this.pinch.dist * (this.pinch.d / Math.max(10, d)), this.minDist, this.maxDist);
+      const k = this.dist / 700;
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      this.target.copy(this.pinch.t).addScaledVector(r, -(mx - this.pinch.mx) * k).addScaledVector(f, (my - this.pinch.my) * k);
+      // a decisive twist rotates the view a quarter turn, like Q/E
+      let da = Math.atan2(b.y - a.y, b.x - a.x) - this.pinch.a;
+      da = ((da + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      const steps = Math.trunc(da / 0.6);
+      if (steps !== this.pinch.rot) {
+        this.rotateStep(steps > this.pinch.rot ? 1 : -1);
+        this.pinch.rot = steps;
+      }
+      this.follow = null;
+    } else if (this.pan1) {
+      const dx = e.clientX - this.pan1.x, dy = e.clientY - this.pan1.y;
+      if (!this.gesture && Math.hypot(dx, dy) < 10) return;
+      this.gesture = true;
+      const k = this.dist / 700;
+      this.target.copy(this.pan1.t).addScaledVector(r, -dx * k).addScaledVector(f, dy * k);
+      this.follow = null;
+    }
+  }
+
+  private touchUp(e: PointerEvent): void {
+    this.touches.delete(e.pointerId);
+    if (this.touches.size < 2) this.pinch = null;
+    if (this.touches.size === 0) this.pan1 = null;
   }
 
   rotateStep(dir: number): void {

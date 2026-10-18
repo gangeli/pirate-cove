@@ -183,6 +183,39 @@ export class App {
     this.cursorTip.classList.add('hidden');
     this.hud.updateTool();
     this.canvas.style.cursor = t.kind === 'select' ? 'default' : 'crosshair';
+    // keep the screen clear while building on small screens
+    if (t.kind !== 'select' && this.touchMode) this.select(null);
+    // on touch screens one finger drags roads / clears trees; otherwise it pans the map
+    this.world.rig.touchPan = !(t.kind === 'road' || t.kind === 'clear' || t.kind === 'unroad');
+    this.touchPlace?.classList.toggle('hidden', !(t.kind === 'build' && this.touchMode));
+  }
+
+  /** true once the player has touched the screen (shows touch affordances) */
+  touchMode = false;
+  private touchPlace: HTMLElement | null = null;
+
+  private buildTouchBar(): void {
+    const bar = el('div', 'touchbar hidden', this.root);
+    bar.innerHTML = `<button class="btn green" data-act="place">Place</button><button class="btn" data-act="rot">Rotate</button><button class="btn red" data-act="cancel">Cancel</button>`;
+    bar.addEventListener('click', (e) => {
+      const act = (e.target as HTMLElement).closest('[data-act]')?.getAttribute('data-act');
+      const tool = this.tool;
+      if (act === 'cancel') return this.setTool({ kind: 'select' });
+      if (tool.kind !== 'build') return;
+      if (act === 'rot') {
+        tool.rot = (tool.rot + 1) % 4;
+        this.ghostKey = '';
+      }
+      if (act === 'place' && this.hover) {
+        const def = BUILDING[tool.def];
+        const pl = this.placement(def, this.hover, tool.rot);
+        if (this.cmd({ type: 'build', def: def.id, x: pl.x, y: pl.y, rot: pl.rot })) {
+          audio.sfx('build_place');
+          if (!def.decor && def.id !== 'housing_plot') this.setTool({ kind: 'select' });
+        }
+      }
+    });
+    this.touchPlace = bar;
   }
 
   select(s: Selection): void {
@@ -223,6 +256,21 @@ export class App {
 
   private bindInput(): void {
     const c = this.canvas;
+    this.buildTouchBar();
+    let touches = 0;
+    c.addEventListener('pointerdown', (ev) => {
+      if (ev.pointerType === 'touch') {
+        touches++;
+        if (!this.touchMode) {
+          this.touchMode = true;
+          document.body.classList.add('touch');
+        }
+      }
+    });
+    const lift = (ev: PointerEvent) => {
+      if (ev.pointerType === 'touch') touches = Math.max(0, touches - 1);
+    };
+    c.addEventListener('pointercancel', lift);
     c.addEventListener('pointermove', (ev) => {
       if (this.state !== 'game') return;
       this.hover = this.tileAt(ev);
@@ -232,13 +280,34 @@ export class App {
     });
     c.addEventListener('pointerdown', (ev) => {
       if (this.state !== 'game' || ev.button !== 0) return;
+      if (ev.pointerType === 'touch' && touches > 1) {
+        this.dragStart = null; // second finger: it's a pinch, not a tool drag
+        return;
+      }
       const t = this.tileAt(ev);
       if (!t) return;
+      if (ev.pointerType === 'touch') this.hover = t;
       this.dragStart = t;
       if (this.tool.kind === 'clear') this.cmd({ type: 'clearTrees', x: t.x, y: t.y, r: 1 });
     });
     c.addEventListener('pointerup', (ev) => {
+      lift(ev);
       if (this.state !== 'game') return;
+      if (ev.pointerType === 'touch') {
+        const start = this.dragStart;
+        this.dragStart = null;
+        if (this.world.rig.gesture) return; // that was a pan or pinch
+        const t = this.tileAt(ev);
+        if (!t) return;
+        this.hover = t;
+        // building on touch: a tap moves the ghost; the Place button commits it
+        if (this.tool.kind === 'build') {
+          this.touchPlace?.classList.remove('hidden');
+          return;
+        }
+        this.click(ev, t, start ?? t);
+        return;
+      }
       if (ev.button === 2) {
         // right click cancels a tool (drag-pan uses right button too, so only cancel on a short click)
         if (this.tool.kind !== 'select' && !this.panMoved(ev)) this.setTool({ kind: 'select' });

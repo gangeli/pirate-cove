@@ -62,6 +62,7 @@ export class Hud {
     });
     // tooltips
     document.addEventListener('pointerover', (ev) => {
+      if (ev.pointerType === 'touch') return this.tip.classList.add('hidden'); // no hover on touch screens
       const t = (ev.target as HTMLElement)?.closest?.('[data-tip]') as HTMLElement | null;
       if (!t) return this.tip.classList.add('hidden');
       this.tip.innerHTML = t.dataset.tip!;
@@ -122,7 +123,10 @@ export class Hud {
       tool: (id) => {
         const a = this.app;
         audio.sfx('ui_click');
-        if (id === 'build') return a.build.toggle();
+        if (id === 'build') {
+          if (a.touchMode) a.select(null);
+          return a.build.toggle();
+        }
         if (id === 'road') return a.setTool(a.tool.kind === 'road' ? { kind: 'select' } : { kind: 'road' });
         if (id === 'clear') return a.setTool(a.tool.kind === 'clear' ? { kind: 'select' } : { kind: 'clear' });
         if (id === 'demolish') return a.setTool(a.tool.kind === 'demolish' ? { kind: 'select' } : { kind: 'demolish' });

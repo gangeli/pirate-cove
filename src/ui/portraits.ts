@@ -159,5 +159,5 @@ export function portraitIdFor(p: { id: number; kind: string; sex: 'M' | 'F'; nat
 /** An <img> for a painted portrait; height is 5:4 of the width. */
 export function portraitImg(id: string, width = 96, cls = ''): string {
   const src = `${import.meta.env.BASE_URL}assets/portraits/${id}.jpg`;
-  return `<img class="portrait-img ${cls}" src="${src}" width="${width}" height="${Math.round(width * 1.25)}" alt="" draggable="false" loading="lazy">`;
+  return `<img class="portrait-img ${cls}" src="${src}" width="${width}" height="${Math.round(width * 1.25)}" alt="" draggable="false" loading="lazy" onerror="this.style.visibility='hidden'">`;
 }
