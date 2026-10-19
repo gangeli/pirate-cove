@@ -6,8 +6,9 @@ import type { Settings } from '../sim/types';
 import type { KingDef } from '../sim/data/kings';
 import { World, type Quality } from '../render/world';
 import { buildPrefab } from '../render/prefabs';
+import { disposeObject } from '../render/dispose';
 import { audio } from '../audio/audio';
-import { el } from './dom';
+import { el, setText } from './dom';
 import { icon } from './icons';
 import { Hud } from './hud';
 import { Inspector } from './inspector';
@@ -235,6 +236,7 @@ export class App {
 
   cmd(c: Command): boolean {
     const r = this.game.cmd(c);
+    this.ghostCheck.key = ''; // the build ghost re-checks placement against the changed island
     if (!r.ok && r.reason) {
       this.hud.flash(r.reason);
       audio.sfx('ui_error');
@@ -679,7 +681,13 @@ export class App {
   }
 
   // ------------------------------------------------------------------------------------------------- ghost
-  private previewRes?: { geo: THREE.BufferGeometry; road: THREE.Material; bad: THREE.Material };
+  /** shared preview resources: one tile quad, two materials and a pool of tile meshes (nothing allocated per frame) */
+  private previewRes?: { geo: THREE.BufferGeometry; road: THREE.Material; bad: THREE.Material; pool: THREE.Mesh[] };
+  private previewKey = '';
+  /** placement check + cursor text for the build ghost, redone when the tile/tool/rotation changes (or every 250 ms
+   *  for treasury, lumber and sim changes) */
+  private ghostCheck = { key: '', at: 0, pl: null as ReturnType<App['placement']> | null, reason: '', text: '' };
+
   private updateGhost(): void {
     const tool = this.tool;
     const h = this.hover;
@@ -689,11 +697,31 @@ export class App {
     }
     if (tool.kind === 'build') {
       const def = BUILDING[tool.def];
-      const pl = this.placement(def, h, tool.rot);
+      const now = performance.now();
+      const gc = this.ghostCheck;
+      const ck = `${def.id}:${tool.rot}:${h.x},${h.y}`;
+      if (ck !== gc.key || now - gc.at > 250 || !gc.pl) {
+        gc.key = ck;
+        gc.at = now;
+        const pl = (gc.pl = this.placement(def, h, tool.rot));
+        // affordability / requirements
+        let reason = pl.ok ? '' : pl.reason ?? '';
+        const miss = this.game.missingReqs(def);
+        const cost = this.game.costOf(def);
+        if (!reason && miss.length) reason = miss[0] === 'unique' ? 'Only one allowed.' : `Requires a skilled ${miss.join(', ')}.`;
+        if (!reason && cost.gold > 0 && this.game.treasury < cost.gold) reason = 'Not enough gold.';
+        if (!reason && this.game.lumber() < cost.lumber) reason = 'Not enough lumber.';
+        gc.reason = reason;
+        gc.text = reason || `${def.name}  ·  ${cost.gold ? cost.gold + ' gold  ' : ''}${cost.lumber ? cost.lumber + ' lumber' : ''}`;
+      }
+      const pl = gc.pl!;
       const key = `${def.id}:${pl.rot}`;
       if (key !== this.ghostKey) {
         this.ghostKey = key;
+        // free the previous ghost (its cloned materials and footprint geometry); cached model parts are kept
+        const old = [...this.ghost.children];
         this.ghost.clear();
+        if (old.length) disposeObject(old, { keep: this.world.scene, renderer: this.world.renderer });
         const [w, d] = [def.size[0], def.size[1]];
         const model = buildPrefab(def.id, w, d, 1);
         model.rotation.y = -pl.rot * (Math.PI / 2);
@@ -727,48 +755,51 @@ export class App {
       const grid = this.ghost.getObjectByName('grid')!;
       foot.position.y = grid.position.y = 0.06;
       (foot.material as THREE.MeshBasicMaterial).color.set(pl.ok ? 0x40ff40 : 0xff3030);
-      // affordability / requirements
-      let reason = pl.ok ? '' : pl.reason ?? '';
-      const miss = this.game.missingReqs(def);
-      const cost = this.game.costOf(def);
-      if (!reason && miss.length) reason = miss[0] === 'unique' ? 'Only one allowed.' : `Requires a skilled ${miss.join(', ')}.`;
-      if (!reason && cost.gold > 0 && this.game.treasury < cost.gold) reason = 'Not enough gold.';
-      if (!reason && this.game.lumber() < cost.lumber) reason = 'Not enough lumber.';
-      this.cursorTip.textContent = reason || `${def.name}  ·  ${cost.gold ? cost.gold + ' gold  ' : ''}${cost.lumber ? cost.lumber + ' lumber' : ''}`;
-      this.cursorTip.classList.toggle('ok', !reason);
+      setText(this.cursorTip, gc.text);
+      this.cursorTip.classList.toggle('ok', !gc.reason);
       this.cursorTip.classList.remove('hidden');
     } else if (tool.kind === 'road' || tool.kind === 'unroad' || tool.kind === 'demolish' || tool.kind === 'clear') {
       this.ghost.visible = false;
-      this.roadPreview.clear();
-      const pts: [number, number][] = [];
-      if (tool.kind === 'road' && this.dragStart) {
-        let { x, y } = this.dragStart;
-        pts.push([x, y]);
-        while (x !== h.x) (x += Math.sign(h.x - x)), pts.push([x, y]);
-        while (y !== h.y) (y += Math.sign(h.y - y)), pts.push([x, y]);
-      } else pts.push([h.x, h.y]);
-      // one shared tile quad and two materials (this used to allocate and upload a new geometry every frame)
+      const ds = tool.kind === 'road' ? this.dragStart : null;
+      const pk = `${tool.kind}:${h.x},${h.y}:${ds ? `${ds.x},${ds.y}` : ''}`;
       const pv = (this.previewRes ??= {
         geo: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
         road: new THREE.MeshBasicMaterial({ color: 0xe0c070, transparent: true, opacity: 0.45, depthWrite: false }),
         bad: new THREE.MeshBasicMaterial({ color: 0xff5040, transparent: true, opacity: 0.45, depthWrite: false }),
+        pool: [],
       });
-      const geo = pv.geo, mat = tool.kind === 'road' ? pv.road : pv.bad;
-      for (const [x, y] of pts) {
-        const m = new THREE.Mesh(geo, mat);
-        m.position.set(x + 0.5, Math.max(0.05, this.game.map.heightAt(x + 0.5, y + 0.5)) + 0.06, y + 0.5);
-        m.renderOrder = 3;
-        this.roadPreview.add(m);
+      // rebuild the tile preview only when the hovered tile or drag changes (or something cleared it)
+      if (pk !== this.previewKey || !this.roadPreview.children.length) {
+        this.previewKey = pk;
+        this.roadPreview.clear();
+        const pts: [number, number][] = [];
+        if (ds) {
+          let { x, y } = ds;
+          pts.push([x, y]);
+          while (x !== h.x) (x += Math.sign(h.x - x)), pts.push([x, y]);
+          while (y !== h.y) (y += Math.sign(h.y - y)), pts.push([x, y]);
+        } else pts.push([h.x, h.y]);
+        const mat = tool.kind === 'road' ? pv.road : pv.bad;
+        pts.forEach(([x, y], i) => {
+          let m = pv.pool[i];
+          if (!m) {
+            m = pv.pool[i] = new THREE.Mesh(pv.geo, mat);
+            m.renderOrder = 3;
+          }
+          m.material = mat;
+          m.position.set(x + 0.5, Math.max(0.05, this.game.map.heightAt(x + 0.5, y + 0.5)) + 0.06, y + 0.5);
+          this.roadPreview.add(m);
+        });
       }
       if (tool.kind === 'demolish') {
         const b = this.game.tileBuilding(h.x, h.y);
-        this.cursorTip.textContent = b ? `Demolish ${BUILDING[b.def].name}` : 'Demolish';
+        setText(this.cursorTip, b ? `Demolish ${BUILDING[b.def].name}` : 'Demolish');
         this.cursorTip.classList.remove('hidden', 'ok');
       } else this.cursorTip.classList.add('hidden');
     } else {
       this.ghost.visible = false;
       if (tool.kind === 'target') {
-        this.cursorTip.textContent = `Click a ${tool.what} (right-click to cancel)`;
+        setText(this.cursorTip, `Click a ${tool.what} (right-click to cancel)`);
         this.cursorTip.classList.add('ok');
         this.cursorTip.classList.remove('hidden');
       }

@@ -72,6 +72,19 @@ float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx
 float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(hash12(i),hash12(i+vec2(1,0)),f.x), mix(hash12(i+vec2(0,1)),hash12(i+vec2(1,1)),f.x), f.y); }
 float fbm(vec2 p){ float s=0.0,a=0.5; for(int i=0;i<4;i++){ s+=a*vnoise(p); p*=2.03; a*=0.5;} return s; }
+// gradient of fbm, analytic (one pass instead of three finite-difference fbm evaluations)
+vec2 fbmGrad(vec2 p){
+  vec2 g = vec2(0.0); float a = 0.5, k = 1.0;
+  for(int i=0;i<4;i++){
+    vec2 ip = floor(p), f = fract(p);
+    vec2 u = f*f*(3.0-2.0*f), du = 6.0*f*(1.0-f);
+    float A = hash12(ip), B = hash12(ip+vec2(1,0)), C = hash12(ip+vec2(0,1)), D = hash12(ip+vec2(1,1));
+    float e = A - B - C + D;
+    g += a * k * du * vec2(B - A + e*u.y, C - A + e*u.x);
+    p *= 2.03; k *= 2.03; a *= 0.5;
+  }
+  return g;
+}
 float terrainH(vec2 p){
   vec2 uv = (p + 0.5) / (uMapSize + 1.0);
   if (uv.x<0.0||uv.y<0.0||uv.x>1.0||uv.y>1.0) return -14.0;
@@ -93,9 +106,7 @@ vec3 waveNormal(vec2 p){
   }
   // fine detail noise
   vec2 q = p*1.7 + vec2(t*0.25, t*0.18);
-  float e = 0.05;
-  float n0 = fbm(q);
-  g += vec2(fbm(q+vec2(e,0.0))-n0, fbm(q+vec2(0.0,e))-n0)/e * 0.06;
+  g += fbmGrad(q) * 0.06;
   return normalize(vec3(-g.x, 1.0, -g.y));
 }
 void main(){
@@ -119,13 +130,17 @@ void main(){
   float spec = pow(max(dot(N, H), 0.0), 600.0) * 2.5 + pow(max(dot(N,H),0.0), 80.0)*0.12;
   col += uSunColor * spec * (1.0 - uNight*0.9);
   // shoreline foam: bands moving toward shore plus noise
-  float shore = 1.0 - smoothstep(0.0, 1.4, depth);
-  float bands = sin(depth*7.0 - uTime*2.2 + fbm(vWPos.xz*0.6)*6.0)*0.5+0.5;
-  float foamN = fbm(vWPos.xz*2.5 + uTime*0.3);
-  float foam = shore * smoothstep(0.45, 0.9, bands*0.6 + foamN*0.6) ;
-  foam += (1.0 - smoothstep(0.0, 0.25, depth)) * smoothstep(0.35, 0.6, foamN);
+  // (each term is zero outside its depth band, so the noise is only evaluated where it shows)
+  float foam = 0.0;
+  if (depth < 1.4) {
+    float shore = 1.0 - smoothstep(0.0, 1.4, depth);
+    float bands = sin(depth*7.0 - uTime*2.2 + fbm(vWPos.xz*0.6)*6.0)*0.5+0.5;
+    float foamN = fbm(vWPos.xz*2.5 + uTime*0.3);
+    foam = shore * smoothstep(0.45, 0.9, bands*0.6 + foamN*0.6);
+    foam += (1.0 - smoothstep(0.0, 0.25, depth)) * smoothstep(0.35, 0.6, foamN);
+  }
   // open-sea whitecaps
-  foam += smoothstep(0.78, 0.92, fbm(vWPos.xz*0.35 + uTime*0.05)) * 0.25 * smoothstep(3.0, 10.0, depth);
+  if (depth > 3.0) foam += smoothstep(0.78, 0.92, fbm(vWPos.xz*0.35 + uTime*0.05)) * 0.25 * smoothstep(3.0, 10.0, depth);
   foam = clamp(foam, 0.0, 1.0);
   col = mix(col, vec3(0.95,0.97,1.0), foam*0.85);
   col *= mix(1.0, 0.25, uNight);
