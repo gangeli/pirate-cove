@@ -484,7 +484,7 @@ export function setupStartingIsland(g: Game): void {
   }
   if (s.advantage === 'skeleton_island') for (let i = 0; i < 10; i++) g.graveyard.push({ name: `Old Bones ${i + 1}`, nat: 'eng' });
   for (let i = 0; i < nPirates; i++) createPerson(g, 'pirate', home[0] + g.rng.int(-4, 4), home[1] + g.rng.int(-4, 4));
-  const startShip = g.settings.startShip ?? 'sloop';
+  const startShip = g.settings.startShip ?? 'snow';
   if (dock) dock.inv.ration = 30;
   if (dock && startShip !== 'none') {
     const d = SHIPS[startShip];

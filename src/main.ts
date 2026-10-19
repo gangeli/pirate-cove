@@ -67,6 +67,12 @@ async function boot() {
       app.hud.show(false);
       await app.menu.show();
     }
+    if (ui2 === 'setup') {
+      app.state = 'menu';
+      app.hud.show(false);
+      await app.menu.show();
+      (app.menu as any).openSetup();
+    }
     if (params.get('sel')) {
       const b = [...g.buildings.values()].find((x) => x.def === params.get('sel'));
       if (b) app.select({ type: 'building', id: b.id });

@@ -74,6 +74,18 @@ export function transitTime(g: Game, s: Ship, region: number): number {
   const sp = SHIPS[s.type].speed * (g.has('craftiness') ? 1.05 : 1);
   return MONTH * (0.25 + d * 3.2 * (28 / sp));
 }
+/**
+ * A captain's judgement, 0 (green) .. 1 (old sea dog): how well they size up a fight, when they break
+ * off, and when they turn for home. Half comes from seamanship and navigation, half from voyages
+ * actually commanded, so a fresh hire is middling at best and a veteran has to be grown.
+ */
+export function judgement(cap: Person | undefined): number {
+  if (!cap) return 0.2;
+  const craft = ((cap.skills.seamanship + cap.skills.navigation) / 2 - 1) / 4;
+  const exp = Math.min(1, (cap.voyages ?? 0) / 8);
+  return Math.max(0, Math.min(1, craft * 0.5 + exp * 0.5));
+}
+
 export function rationRate(s: Ship): number {
   // explorers hop from cay to cay and live off turtles, fish and fruit, so stores stretch twice as far
   return ((s.crew.length + 1) * 0.3 * (s.mission === 'explore' ? 0.5 : 1)) / MONTH;
@@ -474,7 +486,9 @@ function voyageTick(g: Game, s: Ship, dt: number): void {
   }
   if (v.station && v.t > phaseOut) {
     const returnNeed = v.back * v.rationRate * 1.3 + 1 + (v.lost ? MONTH * 0.5 * v.rationRate : 0);
-    const done = s.mission !== 'cruise' || s.rations <= returnNeed || s.hull < 0.5 || v.sunk || crew.length < Math.ceil((SHIPS[s.type].men + SHIPS[s.type].officers) * 0.6);
+    // a green captain pushes on with a battered ship and a thin crew; a veteran knows when to go home
+    const rash = 1 - judgement(cap);
+    const done = s.mission !== 'cruise' || s.rations <= returnNeed || s.hull < 0.55 - rash * 0.25 || v.sunk || crew.length < Math.ceil((SHIPS[s.type].men + SHIPS[s.type].officers) * (0.65 - rash * 0.25));
     if (s.mission === 'cruise' && !done) {
       v.nextEncounter -= dt;
       if (v.nextEncounter <= 0) {
@@ -570,6 +584,13 @@ function arriveHome(g: Game, s: Ship): void {
   const dock = g.buildings.get(s.returnDock ?? 0);
   s.returnDock = undefined;
   s.status = s.hull < 1 ? 'repairing' : 'docked';
+  // every voyage brought home seasons the captain
+  const cap = g.people.get(s.captain);
+  if (cap) {
+    cap.voyages = (cap.voyages ?? 0) + 1;
+    cap.skills.seamanship = Math.min(5, cap.skills.seamanship + 0.15);
+    cap.skills.navigation = Math.min(5, cap.skills.navigation + 0.1);
+  }
   if (dock) {
     s.dock = dock.id;
     dock.ship = s.id;
@@ -710,11 +731,17 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
   // assessment
   const ourStr = us.cannons * 2 + us.crew * 2 + d.tons * 0.05;
   const theirStr = them.cannons * 2 + them.crew * 2 + prey.tons * 0.05;
-  let wePursue = (us.courage + (cap?.traits.courage ?? 5)) / 2 + (ourStr / theirStr - 1) * 4 > 3.5;
+  // the captain's read of the odds: veterans see them true; green captains guess, and a green captain on
+  // a big ship overrates her badly
+  const j = judgement(cap);
+  const misread = Math.exp((g.rng.range(-1, 1) + g.rng.range(-1, 1)) * 0.45 * (1 - j) + (1 - j) * Math.min(0.9, d.tons / 400));
+  const seen = (ourStr / theirStr) * misread;
+  let wePursue = (us.courage + (cap?.traits.courage ?? 5)) / 2 + (seen - 1) * 4 > 3.5;
   if (g.has('suicidal')) wePursue = true;
   if (g.has('cowardly') && ourStr < theirStr * 1.3) wePursue = false;
   // merchants are worth chasing even when they're bigger: many strike their colours without a fight
-  if (!naval && prey.id !== 'pirate') wePursue = (wePursue && ourStr > theirStr * 0.55) || ourStr > theirStr * 1.1 || g.has('suicidal');
+  // (an old hand knows how often they do, and will run down a merchantman that looks a match for her)
+  if (!naval && prey.id !== 'pirate') wePursue = (wePursue && seen > 0.5) || seen > 1.0 - 0.4 * j || g.has('suicidal');
   const rg = g.regions[s.region];
   // navies hunt notorious, well-armed pirates; a little unknown snow is rarely worth the chase
   const prize = Math.min(1.2, 0.35 + d.tons / 400 + s.cannons / 60);
@@ -770,7 +797,7 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
       ourDead += kill(us, theirHits * 0.15 + (naval && round > 0 ? Math.min(them.muskets, them.fighting) * (0.04 + them.musket * 0.02) : 0));
     }
     // nobody sane boards a man-of-war full of marines unless they badly outnumber her
-    if (!boarding && s.orders === 'board' && round > 0 && (!naval || us.fighting > them.fighting * 1.6)) {
+    if (!boarding && s.orders === 'board' && round > 0 && (!naval || us.fighting * misread > them.fighting * 1.6)) {
       // try to come alongside
       if (g.rng.chance(0.35 + us.seaman * 0.1)) {
         boarding = true;
@@ -798,7 +825,7 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
     themFled += loss(them, theirMorale);
     if (them.fighting <= 0 || them.hull <= 0 || us.fighting <= 0 || us.hull <= 0) break;
     // a beaten crew tries to break off (only possible before boarders are locked together)
-    const losing = naval ? us.fighting < startFighting * 0.7 || us.hull < d.tons * 0.6 : us.fighting < startFighting * 0.45 || us.hull < d.tons * 0.35;
+    const losing = naval ? us.fighting < startFighting * (0.6 + 0.2 * j) || us.hull < d.tons * (0.5 + 0.2 * j) : us.fighting < startFighting * 0.45 || us.hull < d.tons * 0.35;
     if (losing && !g.has('suicidal') && (!boarding || g.rng.chance(0.3))) {
       const roll = us.speed * (0.8 + us.seaman * 0.1) * g.rng.range(0.7, 1.4) - them.speed * (0.8 + them.seaman * 0.08) * g.rng.range(0.7, 1.3);
       // a damaged ship running from a man-of-war has to actually out-sail her

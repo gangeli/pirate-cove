@@ -75,6 +75,7 @@ export interface Person {
   shoreJob: number; // building id where overseer/guard
   shoreRole?: 'overseer' | 'guard';
   captain?: boolean;
+  voyages?: number; // voyages commanded and brought home (captains)
   officer?: boolean;
   stashed: number;
   lastStash: number;

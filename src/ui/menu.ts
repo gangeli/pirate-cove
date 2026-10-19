@@ -4,6 +4,7 @@ import { icon } from './icons';
 import { KINGS, BACKGROUNDS, QUALITIES, FLAWS, NATION_ADJ, type KingDef, type Background, type Quality, type Flaw } from '../sim/data/kings';
 import { portraitImg } from './portraits';
 import type { Settings } from '../sim/types';
+import { PRESETS, difficultyOf } from '../sim/presets';
 import { audio } from '../audio/audio';
 import credits from '../credits.json';
 
@@ -15,10 +16,10 @@ export class MainMenu {
   private root: HTMLElement;
   private setup: HTMLElement;
   private credits: HTMLElement;
-  private s: Partial<Settings> = { size: 'medium', mountains: 0.5, vegetation: 0.5, minerals: 0.5, years: 20, stability: 2, advantage: 'standard', bonus: 'hoard', region: 6, startGold: 2500 };
+  private s: Partial<Settings> = { ...PRESETS[2].settings, region: 6 };
   private king: KingDef = KINGS[2];
   private custom = false;
-  private tab: 'island' | 'conditions' | 'king' = 'island';
+  private tab: 'preset' | 'island' | 'conditions' | 'king' = 'preset';
 
   constructor(private app: App) {
     this.root = el('div', 'menu hidden', app.root);
@@ -44,6 +45,11 @@ export class MainMenu {
       opt: (a) => {
         const [k, v] = a.split('=');
         (this.s as any)[k] = isNaN(+v) ? v : +v;
+        this.renderSetup();
+      },
+      preset: (id) => {
+        const pr = PRESETS.find((x) => x.id === id)!;
+        this.s = { ...this.s, ...pr.settings };
         this.renderSetup();
       },
       king: (id) => {
@@ -105,25 +111,32 @@ export class MainMenu {
 
   private openSetup(): void {
     this.s.seed = Math.floor(Math.random() * 1e6);
-    this.tab = 'island';
+    this.tab = 'preset';
     this.setup.classList.remove('hidden');
     this.renderSetup();
   }
 
   private difficulty(): number {
-    const s = this.s as Settings;
-    let d = [0.6, 0.8, 1, 1.2, 1.4][s.stability - 1] ?? 1;
-    d *= { botany_bay: 0.7, standard: 1, shipwreck: 0.9, skeleton_island: 0.85, bare_bones: 1.3 }[s.advantage];
-    d *= 1 + (0.5 - s.vegetation) * 0.6;
-    d *= 1 - ((s.years - 20) / 40) * 0.3;
-    return Math.round(d * 100);
+    return Math.round(difficultyOf(this.s as Settings) * 100);
+  }
+
+  /** the preset these settings match exactly, if any */
+  private presetId(): string | null {
+    const s = this.s as any;
+    return PRESETS.find((p) => Object.entries(p.settings).every(([k, v]) => k === 'bonus' || s[k] === v))?.id ?? null;
   }
 
   private renderSetup(): void {
     const s = this.s as Settings;
     const field = (label: string, key: keyof Settings, opts: [string | number, string][], hint = '') => html`<div class="field"><label>${label}</label><div class="opts">${opts.map(([v, n]) => html`<span class="o ${String(s[key]) === String(v) ? 'on' : ''}" data-act="opt:${key}=${v}">${n}</span>`)}</div>${hint ? html`<div class="hintx">${hint}</div>` : ''}</div>`;
     let body;
-    if (this.tab === 'island') {
+    if (this.tab === 'preset') {
+      const cur = this.presetId();
+      body = html`<div class="presets">${PRESETS.map((p) => html`<div class="preset ${cur === p.id ? 'on' : ''}" data-act="preset:${p.id}">
+          <div class="pname">${p.name}<span class="pdiff">${Math.round(difficultyOf({ ...this.s, ...p.settings } as Settings) * 100)}%</span></div>
+          <div class="pblurb">${p.blurb}</div></div>`)}
+        ${cur ? '' : html`<div class="hintx">Custom conditions. Pick a preset to start from, or adjust the island and conditions freely.</div>`}</div>`;
+    } else if (this.tab === 'island') {
       body = html`<div class="grid2">
         ${field('Island size', 'size', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']])}
         ${field('Mountains', 'mountains', [[0.2, 'Few'], [0.5, 'Some'], [0.85, 'Many']])}
@@ -137,6 +150,7 @@ export class MainMenu {
         ${field('Length of reign', 'years', [[10, '10 years'], [20, '20 years'], [30, '30 years']], 'At normal speed a year lasts about 30 minutes.')}
         ${field('Island stability', 'stability', [[1, '1 (calm)'], [2, '2'], [3, '3'], [4, '4'], [5, '5 (volatile)']], 'How quickly people react to their surroundings. 1-2 is best for beginners.')}
         ${field('Island advantage', 'advantage', [['botany_bay', 'Botany Bay'], ['standard', 'Standard'], ['shipwreck', 'Shipwreck Coast'], ['skeleton_island', 'Skeleton Island'], ['bare_bones', 'Bare Bones']], ({ botany_bay: 'Lots of extra workers and skilled craftsmen.', standard: 'A modest crew and labour force.', shipwreck: 'Castaways wash ashore from time to time.', skeleton_island: 'Ten corpses rest in the graveyard, ready to be raised.', bare_bones: 'Almost no one. A true challenge.' } as any)[s.advantage])}
+        ${field('Starting ship', 'startShip', [['none', 'None'], ['snow', 'Snow'], ['schooner', 'Schooner'], ['sloop', 'Sloop']], s.startShip === 'none' ? 'You must build a boatyard and your first hull yourself.' : 'A snow is small and fragile: good for raids, kidnappings and exploring, a gamble on a cruise.')}
         ${field('Bonus objective', 'bonus', [['hoard', 'Hoard'], ['happiness', 'Pirate happiness'], ['fleet', 'Fleet size'], ['captains', 'Captains'], ['pirates', 'Pirates']], 'This part of your score counts triple.')}
         </div>`;
     } else {
@@ -156,10 +170,10 @@ export class MainMenu {
     }
     setHTML(this.setup, html`<button class="close" data-act="close">${icon('close', 14)}</button>
       <h2>A New Reign</h2>
-      <div class="tabs big" style="position:static;transform:none;width:auto;height:auto;display:flex"><div class="t ${this.tab === 'island' ? 'on' : ''}" data-act="tab:island">The Island</div><div class="t ${this.tab === 'conditions' ? 'on' : ''}" data-act="tab:conditions">Conditions</div><div class="t ${this.tab === 'king' ? 'on' : ''}" data-act="tab:king">Pirate ${this.king.sex === 'F' ? 'Queen' : 'King'}</div></div>
+      <div class="tabs big" style="position:static;transform:none;width:auto;height:auto;display:flex"><div class="t ${this.tab === 'preset' ? 'on' : ''}" data-act="tab:preset">Difficulty</div><div class="t ${this.tab === 'island' ? 'on' : ''}" data-act="tab:island">The Island</div><div class="t ${this.tab === 'conditions' ? 'on' : ''}" data-act="tab:conditions">Conditions</div><div class="t ${this.tab === 'king' ? 'on' : ''}" data-act="tab:king">Pirate ${this.king.sex === 'F' ? 'Queen' : 'King'}</div></div>
       <div class="content scroll" style="flex:1;margin:8px 0">${body}</div>
       <div class="row" style="justify-content:space-between"><span class="sub">Difficulty: <b>${this.difficulty()}%</b> (your final score is multiplied by this)</span>
-        <div class="row">${this.tab !== 'king' ? html`<button class="btn" data-act="tab:${this.tab === 'island' ? 'conditions' : 'king'}">Next</button>` : ''}<button class="btn green" data-act="start">Begin Your Reign</button></div></div>`);
+        <div class="row">${this.tab !== 'king' ? html`<button class="btn" data-act="tab:${this.tab === 'preset' ? 'island' : this.tab === 'island' ? 'conditions' : 'king'}">Next</button>` : ''}<button class="btn green" data-act="start">Begin Your Reign</button></div></div>`);
     const sel = this.setup.querySelector<HTMLSelectElement>('[data-region]');
     if (sel) sel.onchange = () => (this.s.region = +sel.value);
     const bg = this.setup.querySelector<HTMLSelectElement>('[data-bg]');

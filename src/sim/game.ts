@@ -1,4 +1,5 @@
 import { GameMap, Terrain } from './map';
+import { difficultyOf } from './presets';
 import { Rng } from './rng';
 import { PathFinder } from './path';
 import { AuraGrid } from './aura';
@@ -529,13 +530,7 @@ export class Game {
   }
 
   computeDifficulty(): number {
-    const s = this.settings;
-    let d = 1;
-    d *= [0.6, 0.8, 1, 1.2, 1.4][s.stability - 1] ?? 1;
-    d *= { botany_bay: 0.7, standard: 1, shipwreck: 0.9, skeleton_island: 0.85, bare_bones: 1.3 }[s.advantage];
-    d *= 1 + (0.5 - s.vegetation) * 0.6;
-    d *= 1 - (s.years - 20) / 40 * 0.3;
-    return Math.round(d * 100) / 100;
+    return difficultyOf(this.settings);
   }
 
   /** stability-based delay before auras affect a newcomer */

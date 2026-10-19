@@ -108,3 +108,35 @@ if (mode === 'starts') {
     summarize(`start:${startShip}`, rs);
   }
 }
+
+if (mode === 'calibrate') {
+  // play every preset with a skill ladder; the multiplier that equalises the default bot's raw score across
+  // presets is the calibrated difficulty (relative to Brethren of the Coast = 100%)
+  const { PRESETS, difficultyOf } = await import('../src/sim/presets');
+  const seeds = SEEDS(+(process.argv[3] ?? 6)), years = +(process.argv[4] ?? 10);
+  const ladder: [string, Partial<Policy>][] = [
+    ['novice', { cadence: 3, sloppy: 0.4, fear: false, priceBias: -1, entertainment: 0.5, shipAt: 4000, festivalAt: 0, peaceAt: -101 }],
+    ['casual', { cadence: 1.5, sloppy: 0.2, entertainment: 0.8 }],
+    ['default', {}],
+  ];
+  const only = process.env.ONLY?.split(',');
+  const raw: Record<string, Record<string, { sub: number; lost: number; score: number }>> = {};
+  for (const pr of PRESETS) {
+    if (only && !only.includes(pr.id)) continue;
+    raw[pr.id] = {};
+    for (const [name, pol] of ladder) {
+      const settings = { ...pr.settings, years };
+      const rs = await pool(seeds.map((seed) => () => run({ seed, years, policy: pol, settings })));
+      const sub = rs.reduce((a, r) => a + (r.win === false ? 0 : r.parts?.subtotal ?? 0), 0) / rs.length;
+      const lost = rs.filter((r) => r.win === false).length / rs.length;
+      raw[pr.id][name] = { sub, lost, score: rs.reduce((a, r) => a + r.score, 0) / rs.length };
+      console.log(`${pr.id.padEnd(9)} ${name.padEnd(8)} raw ${Math.round(sub).toString().padStart(6)} lost ${(lost * 100).toFixed(0).padStart(3)}% score ${Math.round(raw[pr.id][name].score)} ${[...new Set(rs.filter((r) => r.win === false).map((r) => r.reason.slice(0, 30)))].join(' | ')}`);
+    }
+  }
+  const base = raw.brethren?.default.sub;
+  if (base) for (const pr of PRESETS) {
+    if (!raw[pr.id]) continue;
+    const cur = difficultyOf({ ...pr.settings, seed: 1, region: 6 } as any);
+    console.log(`${pr.name.padEnd(22)} current ${Math.round(cur * 100)}%  calibrated ${Math.round((base / Math.max(1, raw[pr.id].default.sub)) * 100)}%`);
+  }
+}

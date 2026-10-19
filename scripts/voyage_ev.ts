@@ -29,6 +29,10 @@ function voyage(seed: number, type: ShipType, dest: 'home' | 'near' | 'far') {
   s.muskets = d.muskets;
   s.cannons = d.cannons;
   const cap = createCaptain(g, dock.door[0], dock.door[1]);
+  // CAPTAIN=green|hire|veteran: a raw hand, a typical hire, or an old sea dog of many voyages
+  const kind = process.env.CAPTAIN ?? 'hire';
+  if (kind === 'green') (cap.skills.seamanship = 2), (cap.skills.navigation = 2), (cap.voyages = 0);
+  if (kind === 'veteran') (cap.skills.seamanship = 4.6), (cap.skills.navigation = 4.4), (cap.voyages = 9);
   s.captain = cap.id;
   cap.ship = s.id;
   for (const p of g.pirates()) if (p.ship && p.ship !== s.id) p.ship = 0;
