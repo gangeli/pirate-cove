@@ -271,6 +271,8 @@ class Kit:
             gp.data.materials.append(bpy.data.materials.get('ground') or bpy.data.materials.new('ground'))
         img = bpy.data.images.new(name + '_ao', ao_size, ao_size, alpha=False)
         img.colorspace_settings.name = 'Non-Color'  # store linear values; the game reads them as data
+        # unbaked texels stay white (unoccluded), so bleeding at island edges never darkens a surface
+        img.generated_color = (1.0, 1.0, 1.0, 1.0)
         for m in me.materials:
             m.use_nodes = True
             nt = m.node_tree
@@ -350,11 +352,11 @@ class Kit:
         ob.select_set(True)
         bpy.context.view_layer.objects.active = ob
         me.uv_layers.active = me.uv_layers['AO']
-        bpy.ops.object.bake(type='EMIT', margin=6, use_clear=True, uv_layer='AO')
+        bpy.ops.object.bake(type='EMIT', margin=8, use_clear=False, uv_layer='AO')
         me.uv_layers.active = me.uv_layers['UVMap']
         os.makedirs(out_dir, exist_ok=True)
         # the map is smooth: bake at full size for clean edges, ship at half size
-        img.scale(max(128, ao_size // 2), max(128, ao_size // 2))
+        img.scale(max(256, ao_size // 2), max(256, ao_size // 2))
         img.filepath_raw = os.path.join(out_dir, name + '_ao.jpg')
         img.file_format = 'JPEG'
         sc.render.image_settings.quality = 82

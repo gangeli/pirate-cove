@@ -508,6 +508,71 @@ function employ(g: Game): void {
       }
     }
   }
+  swapForWomensPosts(g, bl, free, eff);
+}
+
+/**
+ * Most kitchen and venue posts can only be filled by women. When one stands empty while a woman hauls,
+ * farms or builds, a man takes over her work (an unemployed man, or one from a job that matters less than
+ * the empty post) and she takes the post. A few such swaps per pass.
+ */
+function swapForWomensPosts(g: Game, bl: Building[], free: Person[], eff: (b: Building) => number): void {
+  const unisex = (q: Person | undefined, sex: 'M' | 'F') => !!q && q.kind === 'captive' && q.sex === sex && !q.skilled && !q.rebel && !!q.jobRole && !JOB_SEX[q.jobRole] && q.task.kind !== 'haul';
+  const listOf = (o: Building, q: Person) => (o.haulers.includes(q.id) ? o.haulers : o.workers);
+  let swaps = 0;
+  for (const b of bl) {
+    if (swaps >= 6) return;
+    if (b.blocked) continue;
+    for (const slot of BUILDING[b.def].workers) {
+      if (JOB_SEX[slot.job] !== 'F' || SKILLED_ONLY.includes(slot.job)) continue;
+      let open = slot.count - b.workers.filter((id) => g.people.get(id)?.jobRole === slot.job).length;
+      while (open > 0 && swaps < 6) {
+        // a woman doing work any man could do
+        let woman: Person | undefined, wFrom: Building | undefined;
+        for (const o of bl) {
+          if (o === b) continue;
+          for (const id of [...o.workers, ...o.haulers]) {
+            const q = g.people.get(id);
+            if (unisex(q, 'F')) (woman = q), (wFrom = o);
+            if (woman) break;
+          }
+          if (woman) break;
+        }
+        if (!woman || !wFrom) return;
+        // a man to take her place: unemployed, or from a job of lower priority than the empty post
+        let man = free.find((p) => p.kind === 'captive' && p.sex === 'M' && !p.skilled && !p.rebel);
+        let mFrom: Building | undefined;
+        if (!man) {
+          for (let i = bl.length - 1; i >= 0 && !man; i--) {
+            const o = bl[i];
+            if (eff(o) >= eff(b) || o === wFrom) continue;
+            for (const id of [...o.workers, ...o.haulers]) {
+              const q = g.people.get(id);
+              if (unisex(q, 'M')) (man = q), (mFrom = o);
+              if (man) break;
+            }
+          }
+        }
+        if (!man) return;
+        if (mFrom) {
+          const l = listOf(mFrom, man);
+          l.splice(l.indexOf(man.id), 1);
+          if (man.task.bld === mFrom.id) man.task = { kind: 'idle' };
+        } else free.splice(free.indexOf(man), 1);
+        const role = woman.jobRole!;
+        const wl = listOf(wFrom, woman);
+        wl[wl.indexOf(woman.id)] = man.id;
+        man.job = wFrom.id;
+        man.jobRole = role;
+        woman.job = b.id;
+        woman.jobRole = slot.job;
+        b.workers.push(woman.id);
+        if (woman.task.bld === wFrom.id) woman.task = { kind: 'idle' };
+        open--;
+        swaps++;
+      }
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------------------- monthly

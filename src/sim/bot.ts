@@ -380,7 +380,8 @@ export class Bot {
     }
     if (this.p.plan) {
       // hands follow the shortages: lumberjacks with a full woodpile give way to other work
-      const lumberPr = g.lumber() < 60 ? 4 : 2;
+      // (a shipyard's hulls want a big woodpile: up to 150 planks for a galleon)
+      const lumberPr = g.lumber() < (this.count('shipyard') ? 170 : 60) ? 4 : 2;
       for (const b of g.buildings.values()) {
         const want = b.def === 'timber_camp' || b.def === 'sawmill' ? lumberPr : 0;
         if (want && b.priority !== want) g.cmd({ type: 'setPriority', id: b.id, priority: want });
@@ -417,6 +418,8 @@ export class Bot {
     }
     // church when captives want religion
     if (g.yearsElapsed > 2 && !this.count('church')) this.staffed('church');
+    // a surgeon's sawbones shop by the pirates' homes: no questions asked, and they feel freer for it
+    if (this.p.plan && g.hasProfession('surgeon') && !this.count('surgery')) this.build('surgery', this.homeSide());
     // defence if discovered and hated
     const threat = NATIONS.some((n) => g.nations[n].knows && g.nations[n].relation < -30);
     const invasion = NATIONS.some((n) => g.nations[n].invasion.stage >= 1);

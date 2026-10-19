@@ -25,7 +25,7 @@ for name in names:
     # the far LOD: the same building rebuilt with simplified forms, with its own small weathering map
     k2 = Kit(seed=abs(hash(name)) % 10007, lod=True)
     fn(k2)
-    k2.finish(name.replace('@', '_') + '_lod', os.path.abspath(OUT), ao_size=256, ao_samples=16, ao_dist=opts.get('ao_dist', 0.9))
+    k2.finish(name.replace('@', '_') + '_lod', os.path.abspath(OUT), ao_size=512, ao_samples=16, ao_dist=opts.get('ao_dist', 0.9))
     print(f'{name} done in {time.time() - t0:.1f}s')
 # manifest of every model on disk
 import json
