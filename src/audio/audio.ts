@@ -1,4 +1,4 @@
-/** WebAudio engine: music with crossfades, voice lines (ducking music), positional SFX and ambience. */
+/** WebAudio engine: streamed music with crossfades, voice lines (ducking music), positional SFX and ambience. */
 
 export interface Manifest {
   voices: Record<string, { file: string; speaker: string; text: string }>;
@@ -9,6 +9,24 @@ export interface Manifest {
 }
 
 const BASE = `${import.meta.env.BASE_URL}assets/`;
+/** decoded voice/sfx kept around for reuse (decoded PCM is ~0.2 MB per second of mono): least recently used goes */
+const DECODED_BUDGET = 16e6;
+/** a few samples of silence, to unlock a media element inside a user gesture (Safari wants one per element) */
+const SILENCE = 'data:audio/wav;base64,UklGRsQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YaAAAACA' + 'gICA'.repeat(53);
+
+/** a music player: a streaming <audio> element routed through WebAudio, so the buses still apply */
+interface Deck {
+  el: HTMLAudioElement;
+  gain: GainNode;
+  key: string | null;
+  primed: boolean;
+  stopTimer: ReturnType<typeof setTimeout> | null;
+}
+
+interface Cached {
+  p: Promise<AudioBuffer | null>;
+  bytes: number;
+}
 
 export class Audio {
   ctx: AudioContext | null = null;
@@ -18,10 +36,17 @@ export class Audio {
   private sfxBus!: GainNode;
   private ambBus!: GainNode;
   manifest: Manifest = { voices: {}, barks: {}, sfx: {}, music: {} };
-  private buffers = new Map<string, Promise<AudioBuffer | null>>();
-  private musicNode: { src: AudioBufferSourceNode; gain: GainNode; key: string } | null = null;
+  /** decoded voice/sfx buffers by file, in least-recently-used order (oldest first) */
+  private buffers = new Map<string, Cached>();
+  private decodedBytes = 0;
+  /** files that must stay decoded (running ambience loops) */
+  private pinned = new Set<string>();
+  private decks: Deck[] = [];
+  private stingDeck: Deck | null = null;
+  private musicDeck: Deck | null = null;
+  private trackToken = 0;
   private voiceNode: AudioBufferSourceNode | null = null;
-  private loops = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>();
+  private loops = new Map<string, { src: AudioBufferSourceNode; gain: GainNode; file: string }>();
   vol = { master: 0.8, music: 0.5, voice: 0.9, sfx: 0.7, ambient: 0.6 };
   muted = (() => {
     try {
@@ -62,6 +87,7 @@ export class Audio {
   unlock(): void {
     if (this.ctx) {
       if (this.ctx.state === 'suspended') this.ctx.resume();
+      this.primeDecks();
       return;
     }
     const AC = window.AudioContext || (window as any).webkitAudioContext;
@@ -75,8 +101,12 @@ export class Audio {
     this.sfxBus = c.createGain();
     this.ambBus = c.createGain();
     for (const b of [this.musicBus, this.voiceBus, this.sfxBus, this.ambBus]) b.connect(this.master);
+    this.decks = [this.makeDeck(), this.makeDeck()];
+    this.stingDeck = this.makeDeck();
+    this.stingDeck.gain.gain.value = 1;
     this.applyVolumes();
     this.setMood(this.musicMood, true);
+    this.primeDecks();
   }
 
   applyVolumes(): void {
@@ -94,21 +124,97 @@ export class Audio {
     this.ambBus.gain.setTargetAtTime(this.vol.ambient, t, 0.05);
   }
 
+  // ------------------------------------------------------------------------------------------- decoded clips
+  /** fetch and decode a clip on first use; kept in a byte-bounded LRU cache */
   private load(file: string): Promise<AudioBuffer | null> {
-    let p = this.buffers.get(file);
-    if (!p) {
-      p = fetch(BASE + file)
-        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
-        .then((ab) => this.ctx!.decodeAudioData(ab))
-        .catch(() => null);
-      this.buffers.set(file, p);
+    const hit = this.buffers.get(file);
+    if (hit) {
+      // most recently used goes to the back
+      this.buffers.delete(file);
+      this.buffers.set(file, hit);
+      return hit.p;
     }
-    return p;
+    const ctx = this.ctx!;
+    const entry: Cached = { p: Promise.resolve(null), bytes: 0 };
+    entry.p = fetch(BASE + file)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+      .then((ab) => ctx.decodeAudioData(ab))
+      .then((buf) => {
+        if (this.buffers.get(file) === entry) {
+          entry.bytes = buf.length * buf.numberOfChannels * 4;
+          this.decodedBytes += entry.bytes;
+          this.evict(file);
+        }
+        return buf;
+      })
+      .catch(() => null);
+    this.buffers.set(file, entry);
+    return entry.p;
+  }
+
+  private evict(keep: string): void {
+    for (const [f, e] of this.buffers) {
+      if (this.decodedBytes <= DECODED_BUDGET) break;
+      if (f === keep || this.pinned.has(f) || !e.bytes) continue;
+      // anything still playing holds its own reference; this only drops the cache's
+      this.buffers.delete(f);
+      this.decodedBytes -= e.bytes;
+    }
   }
 
   // ------------------------------------------------------------------------------------------- music
+  private makeDeck(): Deck {
+    const c = this.ctx!;
+    const el = document.createElement('audio');
+    el.preload = 'auto';
+    const gain = c.createGain();
+    gain.gain.value = 0;
+    c.createMediaElementSource(el).connect(gain);
+    gain.connect(this.musicBus);
+    return { el, gain, key: null, primed: false, stopTimer: null };
+  }
+
+  /** inside a user gesture, play a blip of silence on idle players so later tracks may start without one */
+  private primeDecks(): void {
+    for (const d of [...this.decks, this.stingDeck]) {
+      if (!d || d.primed || d.key) continue;
+      d.primed = true;
+      d.el.src = SILENCE;
+      d.el.play().then(
+        () => {
+          if (!d.key) this.release(d);
+        },
+        () => {
+          d.primed = false;
+        },
+      );
+    }
+  }
+
+  /** stop a player and drop its stream buffers */
+  private release(d: Deck): void {
+    if (d.stopTimer) clearTimeout(d.stopTimer);
+    d.stopTimer = null;
+    d.key = null;
+    d.el.onended = null;
+    d.el.pause();
+    d.el.removeAttribute('src');
+    d.el.load();
+  }
+
+  private start(d: Deck, file: string, key: string, loop: boolean): Promise<void> {
+    if (d.stopTimer) clearTimeout(d.stopTimer);
+    d.stopTimer = null;
+    d.key = key;
+    d.el.loop = loop;
+    d.el.src = BASE + file;
+    return d.el.play().catch(() => {
+      /* blocked or failed: stays silent */
+    });
+  }
+
   setMood(mood: 'menu' | 'island' | 'tension', force = false): void {
-    if (mood === this.musicMood && !force && this.musicNode) return;
+    if (mood === this.musicMood && !force && this.musicDeck) return;
     this.musicMood = mood;
     const m = this.manifest.music;
     if (mood === 'menu') this.playlist = ['theme'];
@@ -118,36 +224,38 @@ export class Audio {
   }
 
   private async nextTrack(): Promise<void> {
-    if (!this.ctx) return;
+    if (!this.ctx || !this.decks.length) return;
     const key = this.playlist.shift();
     if (!key) return;
     if (this.musicMood === 'island') this.playlist.push(key);
     const file = this.manifest.music[key];
     if (!file) return;
-    const buf = await this.load(file);
-    if (!buf || !this.ctx) return;
+    const token = ++this.trackToken;
+    const old = this.musicDeck;
+    // the idle player of the pair takes the new track (if both are busy, the older fade is cut short)
+    const deck = this.decks.find((d) => d !== old) ?? this.decks[0];
+    const loop = this.musicMood !== 'island';
     const c = this.ctx;
-    const gain = c.createGain();
-    gain.gain.value = 0;
-    gain.connect(this.musicBus);
-    const src = c.createBufferSource();
-    src.buffer = buf;
-    src.loop = this.musicMood !== 'island';
-    src.connect(gain);
-    src.start();
-    gain.gain.setTargetAtTime(1, c.currentTime, 1.2);
-    const old = this.musicNode;
-    if (old) {
+    deck.gain.gain.cancelScheduledValues(c.currentTime);
+    deck.gain.gain.setValueAtTime(0, c.currentTime);
+    this.musicDeck = deck;
+    deck.el.onended = loop ? null : () => this.musicDeck === deck && this.nextTrack();
+    await this.start(deck, file, key, loop);
+    if (token !== this.trackToken || !this.ctx) return;
+    deck.gain.gain.setTargetAtTime(1, c.currentTime, 1.2);
+    if (old && old !== deck) {
+      old.el.onended = null;
       old.gain.gain.setTargetAtTime(0, c.currentTime, 0.8);
-      setTimeout(() => old.src.stop(), 4000);
+      old.stopTimer = setTimeout(() => this.musicDeck !== old && this.release(old), 4000);
     }
-    this.musicNode = { src, gain, key };
-    if (!src.loop) src.onended = () => this.musicNode?.src === src && this.nextTrack();
   }
 
   sting(key: 'victory' | 'defeat'): void {
     const f = this.manifest.music[key];
-    if (f) this.playFile(f, this.musicBus, 1);
+    const d = this.stingDeck;
+    if (!f || !d) return;
+    d.el.onended = () => this.release(d);
+    void this.start(d, f, key, false);
   }
 
   // ------------------------------------------------------------------------------------------- voice
@@ -205,6 +313,7 @@ export class Audio {
     src.buffer = buf;
     src.playbackRate.value = rate;
     src.connect(g);
+    src.onended = () => g.disconnect();
     src.start();
   }
 
@@ -214,9 +323,11 @@ export class Audio {
     let l = this.loops.get(key);
     if (!l) {
       if (target <= 0.001) return;
+      if (this.loops.has(key)) return; // still loading
       const f = this.manifest.sfx[key]?.[0];
       if (!f) return;
       this.loops.set(key, null as any);
+      this.pinned.add(f);
       const buf = await this.load(f);
       if (!buf || !this.ctx) return;
       const gain = this.ctx.createGain();
@@ -227,11 +338,16 @@ export class Audio {
       src.loop = true;
       src.connect(gain);
       src.start(0, Math.random() * buf.duration);
-      l = { src, gain };
+      l = { src, gain, file: f };
       this.loops.set(key, l);
     }
     if (!l) return;
     l.gain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.6);
+  }
+
+  /** decoded bytes held by the clip cache (for diagnostics) */
+  get cacheBytes(): number {
+    return this.decodedBytes;
   }
 }
 

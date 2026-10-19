@@ -1,5 +1,5 @@
 import type { App } from './app';
-import { el, html, setHTML, delegate, fmt } from './dom';
+import { el, html, setHTML, patchHTML, delegate, fmt } from './dom';
 import { icon } from './icons';
 import { NATIONS, NATION_NAMES, NATION_ADJ } from '../sim/data/kings';
 import { SHIPS, MISSION_NAMES } from '../sim/data/ships';
@@ -344,7 +344,7 @@ export class SeaChart {
     const level = ['Unexplored', 'Well Surveyed', 'Thoroughly Charted', 'Very Familiar Seas', 'Like the Back of Our Hand', 'Claimed as Our Waters'][Math.min(5, Math.floor(r.knowledge))];
     const ships = [...game.ships.values()];
     const sel = this.ship ? game.ships.get(this.ship) : undefined;
-    setHTML(this.side, html`
+    patchHTML(this.side, html`
       <div class="row"><button class="btn small ${this.mode === 'risk' ? 'on' : ''}" data-act="mode:risk">Danger</button><button class="btn small ${this.mode === 'reward' ? 'on' : ''}" data-act="mode:reward">Plunder</button></div>
       <h3>${r.name}${r.id === game.homeRegion ? ' (home)' : ''}</h3><div class="sub">${level}</div>
       ${known ? html`<div class="kv inspector" style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:14px;margin-top:4px">

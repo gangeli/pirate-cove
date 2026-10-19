@@ -19,6 +19,7 @@ import type { ShipType, Mission, Orders, Spoils } from './data/ships';
 
 import { MONTH, YEAR, START_YEAR, DT } from './time';
 export { MONTH, YEAR, START_YEAR, DT };
+const AURA_DELAY = [YEAR * 2, YEAR, MONTH * 4, MONTH * 2, MONTH];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export type Command =
@@ -162,15 +163,25 @@ export class Game {
     return this.time / YEAR;
   }
 
-  /** advance by real seconds (applies speed) */
-  advance(realDt: number): void {
+  /**
+   * Advance by real seconds (applies speed). `budgetMs` bounds the wall-clock time spent stepping: when the
+   * sim cannot keep up (a slow machine at 8x), the backlog is dropped and the game runs slower than asked
+   * instead of spiralling into ever longer frames. Steps are fixed and deterministic either way; only how
+   * many run per frame changes.
+   */
+  advance(realDt: number, budgetMs = Infinity): void {
     if (this.paused || this.over) return;
     this.acc += Math.min(realDt, 0.25) * this.speed;
+    const t0 = budgetMs < Infinity ? performance.now() : 0;
     let steps = 0;
     while (this.acc >= DT && steps < 400) {
       this.step();
       this.acc -= DT;
       steps++;
+      if (budgetMs < Infinity && this.acc >= DT && performance.now() - t0 > budgetMs) {
+        this.acc = Math.min(this.acc, DT); // keep at most one step of backlog
+        break;
+      }
     }
   }
 
@@ -263,13 +274,35 @@ export class Game {
     return out;
   }
   buildingCount(def: string, completeOnly = true): number {
-    let c = 0;
-    for (const b of this.buildings.values()) if (b.def === def && (!completeOnly || b.built >= 1)) c++;
-    return c;
+    const e = this.bIndex().get(def);
+    return e ? (completeOnly ? e.done : e.all) : 0;
   }
   findBuilding(def: string): Building | undefined {
-    for (const b of this.buildings.values()) if (b.def === def && b.built >= 1) return b;
-    return undefined;
+    return this.bIndex().get(def)?.first;
+  }
+  /** call whenever a building is added, removed or completed (keeps the per-type index fresh) */
+  buildingsChanged(): void {
+    this.bVer++;
+  }
+  private bVer = 0;
+  private bIdx: { ver: number; src: Map<number, Building> | null; byDef: Map<string, { all: number; done: number; first?: Building }> } = { ver: -1, src: null, byDef: new Map() };
+  /** per-type counts and first completed building, in insertion order (identical to a linear scan) */
+  private bIndex(): Map<string, { all: number; done: number; first?: Building }> {
+    const ix = this.bIdx;
+    if (ix.ver === this.bVer && ix.src === this.buildings) return ix.byDef;
+    ix.byDef.clear();
+    for (const b of this.buildings.values()) {
+      let e = ix.byDef.get(b.def);
+      if (!e) ix.byDef.set(b.def, (e = { all: 0, done: 0 }));
+      e.all++;
+      if (b.built >= 1) {
+        e.done++;
+        if (!e.first) e.first = b;
+      }
+    }
+    ix.ver = this.bVer;
+    ix.src = this.buildings;
+    return ix.byDef;
   }
   hasProfession(job: Job): boolean {
     for (const p of this.people.values()) if (p.kind === 'captive' && p.skilled && p.profession === job && p.task.kind !== 'dead') return true;
@@ -561,18 +594,13 @@ export class Game {
 
   /** stability-based delay before auras affect a newcomer */
   auraDelay(): number {
-    return [YEAR * 2, YEAR, MONTH * 4, MONTH * 2, MONTH][this.settings.stability - 1] ?? MONTH * 4;
+    return AURA_DELAY[this.settings.stability - 1] ?? MONTH * 4;
   }
 
   // ------------------------------------------------------------------ save/load
   serialize(): string {
     const m = this.map;
-    const enc = (a: ArrayBufferView) => {
-      const u8 = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
-      let s = '';
-      for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
-      return btoa(s);
-    };
+    const enc = (a: ArrayBufferView) => base64(new Uint8Array(a.buffer, a.byteOffset, a.byteLength));
     return JSON.stringify({
       v: 1,
       settings: this.settings, king: this.king, time: this.time, month: this.month, treasury: this.treasury, hoard: this.hoard,
@@ -608,6 +636,30 @@ export class Game {
     return g;
   }
 }
+
+const B64 = Uint8Array.from('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/', (c) => c.charCodeAt(0));
+/** standard base64 (identical to btoa over the bytes), several times faster than btoa(String.fromCharCode(...)) */
+export function base64(u8: Uint8Array): string {
+  const n = u8.length;
+  const out = new Uint8Array(Math.ceil(n / 3) * 4);
+  let k = 0, i = 0;
+  for (; i + 2 < n; i += 3) {
+    const v = (u8[i] << 16) | (u8[i + 1] << 8) | u8[i + 2];
+    out[k++] = B64[v >> 18];
+    out[k++] = B64[(v >> 12) & 63];
+    out[k++] = B64[(v >> 6) & 63];
+    out[k++] = B64[v & 63];
+  }
+  if (i < n) {
+    const v = (u8[i] << 16) | (i + 1 < n ? u8[i + 1] << 8 : 0);
+    out[k++] = B64[v >> 18];
+    out[k++] = B64[(v >> 12) & 63];
+    out[k++] = i + 1 < n ? B64[(v >> 6) & 63] : 61;
+    out[k++] = 61;
+  }
+  return ASCII.decode(out);
+}
+const ASCII = new TextDecoder('latin1');
 
 export function markBlocked(g: Game, b: Building): void {
   const def = BUILDING[b.def];

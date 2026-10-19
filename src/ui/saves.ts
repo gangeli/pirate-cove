@@ -30,14 +30,16 @@ export interface SaveMeta {
   savedAt: number;
 }
 
-export async function saveGame(slot: string, json: string): Promise<void> {
+/** `info` (game time and ruler) saves re-parsing the whole save just to label it */
+export async function saveGame(slot: string, json: string, info?: { time: number; king: string }): Promise<void> {
   try {
     const db = await open();
     const data = await gzip(json);
-    const meta = JSON.parse(json.slice(0, 0) || '{}');
-    void meta;
-    const parsed = JSON.parse(json);
-    const m: SaveMeta = { slot, date: dateOf(parsed.time), king: parsed.king?.name ?? '?', savedAt: Date.now() };
+    const parsed = info ?? (() => {
+      const d = JSON.parse(json);
+      return { time: d.time, king: d.king?.name ?? '?' };
+    })();
+    const m: SaveMeta = { slot, date: dateOf(parsed.time), king: parsed.king, savedAt: Date.now() };
     await new Promise<void>((res, rej) => {
       const tx = db.transaction(STORE, 'readwrite');
       tx.objectStore(STORE).put({ data, meta: m }, slot);

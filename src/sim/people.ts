@@ -272,14 +272,20 @@ export function updatePeople(g: Game, dt: number): void {
 function decayNeeds(g: Game, p: Person, dt: number): void {
   if (p.kind === 'skeleton' || p.kind === 'soldier') return;
   if (p.kind === 'pirate' || p.kind === 'wealthy') {
-    for (const n of PIRATE_NEEDS) p.needs[n] = Math.max(0, p.needs[n] - PIRATE_DECAY[n] * dt * (0.6 + 0.4 * (p.weights[n] ?? 1)));
-    for (const n of PIRATE_NEEDS) p.opinion[n] = (p.opinion[n] ?? 0.5) + (p.needs[n] - (p.opinion[n] ?? 0.5)) * Math.min(1, dt / 240);
+    decayPirateNeeds(p, dt, DECAY_ASHORE);
   } else {
-    p.needs.food = Math.max(0, p.needs.food - CAPTIVE_DECAY.food * dt);
-    p.needs.rest = Math.max(0, p.needs.rest - CAPTIVE_DECAY.rest * dt);
-    if (g.time - p.arrived > YEAR * 2 && g.buildingCount('church')) p.needs.prayer = Math.max(0, p.needs.prayer - CAPTIVE_DECAY.prayer * dt);
-    for (const n of ['food', 'rest', 'prayer']) p.opinion[n] = (p.opinion[n] ?? 0.5) + (p.needs[n] - (p.opinion[n] ?? 0.5)) * Math.min(1, dt / 200);
-    if (p.needs.food <= 0) {
+    const nd = p.needs, op = p.opinion;
+    nd.food = Math.max(0, nd.food - CAPTIVE_DECAY.food * dt);
+    nd.rest = Math.max(0, nd.rest - CAPTIVE_DECAY.rest * dt);
+    if (g.time - p.arrived > YEAR * 2 && g.buildingCount('church')) nd.prayer = Math.max(0, nd.prayer - CAPTIVE_DECAY.prayer * dt);
+    const k = Math.min(1, dt / 200);
+    let o = op.food ?? 0.5;
+    op.food = o + (nd.food - o) * k;
+    o = op.rest ?? 0.5;
+    op.rest = o + (nd.rest - o) * k;
+    o = op.prayer ?? 0.5;
+    op.prayer = o + (nd.prayer - o) * k;
+    if (nd.food <= 0) {
       p.hp -= dt / 240;
       if (p.hp <= 0) {
         killPerson(g, p, 'starvation');
@@ -295,11 +301,38 @@ function decayNeeds(g: Game, p: Person, dt: number): void {
  * than ashore) and the mood follows them, so crews come home wanting a run ashore.
  */
 const SEA_DECAY: Record<PirateNeed, number> = { feast: 0.5, drink: 0.5, company: 0.8, gamble: 0.5, rest: 0, stash: 0.6 };
+/** per-need decay rates, ashore and at sea (same products as PIRATE_DECAY[n] * SEA_DECAY[n]) */
+const DECAY_ASHORE = PIRATE_DECAY;
+const DECAY_SEA = Object.fromEntries(PIRATE_NEEDS.map((n) => [n, PIRATE_DECAY[n] * SEA_DECAY[n]])) as Record<PirateNeed, number>;
+/**
+ * The six pirate needs decay and the opinions drift toward them. Written out per need (named properties,
+ * not a keyed loop) because it runs for every pirate every step and keyed access is several times slower.
+ */
+function decayPirateNeeds(p: Person, dt: number, r: Record<PirateNeed, number>): void {
+  const nd = p.needs, op = p.opinion, w = p.weights;
+  const k = Math.min(1, dt / 240);
+  let o: number;
+  nd.feast = Math.max(0, nd.feast - r.feast * dt * (0.6 + 0.4 * (w.feast ?? 1)));
+  nd.drink = Math.max(0, nd.drink - r.drink * dt * (0.6 + 0.4 * (w.drink ?? 1)));
+  nd.company = Math.max(0, nd.company - r.company * dt * (0.6 + 0.4 * (w.company ?? 1)));
+  nd.gamble = Math.max(0, nd.gamble - r.gamble * dt * (0.6 + 0.4 * (w.gamble ?? 1)));
+  nd.rest = Math.max(0, nd.rest - r.rest * dt * (0.6 + 0.4 * (w.rest ?? 1)));
+  nd.stash = Math.max(0, nd.stash - r.stash * dt * (0.6 + 0.4 * (w.stash ?? 1)));
+  o = op.feast ?? 0.5;
+  op.feast = o + (nd.feast - o) * k;
+  o = op.drink ?? 0.5;
+  op.drink = o + (nd.drink - o) * k;
+  o = op.company ?? 0.5;
+  op.company = o + (nd.company - o) * k;
+  o = op.gamble ?? 0.5;
+  op.gamble = o + (nd.gamble - o) * k;
+  o = op.rest ?? 0.5;
+  op.rest = o + (nd.rest - o) * k;
+  o = op.stash ?? 0.5;
+  op.stash = o + (nd.stash - o) * k;
+}
 function seaLife(g: Game, p: Person, dt: number, slowTick: boolean): void {
-  for (const n of PIRATE_NEEDS) {
-    p.needs[n] = Math.max(0, p.needs[n] - PIRATE_DECAY[n] * SEA_DECAY[n] * dt * (0.6 + 0.4 * (p.weights[n] ?? 1)));
-    p.opinion[n] = (p.opinion[n] ?? 0.5) + (p.needs[n] - (p.opinion[n] ?? 0.5)) * Math.min(1, dt / 240);
-  }
+  decayPirateNeeds(p, dt, DECAY_SEA);
   if (slowTick) p.happiness += (pirateMood(g, p) - p.happiness) * Math.min(1, 0.5 / 20);
 }
 
@@ -315,6 +348,8 @@ function absorbEnv(g: Game, p: Person, dt: number): void {
   p.env.defense += (a.at('defense', p.x, p.y) / 100 - p.env.defense) * rate;
 }
 
+const PEACE_KEY = Object.fromEntries(NATIONS.map((n) => [n, `peace:${n}`])) as Record<Nation, string>;
+
 /** happiness: mean of six opinions (weighted), plus anarchy and defense feelings */
 export function pirateFactors(g: Game, p: Person): Record<string, number> {
   const f: Record<string, number> = {};
@@ -327,7 +362,7 @@ export function pirateFactors(g: Game, p: Person): Record<string, number> {
   if (g.ongoing.has('curfew')) anarchy -= 0.25;
   if (g.ongoing.has('loose_lips')) anarchy -= 0.1;
   if (g.ongoing.has('patrols')) anarchy -= 0.1;
-  for (const n of NATIONS) if (g.ongoing.has(`peace:${n}`) && p.nat !== n) defense -= 0.05;
+  for (const n of NATIONS) if (g.ongoing.has(PEACE_KEY[n]) && p.nat !== n) defense -= 0.05;
   for (const n of NATIONS) if (g.nations[n].invasion.stage >= 2) defense -= 0.15;
   f.anarchy = Math.max(0, Math.min(1, anarchy));
   f.defense = Math.max(0, Math.min(1, defense));

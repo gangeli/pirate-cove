@@ -245,9 +245,11 @@ export function updateEconomy(g: Game, dt: number): void {
     sweepCustomers(g);
     employ(g);
   }
-  // present-worker tallies
-  const eff = new Map<number, number>();
-  const overseer = new Set<number>();
+  // present-worker tallies (scratch collections reused across steps)
+  const eff = EFF_SCRATCH;
+  const overseer = OVERSEER_SCRATCH;
+  eff.clear();
+  overseer.clear();
   for (const p of g.people.values()) {
     const t = p.task;
     if (t.phase !== 1 || !t.bld) continue;
@@ -266,14 +268,15 @@ export function updateEconomy(g: Game, dt: number): void {
       if (p.job === t.bld && p.jobRole !== 'hauler' && p.jobRole !== 'builder') eff.set(t.bld, (eff.get(t.bld) ?? 0) + workEff(g, p, p.jobRole!));
     } else if ((t.kind === 'work' || t.kind === 'guard') && p.kind === 'pirate') overseer.add(t.bld);
   }
+  const curfew = g.ongoing.has('curfew');
   for (const b of g.buildings.values()) {
     if (b.built < 1) continue;
     const def = BUILDING[b.def];
-    const slots = def.workers.reduce((a, s) => a + (s.job === 'hauler' ? 0 : s.count), 0);
+    const slots = workSlots(def);
     if (!slots) continue;
     let e = (eff.get(b.id) ?? 0) / slots;
     if (overseer.has(b.id)) e *= 1.25;
-    if (g.ongoing.has('curfew')) e *= 1.1;
+    if (curfew) e *= 1.1;
     // works whose upkeep went unpaid last month run short of tools, nails and lamp oil
     if (g.effects.neglect) e *= 1 - 0.3 * g.effects.neglect;
     b.staff += (Math.min(1, b.workers.length / slots) - b.staff) * Math.min(1, dt / 30);
@@ -309,6 +312,16 @@ export function updateEconomy(g: Game, dt: number): void {
       }
     }
   }
+}
+
+const EFF_SCRATCH = new Map<number, number>();
+const OVERSEER_SCRATCH = new Set<number>();
+const SLOTS = new Map<string, number>();
+/** non-hauler worker slots of a building type (memoised: defs are static) */
+function workSlots(def: BuildingDef): number {
+  let n = SLOTS.get(def.id);
+  if (n === undefined) SLOTS.set(def.id, (n = def.workers.reduce((a, s) => a + (s.job === 'hauler' ? 0 : s.count), 0)));
+  return n;
 }
 
 function announceAccessory(g: Game, b: Building, good: Good): void {
@@ -393,7 +406,13 @@ function canDoJob(p: Person, job: Job): boolean {
 function employ(g: Game): void {
   const sitesAny = [...g.buildings.values()].some((x) => x.built < 1);
   // effective priority: idle builders and producers with full stores yield their workers
-  const eff = (b: Building) => b.priority - (outputFull(b) ? 2.5 : 0) - (b.def === 'construction_tent' && !sitesAny ? 3.5 : 0);
+  // nothing employ() does changes a building's priority or stores, so each value is computed once per pass
+  const effMemo = new Map<number, number>();
+  const eff = (b: Building) => {
+    let v = effMemo.get(b.id);
+    if (v === undefined) effMemo.set(b.id, (v = b.priority - (outputFull(b) ? 2.5 : 0) - (b.def === 'construction_tent' && !sitesAny ? 3.5 : 0)));
+    return v;
+  };
   const bl = [...g.buildings.values()].filter((b) => b.built >= 1 && !b.condemned).sort((a, b) => eff(b) - eff(a));
   const free: Person[] = [];
   const freePirates: Person[] = [];

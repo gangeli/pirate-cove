@@ -1,5 +1,5 @@
 import type { App } from './app';
-import { el, html, setHTML, delegate, fmt, raw } from './dom';
+import { el, html, setHTML, delegate, fmt, raw, setText, setAttr, setStyle, toggleClass } from './dom';
 import { icon } from './icons';
 import { portraitImg, parrotSvg } from './portraits';
 import type { Message } from '../sim/types';
@@ -61,11 +61,19 @@ export class Hud {
       },
     });
     // tooltips
+    let tipFor: HTMLElement | null = null, tipText = '';
     document.addEventListener('pointerover', (ev) => {
       if (ev.pointerType === 'touch') return this.tip.classList.add('hidden'); // no hover on touch screens
       const t = (ev.target as HTMLElement)?.closest?.('[data-tip]') as HTMLElement | null;
-      if (!t) return this.tip.classList.add('hidden');
-      this.tip.innerHTML = t.dataset.tip!;
+      if (!t) {
+        tipFor = null;
+        return toggleClass(this.tip, 'hidden', true);
+      }
+      // moving between children of the same tipped element: nothing to do (no re-layout)
+      if (t === tipFor && t.dataset.tip === tipText && !this.tip.classList.contains('hidden')) return;
+      tipFor = t;
+      tipText = t.dataset.tip!;
+      this.tip.innerHTML = tipText;
       this.tip.classList.remove('hidden');
       const r = t.getBoundingClientRect();
       const tw = this.tip.offsetWidth, th = this.tip.offsetHeight;
@@ -179,26 +187,65 @@ export class Hud {
     }, secs * 1000);
   }
 
+  /** top-bar elements, built once; update() only touches text and attributes that changed */
+  private topEls: Record<string, HTMLElement> | null = null;
+
+  private buildTop(): Record<string, HTMLElement> {
+    setHTML(this.top, html`
+      <div class="res" data-act="gold">${icon('coin', 24)}<div><div class="v" data-k="gold"></div><small>treasury</small></div></div>
+      <div class="res" data-tip="<b>Lumber</b><br>Total stored at your sawmills.">${icon('lumber', 24)}<div><div class="v" data-k="lumber"></div><small>lumber</small></div></div>
+      <div class="res" data-act="hoard">${icon('chest', 24)}<div><div class="v" data-k="hoard"></div><small>hoard</small></div></div>
+      <div class="res" data-act="pirates">${icon('pirate', 22)}<div><div class="v" data-k="pirates"></div><small>pirates</small></div></div>
+      <div class="res" data-act="captives" data-tip="<b>Captives</b>">${icon('captive', 22)}<div><div class="v" data-k="captives"></div><small>captives</small></div></div>
+      <div class="mood" data-act="mood">
+        <label>Happiness</label><div class="m hp"><div data-k="hap"></div></div>
+        <label>Resignation</label><div class="m rs"><div data-k="res"></div></div>
+      </div>`);
+    const q = (sel: string) => this.top.querySelector(sel) as HTMLElement;
+    const els: Record<string, HTMLElement> = {
+      goldRes: q('[data-act="gold"]'), hoardRes: q('[data-act="hoard"]'), piratesRes: q('[data-act="pirates"]'), mood: q('.mood'),
+      dv: this.clock.querySelector('.dv') as HTMLElement, dl: this.clock.querySelector('.dl') as HTMLElement,
+    };
+    for (const e of this.top.querySelectorAll<HTMLElement>('[data-k]')) els[e.dataset.k!] = e;
+    return els;
+  }
+
   update(): void {
     const g = this.app.game;
-    const pir = g.pirates();
-    const cap = g.captives().filter((c) => c.kind !== 'skeleton');
-    const hap = g.avgHappiness(), res = g.avgResignation();
-    const inc = Object.values(g.finance.lastIncome).reduce((a, b) => a + b, 0), exp = Object.values(g.finance.lastExpense).reduce((a, b) => a + b, 0);
-    setHTML(this.top, html`
-      <div class="res ${g.treasury < 0 ? 'neg' : ''}" data-act="gold" data-tip="<b>Treasury</b><br>Last month: +${fmt(inc)} / -${fmt(exp)}">${icon('coin', 24)}<div><div class="v">${fmt(g.treasury)}</div><small>treasury</small></div></div>
-      <div class="res" data-tip="<b>Lumber</b><br>Total stored at your sawmills.">${icon('lumber', 24)}<div><div class="v">${fmt(g.lumber())}</div><small>lumber</small></div></div>
-      <div class="res" data-act="hoard" data-tip="<b>Your Hoard</b><br>${g.buildingCount('cave') ? `${Math.round(g.hoardRate * 100)}% of all income is skimmed into your Pirate Cave. This is your score.` : 'Build a Pirate Cave to start your personal hoard.'}">${icon('chest', 24)}<div><div class="v">${fmt(g.hoard)}</div><small>hoard</small></div></div>
-      <div class="res" data-act="pirates" data-tip="<b>Pirates</b><br>${pir.filter((p) => p.task.kind === 'atsea').length} at sea">${icon('pirate', 22)}<div><div class="v">${pir.length}</div><small>pirates</small></div></div>
-      <div class="res" data-act="captives" data-tip="<b>Captives</b>">${icon('captive', 22)}<div><div class="v">${cap.length}</div><small>captives</small></div></div>
-      <div class="mood" data-act="mood" data-tip="<b>Pirate Happiness</b> ${Math.round(hap * 100)}%<br><b>Captive Resignation</b> ${Math.round(res * 100)}%">
-        <label>Happiness</label><div class="m hp"><div style="width:${(hap * 100).toFixed(0)}%"></div></div>
-        <label>Resignation</label><div class="m rs"><div style="width:${(res * 100).toFixed(0)}%"></div></div>
-      </div>`);
-    const dv = this.clock.querySelector('.dv')!, dl = this.clock.querySelector('.dl')!;
-    dv.textContent = g.date;
+    const e = (this.topEls ??= this.buildTop());
+    let pirates = 0, atSea = 0, hapSum = 0, captives = 0, resSum = 0, resN = 0;
+    for (const p of g.people.values()) {
+      if (p.task.kind === 'dead') continue;
+      if (p.kind === 'pirate') {
+        pirates++;
+        hapSum += p.happiness;
+        if (p.task.kind === 'atsea') atSea++;
+      } else if (p.kind === 'captive') {
+        captives++;
+        resSum += p.resignation;
+        resN++;
+      }
+    }
+    // same figures as g.avgHappiness() / g.avgResignation(), in one pass over the people
+    const hap = pirates ? hapSum / pirates : 0, res = resN ? resSum / resN : 0;
+    let inc = 0, exp = 0;
+    for (const k in g.finance.lastIncome) inc += g.finance.lastIncome[k];
+    for (const k in g.finance.lastExpense) exp += g.finance.lastExpense[k];
+    toggleClass(e.goldRes, 'neg', g.treasury < 0);
+    setAttr(e.goldRes, 'data-tip', `<b>Treasury</b><br>Last month: +${fmt(inc)} / -${fmt(exp)}`);
+    setText(e.gold, fmt(g.treasury));
+    setText(e.lumber, fmt(g.lumber()));
+    setAttr(e.hoardRes, 'data-tip', `<b>Your Hoard</b><br>${g.buildingCount('cave') ? `${Math.round(g.hoardRate * 100)}% of all income is skimmed into your Pirate Cave. This is your score.` : 'Build a Pirate Cave to start your personal hoard.'}`);
+    setText(e.hoard, fmt(g.hoard));
+    setAttr(e.piratesRes, 'data-tip', `<b>Pirates</b><br>${atSea} at sea`);
+    setText(e.pirates, String(pirates));
+    setText(e.captives, String(captives));
+    setAttr(e.mood, 'data-tip', `<b>Pirate Happiness</b> ${Math.round(hap * 100)}%<br><b>Captive Resignation</b> ${Math.round(res * 100)}%`);
+    setStyle(e.hap, 'width', `${(hap * 100).toFixed(0)}%`);
+    setStyle(e.res, 'width', `${(res * 100).toFixed(0)}%`);
+    setText(e.dv, g.date);
     const left = Math.max(0, g.settings.years - g.yearsElapsed);
-    dl.textContent = g.over ? 'reign over' : `${left.toFixed(1)} years left`;
+    setText(e.dl, g.over ? 'reign over' : `${left.toFixed(1)} years left`);
     this.updateSpeed();
     // advisor timeout
     if (this.advUntil && performance.now() > this.advUntil) this.dismissAdvisor();

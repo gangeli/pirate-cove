@@ -1,5 +1,5 @@
 import type { App } from './app';
-import { el, html, setHTML, delegate, fmt, pct, bar, raw } from './dom';
+import { el, html, patchHTML, delegate, fmt, pct, bar, raw } from './dom';
 import { icon } from './icons';
 import { BUILDING, HOUSE_LEVELS, JOB_NAMES, RANKS, PRICE_LEVELS, type PirateNeed } from '../sim/data/buildings';
 import { GOOD_NAMES, type Good } from '../sim/data/goods';
@@ -229,7 +229,7 @@ export class Inspector {
       content = this.ship(sh);
     }
     this.panel.classList.remove('hidden');
-    setHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>${content}`);
+    patchHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>${content}`);
     void force;
   }
 

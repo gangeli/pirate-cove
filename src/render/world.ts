@@ -16,6 +16,7 @@ import { BuildingsView } from './buildings';
 import { PeopleView } from './people';
 import { ShipsView } from './ships';
 import { Effects } from './effects';
+import { disposeObject, disposeComposer } from './dispose';
 
 export interface Quality {
   shadows: boolean;
@@ -105,7 +106,8 @@ export class World {
   attach(game: Game): void {
     this.game = game;
     const m = game.map;
-    for (const o of [this.terrain?.mesh, this.terrain?.skirt, this.water?.mesh, this.veg?.group, this.buildings?.group, this.people?.group, this.ships?.group, this.effects?.group]) if (o) this.scene.remove(o);
+    const prev = [this.terrain?.mesh, this.terrain?.skirt, this.water?.mesh, this.veg?.group, this.buildings?.group, this.people?.group, this.ships?.group, this.effects?.group];
+    for (const o of prev) if (o) this.scene.remove(o);
     this.terrain = new TerrainMesh(m);
     this.water = new Water(m);
     this.veg = new Vegetation(m);
@@ -113,10 +115,13 @@ export class World {
     this.people = new PeopleView(this, game);
     this.ships = new ShipsView(this, game);
     this.effects = new Effects(this, game);
+    this.roadTex = undefined; // the new terrain needs it in its own uniforms (the old one is freed below)
     this.updateRoadTex();
     this.overlayTex = undefined;
     this.setOverlay(null);
     this.scene.add(this.terrain.mesh, this.terrain.skirt, this.water.mesh, this.veg.group, this.buildings.group, this.people.group, this.ships.group, this.effects.group);
+    // free the previous game's GPU resources (cache-owned and still-used ones are kept; see dispose.ts)
+    disposeObject(prev, { keep: this.scene, renderer: this.renderer });
     this.rig.bounds = { min: 4, max: m.size - 4 };
     this.rig.heightAt = (x, z) => m.heightAt(x, z);
     const palace = game.findBuilding('palace');
@@ -128,6 +133,7 @@ export class World {
 
   private setupComposer(): void {
     const size = this.renderer.getSize(new THREE.Vector2());
+    disposeComposer(this.composer);
     const rt = new THREE.WebGLRenderTarget(size.x * this.quality.pixelRatio, size.y * this.quality.pixelRatio, { type: THREE.HalfFloatType, samples: 0 });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.rig.camera));

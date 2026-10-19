@@ -248,6 +248,7 @@ export function placeBuilding(g: Game, def: BuildingDef, pl: Placement, instant 
     }
   if (pl.autoRoad) for (const [x, y] of pl.autoRoad) m.path[m.idx(x, y)] = 1;
   g.buildings.set(id, b);
+  g.buildingsChanged();
   markBlocked(g, b);
   g.pf.invalidate();
   // anyone standing where the walls go up steps aside
@@ -266,6 +267,7 @@ export function placeBuilding(g: Game, def: BuildingDef, pl: Placement, instant 
 
 export function onBuilt(g: Game, b: Building): void {
   b.built = 1;
+  g.buildingsChanged();
   g.aura.dirty = true;
   const def = BUILDING[b.def];
   if (def.gather?.from === 'trees') b.hp = 1;
@@ -300,6 +302,7 @@ export function removeBuilding(g: Game, b: Building): void {
     if (s) s.dock = 0;
   }
   g.buildings.delete(b.id);
+  g.buildingsChanged();
   g.pf.invalidate();
   g.aura.dirty = true;
   g.events.push({ type: 'removed', id: b.id });

@@ -4,6 +4,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { assetUrl, loadTex } from './textures';
 import { M, sign, flag } from './kit';
+import { markSharedTree } from './dispose';
 
 /**
  * Building models made in Blender (scripts/blender/bld). Each GLB names its material slots after the shared
@@ -21,9 +22,12 @@ class BuildingModels {
   /** load full-detail models on demand (off on low quality: the far models are used throughout) */
   fullDetail = true;
   private loader: GLTFLoader | null = null;
+  private draco: DRACOLoader | null = null;
   private loading = new Set<string>();
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
   /** bumped whenever a full model arrives, so views can rebuild */
   stamp = 0;
+  private names = new Set<string>();
 
   /** at startup: the light far models of everything, plus the crop plants in full */
   async load(): Promise<void> {
@@ -34,14 +38,11 @@ class BuildingModels {
     } catch {
       return;
     }
-    const draco = new DRACOLoader();
-    draco.setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
-    this.loader = new GLTFLoader();
-    this.loader.setDRACOLoader(draco);
+    this.names = new Set(names);
     await Promise.all(names.map(async (name) => {
       try {
         if (name.startsWith('plant_')) return this.loadFull(name);
-        const lod = await this.loader!.loadAsync(assetUrl(`buildings/${name}_lod.glb`)).catch(() => null);
+        const lod = await this.gltf().loadAsync(assetUrl(`buildings/${name}_lod.glb`)).catch(() => null);
         if (lod) this.far.set(name, this.prepare(name + '_lod', lod.scene, new Map()));
         else await this.loadFull(name);
       } catch (e) {
@@ -49,17 +50,47 @@ class BuildingModels {
       }
     }));
     this.loaded = true;
+    this.idle();
+  }
+
+  /** the glTF loader, with Draco decoder workers spun up on demand */
+  private gltf(): GLTFLoader {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = null;
+    if (!this.loader) {
+      this.draco = new DRACOLoader();
+      this.draco.setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
+      this.draco.setWorkerLimit(2);
+      this.loader = new GLTFLoader();
+      this.loader.setDRACOLoader(this.draco);
+    }
+    return this.loader;
+  }
+
+  /** each decoder worker holds its own wasm heap: let them go once nothing has streamed in for a while */
+  private idle(): void {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      if (this.loading.size) return this.idle();
+      this.draco?.dispose();
+      this.draco = null;
+      this.loader = null;
+      this.idleTimer = null;
+    }, 8000);
   }
 
   private async loadFull(name: string): Promise<void> {
-    if (this.src.has(name) || this.loading.has(name) || !this.loader) return;
+    if (this.src.has(name) || this.loading.has(name) || !this.names.has(name)) return;
     this.loading.add(name);
     try {
-      const gltf = await this.loader.loadAsync(assetUrl(`buildings/${name}.glb`));
+      const gltf = await this.gltf().loadAsync(assetUrl(`buildings/${name}.glb`));
       this.src.set(name, this.prepare(name, gltf.scene, new Map()));
       this.stamp++;
     } catch (e) {
       console.warn('building model failed', name, e);
+    } finally {
+      this.loading.delete(name);
+      if (this.loaded) this.idle();
     }
   }
 
@@ -87,6 +118,8 @@ class BuildingModels {
     const ao = loadTex(`buildings/${name}_ao.jpg`, false, false);
     ao.channel = 1;
     ao.flipY = false;
+    // occlusion is read from the red channel only: keep it as one byte per texel, not four
+    ao.format = THREE.RedFormat;
     const matFor = (n: string): THREE.Material => {
       const base = k[n] ?? k.plaster;
       // glowing windows stay shared so night lighting reaches them all
@@ -172,6 +205,8 @@ class BuildingModels {
     if (smoke.length) out.userData.smokeList = smoke;
     // building views read these hooks off the model root
     root.userData = {};
+    // cache-owned: views clone these (sharing geometry and materials), so disposing a view must not free them
+    markSharedTree(out);
     return out;
   }
 
@@ -194,7 +229,10 @@ class BuildingModels {
         mats.push(m.material as THREE.Material);
       });
       const geo = geos.length ? mergeGeometries(geos, true) : null;
-      if (geo) out = new THREE.Mesh(geo, mats);
+      if (geo) {
+        out = new THREE.Mesh(geo, mats);
+        markSharedTree(out);
+      }
     }
     this.merged.set(name, out);
     return out;

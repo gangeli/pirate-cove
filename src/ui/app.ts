@@ -20,6 +20,9 @@ import { MainMenu } from './menu';
 import { Overlays } from './overlays';
 import { saveGame, loadGame, hasSave } from './saves';
 
+/** wall-clock milliseconds per frame the simulation may use before it starts dropping backlog */
+const SIM_BUDGET_MS = 8;
+
 export type Tool =
   | { kind: 'select' }
   | { kind: 'build'; def: string; rot: number }
@@ -55,6 +58,7 @@ export class App {
   private cursorTip: HTMLElement;
   private last = performance.now();
   private uiTick = 0;
+  private uiPhase = false;
   private autosaveAt = 0;
   private menuSpin = 0;
   quality: 'low' | 'medium' | 'high' = 'high';
@@ -193,7 +197,8 @@ export class App {
 
   async save(slot = 'auto'): Promise<void> {
     if (this.state !== 'game' || !this.game || this.game.over) return;
-    await saveGame(slot, this.game.serialize());
+    const g = this.game;
+    await saveGame(slot, g.serialize(), { time: g.time, king: g.king.name });
   }
 
   private startPlaying(): void {
@@ -540,26 +545,32 @@ export class App {
     }
     const g = this.game;
     if (!g) return;
-    if (this.state === 'game' && !this.modal.pausing) g.advance(dt);
+    // the sim gets a bounded slice of each frame, so input and rendering stay responsive at 8x
+    if (this.state === 'game' && !this.modal.pausing) g.advance(dt, SIM_BUDGET_MS);
     if (this.state === 'menu') {
       this.menuSpin += dt;
       this.world.rig.yaw = this.world.rig.yawGoal = Math.PI / 4 + this.menuSpin * 0.03;
-      g.advance(dt);
+      g.advance(dt, SIM_BUDGET_MS);
     }
     this.updateGhost();
     this.world.render(dt);
     if (this.state === 'game') {
       this.handleEvents();
+      // UI refreshes alternate between frames (HUD + inspector, then the big panels) so no frame does both
       this.uiTick += dt;
-      if (this.uiTick > 0.25) {
+      if (this.uiTick > 0.125) {
         this.uiTick = 0;
-        this.hud.update();
-        this.inspector.refresh();
-        this.build.refresh();
-        this.edicts.refresh();
-        this.log.refresh();
-        this.chart.refresh();
-        this.ambience();
+        this.uiPhase = !this.uiPhase;
+        if (this.uiPhase) {
+          this.hud.update();
+          this.inspector.refresh();
+        } else {
+          this.build.refresh();
+          this.edicts.refresh();
+          this.log.refresh();
+          this.chart.refresh();
+          this.ambience();
+        }
       }
       this.hud.minimap.draw();
       this.overlays.update();

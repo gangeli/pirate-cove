@@ -1,5 +1,5 @@
 import type { App } from './app';
-import { el, html, setHTML, delegate, fmt, pct, bar, raw } from './dom';
+import { el, html, patchHTML, delegate, fmt, pct, bar, raw } from './dom';
 import { icon } from './icons';
 import { RANKS, JOB_NAMES, BUILDING } from '../sim/data/buildings';
 import { NATIONS, NATION_NAMES, NATION_ADJ, BACKGROUNDS, QUALITIES, FLAWS } from '../sim/data/kings';
@@ -82,7 +82,7 @@ export class IslandLog {
     if (!force && (performance.now() - this.lastRefresh < 2000 || this.panel.matches(':hover'))) return;
     this.lastRefresh = performance.now();
     const body = this[this.tab]();
-    setHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>
+    patchHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>
       <h2>Island Log</h2><div class="tabs">${TABS.map(([t, n]) => html`<div class="t ${t === this.tab ? 'on' : ''}" data-act="tab:${t}">${n}</div>`)}</div>
       <div class="content scroll">${body}</div>`);
     for (const c of this.panel.querySelectorAll<HTMLCanvasElement>('canvas[data-graph]')) this.graph(c, c.dataset.graph!);

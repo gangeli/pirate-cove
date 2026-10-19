@@ -1,5 +1,5 @@
 import type { App } from './app';
-import { el, html, setHTML, delegate, raw } from './dom';
+import { el, html, patchHTML, delegate, raw } from './dom';
 import { icon } from './icons';
 import { BUILDINGS, BUILDING, CATEGORY_NAMES, JOB_NAMES, type Category } from '../sim/data/buildings';
 import { thumb } from './thumbs';
@@ -55,7 +55,7 @@ export class BuildMenu {
     this.lastRefresh = performance.now();
     const g = this.app.game;
     const list = BUILDINGS.filter((b) => b.cat === this.cat && b.id !== 'palace');
-    setHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>
+    patchHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>
       <div class="cats">${CATS.map((c) => html`<div class="cat ${c === this.cat ? 'on' : ''}" data-act="cat:${c}">${CATEGORY_NAMES[c]}</div>`)}</div>
       <div class="cards">${list.map((d) => {
         const cost = g.costOf(d);

@@ -1,4 +1,4 @@
-import type { GameMap } from './map';
+import { Terrain, type GameMap } from './map';
 
 /** Grid A* over walkable tiles; roads are cheaper. Blocked = building footprints (except allowed goal). */
 export class PathFinder {
@@ -36,8 +36,10 @@ export class PathFinder {
   cost(i: number): number {
     if (this.blocked[i]) return Infinity;
     const m = this.map;
-    const x = i % this.n, y = (i / this.n) | 0;
-    if (!m.isWalkable(x, y)) return Infinity;
+    // same as m.isWalkable(x, y) for any index on the map (out-of-range indices are not walkable)
+    if (!(i >= 0 && i < this.n * this.n)) return Infinity;
+    const t = m.terrain[i];
+    if (!(t >= Terrain.Beach && t !== Terrain.Mountain)) return Infinity;
     if (m.path[i]) return 1;
     return m.trees[i] ? 3.2 : 2.2;
   }

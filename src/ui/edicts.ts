@@ -1,5 +1,5 @@
 import type { App } from './app';
-import { el, html, setHTML, delegate } from './dom';
+import { el, html, patchHTML, delegate } from './dom';
 import { icon } from './icons';
 import { EDICTS, EDICT, EDICT_TABS, type EdictTab } from '../sim/data/edicts';
 import { NATIONS, NATION_NAMES, type Nation } from '../sim/data/kings';
@@ -106,7 +106,7 @@ export class EdictsPanel {
         <div class="row" style="justify-content:space-between"><span class="sub">${av.cost ? `${av.cost} gold` : 'free'}${e.ongoing ? ' · ongoing' : ''}${e.target !== 'none' ? ` · choose a ${e.target}` : ''}</span>
         ${active ? html`<button class="btn small red" data-act="repeal:${id}">Repeal</button>` : html`<button class="btn small ${av.ok ? 'green' : 'disabled'}" data-act="issue:${id}">Issue</button>`}</div></div>`;
     };
-    setHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>
+    patchHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>
       <h2>Royal Edicts</h2><div class="sub">Your word is law. Treasury: ${Math.round(g.treasury)} gold</div>
       <div class="tabs">${(Object.keys(EDICT_TABS) as EdictTab[]).map((t) => html`<div class="t ${t === this.tab ? 'on' : ''}" data-act="tab:${t}">${EDICT_TABS[t]}</div>`)}</div>
       <div class="content scroll"><div class="cards-grid">${list.map((e) => card(e.id))}</div></div>`);
