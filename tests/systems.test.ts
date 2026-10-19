@@ -68,8 +68,9 @@ describe('edicts', () => {
   });
 
   it('curfew and patrols raise captive resignation', () => {
-    const base = game(5);
-    const strict = game(5);
+    // a restless island, where newcomers feel the island's auras after a month rather than a year
+    const base = new Game({ seed: 5, stability: 5 }, KIDD);
+    const strict = new Game({ seed: 5, stability: 5 }, KIDD);
     strict.treasury = 99999;
     for (const id of ['curfew', 'patrols', 'informants']) expect(strict.cmd({ type: 'edict', id }).ok).toBe(true);
     base.run(MONTH * 3);

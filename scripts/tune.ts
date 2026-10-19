@@ -37,7 +37,7 @@ async function pool<T>(jobs: (() => Promise<T>)[], n = J): Promise<T[]> {
 
 function summarize(name: string, rs: any[]) {
   // RAW=<file> keeps every game's result (jsonl) for later analysis
-  if (process.env.RAW) for (const r of rs) appendFileSync(process.env.RAW, JSON.stringify({ name, ...r }) + '\n');
+  if (process.env.RAW) for (const r of rs) appendFileSync(process.env.RAW, JSON.stringify({ preset: process.env.PRESET ?? 'custom', name, ...r }) + '\n');
   const sc = rs.map((r) => r.score);
   const mean = sc.reduce((a, b) => a + b, 0) / sc.length;
   const sd = Math.sqrt(sc.reduce((a, b) => a + (b - mean) ** 2, 0) / sc.length);

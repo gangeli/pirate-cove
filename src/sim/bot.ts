@@ -1,6 +1,6 @@
 import type { Game } from './game';
 import { MONTH } from './time';
-import { BUILDING, JOB_SEX, SKILLED_ONLY, type Job } from './data/buildings';
+import { BUILDING, JOB_SEX, SKILLED_ONLY, defaultPriority, type Job } from './data/buildings';
 import { SHIPS, CAPTAIN_COST, type ShipType } from './data/ships';
 import type { Person, Ship } from './types';
 import { pirateFactors } from './people';
@@ -134,9 +134,9 @@ export class Bot {
       this.skip('lumber hold');
       return false;
     }
-    const [cx, cy] = near ?? this.centre();
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const pl = findSpot(g, d, cx, cy, 34, (p) => !pred || pred(p.x, p.y));
+    let [cx, cy] = near ?? this.centre();
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const pl = findSpot(g, d, cx, cy, attempt < 2 ? 34 : 14, (p) => !pred || pred(p.x, p.y));
       if (pl) {
         const r = g.cmd({ type: 'build', def, x: pl.x, y: pl.y, rot: pl.rot });
         if (r.ok) {
@@ -146,8 +146,20 @@ export class Bot {
         }
       }
       this.extendRoads(cx, cy);
+      // the preferred quarter is full: try somewhere else along the roads
+      if (attempt >= 1 && this.p.plan) [cx, cy] = this.someRoad() ?? [cx, cy];
     }
     return false;
+  }
+
+  /** a random tile of the road network */
+  private someRoad(): [number, number] | null {
+    const m = this.g.map, n = m.size;
+    const tiles: number[] = [];
+    for (let i = 0; i < n * n; i++) if (m.path[i]) tiles.push(i);
+    if (!tiles.length) return null;
+    const k = this.g.rng.pick(tiles);
+    return [k % n, Math.floor(k / n)];
   }
 
   /** lay a road spur from the nearest road tile toward (tx,ty) */
@@ -255,6 +267,21 @@ export class Bot {
     return (this.labourCache = { free, freeF });
   }
 
+  /** unskilled hands working in buildings below this hiring priority, whom a new building at it would poach */
+  private poachable(priority: number): { n: number; f: number } {
+    let n = 0, f = 0;
+    for (const b of this.g.buildings.values()) {
+      if (b.built < 1 || b.priority >= priority) continue;
+      for (const id of b.workers) {
+        const q = this.g.people.get(id);
+        if (!q || q.skilled) continue;
+        n++;
+        if (q.sex === 'F') f++;
+      }
+    }
+    return { n, f };
+  }
+
   /** can the island staff (most of) a new building of this kind right now? */
   private canStaff(def: string, frac = 0.75): boolean {
     if (!this.p.plan) return true;
@@ -268,7 +295,13 @@ export class Bot {
       need += s.count;
       if (JOB_SEX[s.job] === 'F') needF += s.count;
     }
-    const { free, freeF } = this.labour();
+    let { free, freeF } = this.labour();
+    // venues outrank the workshops: what they need they take from the lowest-priority jobs
+    if (d.cat === 'entertainment') {
+      const p = this.poachable(defaultPriority(d));
+      free += p.n * 0.5;
+      freeF += p.f * 0.5;
+    }
     return free >= Math.ceil(need * frac) && freeF >= Math.ceil(needF * frac);
   }
 
@@ -491,8 +524,12 @@ export class Bot {
         if (g.missingReqs(d).length) continue;
         const cost = g.costOf(d);
         if (cost.gold > 0 && g.treasury < cost.gold + 600) continue;
-        if (this.idleOne(def) || !this.canStaff(def)) continue;
+        if (this.idleOne(def) || !this.canStaff(def)) {
+          this.skip(`fun-staff:${def}`);
+          continue;
+        }
         if (this.build(def, this.dockSide())) return;
+        this.skip(`fun-place:${def}`);
       }
     }
   }
@@ -815,12 +852,15 @@ export class Bot {
     const small = SHIPS[s.type].cannons <= 8;
     const errandBoys = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons <= 8 && x.captain).length;
     const { free } = this.labour();
-    const capTarget = 30 + g.yearsElapsed * 10;
+    // about a captive per pirate and then some: nearly every venue and kitchen job is a woman's, so hands
+    // run short long before the island looks crowded
+    const capTarget = Math.max(30 + g.yearsElapsed * 10, g.pirates().length * 1.3);
     const caps = g.captives().length;
     const raidingNow = [...g.ships.values()].filter((x) => x !== s && x.status !== 'docked' && x.mission === 'raid').length;
     // raiding a power that knows where we are and already hates us invites an invasion
     const safe = NATIONS.some((n) => !g.ongoing.has(`peace:${n}`) && (!g.nations[n].knows || g.nations[n].relation > -35));
-    const raiding = safe ? raidingNow : 1;
+    // one raid at a time, two when the island is desperate for hands
+    const raiding = !safe ? 1 : free < 2 ? Math.max(0, raidingNow - 1) : raidingNow;
     const target = this.kidnapTarget();
     // the trader comes first when money is short: a smuggler's cove is the cheapest income there is.
     // Other kidnappings cost 250 that the next warship and her captain may need more.
