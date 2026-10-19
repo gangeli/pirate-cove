@@ -87,7 +87,7 @@ class BuildingModels {
         mesh.receiveShadow = true;
         if (Array.isArray(mesh.material)) mesh.material = mesh.material.map((m) => matFor(m.name));
         else mesh.material = matFor(mesh.material.name);
-      } else if (o.name === 'smoke' || o.name.startsWith('sign:') || o.name === 'flag' || o.name.startsWith('smoke')) markers.push(o);
+      } else if (/^(smoke|sign:|flag|glow|hull$|deck$)/.test(o.name)) markers.push(o);
     });
     const out = new THREE.Group();
     out.add(root);
@@ -106,13 +106,24 @@ class BuildingModels {
         s.position.x += 0.02;
         back.position.x -= 0.02;
         out.add(s, back);
-      } else if (m.name === 'flag') {
+      } else if (m.name.startsWith('glow')) {
+        // glow:WxHxD - a box of embers or furnace mouth that flickers (see BuildingsView)
+        const [w, h, d] = (m.name.split(':')[1] ?? '0.3x0.2x0.3').split('x').map(Number);
+        const gl = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), (M() as any).fire.clone());
+        gl.position.copy(p);
+        gl.userData.glow = true;
+        out.add(gl);
+      } else if (m.name === 'hull') out.userData.hull = p;
+      else if (m.name === 'deck') out.userData.deckY = p.y;
+      else if (m.name.startsWith('flag')) {
         const f = flag(M().flagBlack, 0.01);
         f.position.copy(p);
         out.add(f);
       }
     }
     if (smoke.length) out.userData.smokeList = smoke;
+    // building views read these hooks off the model root
+    root.userData = {};
     return out;
   }
 
@@ -124,6 +135,7 @@ class BuildingModels {
     const s = this.src.get(name);
     if (!s) return null;
     const near = s.clone(true);
+    near.userData = {};
     const farSrc = this.far.get(name);
     const g = new THREE.Group();
     const force = location.search.match(/[?&]lod=(near|far)/)?.[1];
@@ -134,6 +146,8 @@ class BuildingModels {
       if (force === 'far') near.visible = false;
       g.add(lod);
     } else g.add(near);
+    if (s.userData.hull) g.userData.hull = (s.userData.hull as THREE.Vector3).clone();
+    if (s.userData.deckY !== undefined) g.userData.deckY = s.userData.deckY;
     const list = s.userData.smokeList as THREE.Vector3[] | undefined;
     if (list?.length) {
       // the buildings view reads one smoke point per object; hang each on its own empty

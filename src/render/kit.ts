@@ -85,7 +85,7 @@ function makeMats() {
     iron: new THREE.MeshStandardMaterial({ color: 0x2a2a2c, roughness: 0.45, metalness: 0.8 }),
     gold: new THREE.MeshStandardMaterial({ color: 0xd4a640, roughness: 0.3, metalness: 1 }),
     brass: new THREE.MeshStandardMaterial({ color: 0xb08a40, roughness: 0.35, metalness: 0.9 }),
-    canvas: sail('#ffffff'),
+    canvas: sail('#ddd2b8'),
     canvasRed: new THREE.MeshStandardMaterial({ map: stripes('#a8322a', '#e8d8b8'), roughness: 0.95, side: THREE.DoubleSide }),
     canvasBlue: new THREE.MeshStandardMaterial({ map: stripes('#2a4a8a', '#e8d8b8'), roughness: 0.95, side: THREE.DoubleSide }),
     canvasGreen: new THREE.MeshStandardMaterial({ map: stripes('#3a6a3a', '#e0d0a8'), roughness: 0.95, side: THREE.DoubleSide }),
