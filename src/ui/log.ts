@@ -4,7 +4,7 @@ import { icon } from './icons';
 import { RANKS, JOB_NAMES, BUILDING } from '../sim/data/buildings';
 import { NATIONS, NATION_NAMES, NATION_ADJ, BACKGROUNDS, QUALITIES, FLAWS } from '../sim/data/kings';
 import { SHIPS, MISSION_NAMES } from '../sim/data/ships';
-import { computeScore } from '../sim/score';
+import { computeScore, medalThresholds } from '../sim/score';
 import { relationLevel } from '../sim/diplomacy';
 import { activityText } from './inspector';
 import { audio } from '../audio/audio';
@@ -112,7 +112,7 @@ export class IslandLog {
         <table class="ledger"><tr><td>Hoard</td><td>${fmt(s.hoard)}</td></tr><tr><td>Pirate happiness</td><td>${fmt(s.happiness)}</td></tr><tr><td>Fleet</td><td>${fmt(s.fleet)}</td></tr>
         <tr><td>Captains</td><td>${fmt(s.captains)}</td></tr><tr><td>Pirates</td><td>${fmt(s.pirates)}</td></tr><tr><td>Bonus objective: ${s.bonusKey}</td><td>×3</td></tr>
         <tr><td>Difficulty</td><td>${Math.round(s.difficulty * 100)}%</td></tr><tr><td><b>Total</b></td><td><b>${fmt(s.total)}</b> (${s.medal})</td></tr></table>
-        <div class="sub">Gold medal at 25,000 points, silver at 15,000.</div></div>
+        <div class="sub">For a ${g.settings.years}-year reign: gold medal at ${fmt(medalThresholds(g.settings.years).gold)} points, silver at ${fmt(medalThresholds(g.settings.years).silver)}.</div></div>
       <div><h3 style="margin-top:0">Your Hoard</h3>
         <div style="font-size:15px">${g.buildingCount('cave') ? html`Skimming <b>${Math.round(g.hoardRate * 100)}%</b> of all income into your cave. The treasury pays for everything else.` : 'Build a Pirate Cave to start your hoard. The hoard is your score.'}</div>
         <div class="row" style="margin-top:4px">${[0, 0.05, 0.1, 0.15, 0.2, 0.25].map((v) => html`<button class="btn small ${Math.abs(g.hoardRate - v) < 0.001 ? 'on' : ''}" data-act="hoard:${v}">${Math.round(v * 100)}%</button>`)}</div>

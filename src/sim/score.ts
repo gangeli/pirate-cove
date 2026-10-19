@@ -20,9 +20,9 @@ export interface ScoreBreakdown {
  * (scripts/tune.ts calibrate): silver is about what a competent reign earns, gold what the best reigns
  * earn; a casual reign is usually bronze.
  */
-export const MEDALS = { gold: 25000, silver: 15000 } as const;
+export const MEDALS = { gold: 130000, silver: 75000 } as const;
 /** how the score grows with the length of the reign (the hoard compounds), fitted to bot games */
-export const REIGN_GROWTH = 1.6;
+export const REIGN_GROWTH = 1.4;
 
 /** medal cut-offs for a reign of this many years */
 export function medalThresholds(years: number): { gold: number; silver: number } {
