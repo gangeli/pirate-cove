@@ -327,7 +327,7 @@ def clapboard(k: Kit, w, d, h, mat, ops, t=0.07, y0=0.0, trim='darkwood'):
         for (x0, x1, a, b) in wall_segments(L, h, mine):
             k.box('planks' if k.lod and mat == 'planks' else ('oldplanks' if k.lod else 'planksDark'), x1 - x0, b - a, t - 0.02, (x0 + x1) / 2, a, -t / 2 - 0.01, wuv=k.lod, uvscale=1.2)
         rows = 0 if k.lod else max(3, round(h / 0.1))
-        bh = h / rows
+        bh = h / max(1, rows)
         for r in range(rows):
             y = r * bh
             cuts = [(-L / 2, L / 2)]
