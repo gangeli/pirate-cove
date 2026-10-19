@@ -96,6 +96,7 @@ class BuildingModels {
     if (bare) return out;
     const smoke: THREE.Vector3[] = [];
     for (const m of markers) {
+      m.name = m.name.replace(/\.\d{3}$/, ''); // blender suffixes duplicate names (smoke.001)
       const p = m.getWorldPosition(new THREE.Vector3());
       if (m.name.startsWith('smoke')) smoke.push(p);
       else if (m.name.startsWith('sign:')) {
