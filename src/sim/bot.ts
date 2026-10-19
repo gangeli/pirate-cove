@@ -224,6 +224,7 @@ export class Bot {
     // decisions twice a month; ships every few seconds
     if (this.p.exploit === 'idle') return;
     if (this.tick % 20 === 0 && this.p.exploit !== 'nofleet') this.ships();
+    if (this.tick % 20 === 10 && this.p.plan) this.watchVenues();
     const slot = Math.floor(g.time / (MONTH * this.p.cadence));
     if (slot === this.lastMonth) return;
     this.lastMonth = slot;
@@ -236,6 +237,17 @@ export class Bot {
     if (this.p.exploit === 'enddump') this.endDump();
     // the final year: every coin into festivals, to buy the happiness average
     if (this.p.exploit === 'festspam' && g.yearsElapsed > g.settings.years - 1 && g.edictAvailability('festival').ok) g.cmd({ type: 'edict', id: 'festival' });
+  }
+
+  /** running occupancy of each venue (0..1), sampled every couple of seconds */
+  private busy = new Map<number, number>();
+  private watchVenues(): void {
+    for (const b of this.g.buildings.values()) {
+      const sv = BUILDING[b.def].service;
+      if (!sv || b.built < 1) continue;
+      const now = Math.min(1, b.customers.length / sv.capacity);
+      this.busy.set(b.id, (this.busy.get(b.id) ?? now) * 0.98 + now * 0.02);
+    }
   }
 
   // ------------------------------------------------------------------------------------------- labour
@@ -332,7 +344,19 @@ export class Bot {
     // pirates should pay for their fun, but not more than they have
     const wealth = ashore ? ashoreP.reduce((a, p) => a + p.gold, 0) / ashore : 0;
     const level = this.p.exploit === 'gouge' ? 2 : Math.max(0, Math.min(2, (wealth > 120 ? 2 : wealth > 35 ? 1 : 0) + this.p.priceBias));
-    for (const b of g.buildings.values()) if (BUILDING[b.def].service && b.price !== level) g.cmd({ type: 'setPrice', id: b.id, price: level });
+    // a planner prices each venue for its own customers: the dives and huts for the typical purse, the
+    // upmarket houses for the pirates who can afford them. The crews' shares come back through the till
+    // instead of vanishing into their stashes
+    const purses = ashoreP.map((p) => p.gold).sort((a, b) => a - b);
+    const median = purses.length ? purses[purses.length >> 1] : 0;
+    const bump = (x: number) => Math.max(0, Math.min(2, x + this.p.priceBias));
+    const low = bump(median > 60 ? 2 : median > 15 ? 1 : 0), high = bump(wealth > 90 ? 2 : wealth > 25 ? 1 : 0);
+    for (const b of g.buildings.values()) {
+      const sv = BUILDING[b.def].service;
+      if (!sv) continue;
+      const want = this.p.plan && this.p.exploit !== 'gouge' ? (sv.ranks[0] <= 1 ? low : high) : level;
+      if (b.price !== want) g.cmd({ type: 'setPrice', id: b.id, price: want });
+    }
     // hoard
     if (!this.count('cave') && g.treasury > 400) this.build('cave');
     // a planner skims harder once the treasury is flush: gold left in it at the end is worth nothing
@@ -407,7 +431,11 @@ export class Bot {
       this.say('recruited a captain');
     }
     // fear when captives run
-    if (this.p.fear && (g.effects.recentEscapes > 0.8 || g.avgResignation() < 0.4)) {
+    // (a planner keeps a big stockade cowed before it boils over: rebellions grow with the captive count)
+    const restless = this.p.plan ? g.avgResignation() < (cap > 120 ? 0.47 : 0.42) : g.avgResignation() < 0.4;
+    if (this.p.plan && cap > 120 && g.avgResignation() < 0.45 && !g.ongoing.has('patrols') && g.treasury > 1500) g.cmd({ type: 'edict', id: 'patrols' });
+    if (this.p.plan && cap > 150 && !this.count('interrogation') && g.treasury > 1200) this.build('interrogation', this.workSide());
+    if (this.p.fear && (g.effects.recentEscapes > 0.8 || restless)) {
       if (!this.count('gallows')) this.build('gallows', this.workSide());
       else if (this.count('watch_tower') < 2 + g.yearsElapsed / 2) this.build('watch_tower', this.workSide());
       else if (this.count('very_scary_decor') < 6) this.build('very_scary_decor', this.workSide());
@@ -547,11 +575,37 @@ export class Bot {
       if (!sv) continue;
       for (const n in sv.needs) if (n in seats) seats[n] += sv.capacity * (b.built >= 1 && !b.workers.length ? 0.2 : 1);
     }
+    const level0: Record<string, number> = Object.fromEntries(needs);
+    // a venue nobody visits gives its hands back to the workshops (lower hiring priority) until custom returns
+    for (const b of g.buildings.values()) {
+      const sv = BUILDING[b.def].service;
+      if (!sv || b.built < 1) continue;
+      const busy = this.busy.get(b.id);
+      if (busy === undefined) continue;
+      // (only while the pirates are not short of what it serves: then it reopens)
+      const lvl = Math.min(...Object.keys(sv.needs).filter((n) => n in level0).map((n) => level0[n]));
+      const want = busy < 0.08 && lvl > 0.5 ? 2 : busy > 0.25 || lvl < 0.4 ? defaultPriority(BUILDING[b.def]) : b.priority;
+      if (want !== b.priority) g.cmd({ type: 'setPriority', id: b.id, priority: want });
+    }
+    // how full the venues serving each need have been lately: an empty venue means the pirates can't
+    // afford it or can't reach it, not that another one is wanted
+    const used: Record<string, [number, number]> = { feast: [0, 0], drink: [0, 0], company: [0, 0], gamble: [0, 0] };
+    for (const b of g.buildings.values()) {
+      const sv = BUILDING[b.def].service;
+      if (!sv || b.built < 1 || !b.workers.length) continue;
+      for (const n in sv.needs) if (n in used) (used[n][0] += (this.busy.get(b.id) ?? 0.5) * sv.capacity), (used[n][1] += sv.capacity);
+    }
     for (const [need, lvl] of needs) {
       // company is served one at a time, so it needs more venues per seat
       const perSeat = need === 'company' ? 3.5 : 5;
-      if (lvl > 0.62 && seats[need] * perSeat >= ashoreP.length * 0.6 * E) continue;
+      const scarce = seats[need] * perSeat < ashoreP.length * 0.6 * E;
+      if (lvl > 0.62 && !scarce) continue;
       if (seats[need] * perSeat >= ashoreP.length * 1.6 * E) continue;
+      const busy = used[need][1] ? used[need][0] / used[need][1] : 1;
+      if (!scarce && busy < 0.4) {
+        this.skip(`fun-idle:${need}`);
+        continue;
+      }
       for (const def of VENUES[need]) {
         const d = BUILDING[def];
         const [lo, hi] = d.service!.ranks;

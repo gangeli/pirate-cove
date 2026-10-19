@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Game, MONTH } from '../src/sim/game';
 import { KINGS } from '../src/sim/data/kings';
 import { PRESETS } from '../src/sim/presets';
-import { computeScore } from '../src/sim/score';
+import { computeScore, medalThresholds } from '../src/sim/score';
 import { SHIPS, CAPTAIN_COST } from '../src/sim/data/ships';
 import { edictCost } from '../src/sim/edicts';
 import { createShip } from '../src/sim/people';
@@ -149,6 +149,18 @@ describe('placement', () => {
     expect(last.ok).toBe(false);
     expect(last.reason).toMatch(/wall off/);
     void n;
+  });
+});
+
+describe('medals', () => {
+  it('cut-offs grow with the length of the reign, silver below gold', () => {
+    let prev = 0;
+    for (const years of [10, 20, 30]) {
+      const m = medalThresholds(years);
+      expect(m.silver).toBeLessThan(m.gold);
+      expect(m.silver).toBeGreaterThan(prev);
+      prev = m.silver;
+    }
   });
 });
 

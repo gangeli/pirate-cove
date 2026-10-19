@@ -101,6 +101,9 @@ export function regionReachable(g: Game, s: Ship, region: number): { ok: boolean
   return { ok: true };
 }
 
+/** pirates this miserable won't answer a ship's bell until they've had their fun ashore */
+export const SULK = 0.28;
+
 // --------------------------------------------------------------------------------------------- crews
 
 export function assignCrews(g: Game): void {
@@ -366,7 +369,7 @@ export function updateShips(g: Game, dt: number): void {
         loadDockStores(g, s);
         const crewAboard = [s.captain, ...s.crew].every((id) => {
           const p = g.people.get(id);
-          return !p || p.task.kind === 'atsea' || p.mood === 'disgruntled';
+          return !p || p.task.kind === 'atsea' || p.mood === 'disgruntled' || p.happiness < SULK;
         });
         if (crewAboard || g.time - (s.bell ?? 0) > MONTH * 0.6) depart(g, s, true);
         break;
@@ -737,6 +740,9 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
     courage: crew.reduce((a, p) => a + p.traits.courage, 0) / Math.max(1, crew.length), leadership: cap?.traits.leadership ?? 3,
     notoriety: cap?.traits.notoriety ?? 2, seaman: cap?.skills.seamanship ?? 2, speed: d.speed * (g.has('craftiness') ? 1.1 : 1),
   };
+  // a happy crew fights; a sullen one that never gets a run ashore holds back and breaks sooner
+  const spirit = crew.length ? crew.reduce((a, p) => a + p.happiness, 0) / crew.length : 0.5;
+  const heart = 0.75 + 0.5 * spirit;
   const naval = prey.naval;
   const them: Side = {
     crew: Math.round(prey.crew * g.rng.range(0.8, 1.2)), fighting: 0, cannons: prey.cannons, muskets: Math.round(prey.crew * (naval ? 0.8 : 0.3)),
@@ -801,7 +807,7 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
   for (let round = 0; round < (struck ? 0 : 14); round++) {
     if (round === 0 || (!boarding && (s.orders !== 'board'))) {
       // gunnery exchange
-      const ourHits = Math.min(us.cannons, us.fighting * 2) * (0.15 + us.gun * 0.05) * g.rng.range(0.6, 1.4);
+      const ourHits = Math.min(us.cannons, us.fighting * 2) * (0.15 + us.gun * 0.05) * g.rng.range(0.6, 1.4) * (0.85 + 0.3 * spirit);
       const theirHits = Math.min(them.cannons, them.fighting * 2) * (0.15 + them.gun * 0.05) * g.rng.range(0.6, 1.4);
       const harass = s.orders === 'harass' && round > 0;
       if (harass) {
@@ -824,13 +830,13 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
     }
     if (boarding) {
       const ourArmed = Math.min(us.fighting, us.cutlasses);
-      const ourBlows = ourArmed * (0.25 + us.sword * 0.07) + (us.fighting - ourArmed) * 0.08;
+      const ourBlows = (ourArmed * (0.25 + us.sword * 0.07) + (us.fighting - ourArmed) * 0.08) * heart;
       const theirBlows = them.fighting * (0.2 + them.sword * 0.06) * (naval || prey.id === 'pirate' ? 1 : 0.5);
       theirDead += kill(them, ourBlows * g.rng.range(0.6, 1.3) * 0.5);
       ourDead += kill(us, theirBlows * g.rng.range(0.6, 1.3) * 0.45);
     }
     // morale
-    const ourMorale = us.courage + us.leadership * 0.4 - them.notoriety * 0.5;
+    const ourMorale = us.courage + us.leadership * 0.4 - them.notoriety * 0.5 + (spirit - 0.5) * 6;
     const theirMorale = them.courage + them.leadership * 0.4 - us.notoriety * 0.7 + (naval ? 1 : 0);
     const loss = (side: Side, morale: number) => {
       const casualtyShock = 1 - side.crew / Math.max(1, side.crew + (side === us ? ourDead : theirDead));

@@ -16,10 +16,20 @@ export interface ScoreBreakdown {
 }
 
 /**
- * Medal cut-offs for the final score (difficulty applied). Calibrated from bot games (scripts/tune.ts):
- * silver is what a competent reign typically earns, gold what the best reigns earn.
+ * Medal cut-offs for the final score of a 20-year reign (difficulty applied). Calibrated from bot games
+ * (scripts/tune.ts calibrate): silver is about what a competent reign earns, gold what the best reigns
+ * earn; a casual reign is usually bronze.
  */
 export const MEDALS = { gold: 25000, silver: 15000 } as const;
+/** how the score grows with the length of the reign (the hoard compounds), fitted to bot games */
+export const REIGN_GROWTH = 1.6;
+
+/** medal cut-offs for a reign of this many years */
+export function medalThresholds(years: number): { gold: number; silver: number } {
+  const k = Math.pow(Math.max(1, years) / 20, REIGN_GROWTH);
+  const r = (x: number) => Math.round((x * k) / 500) * 500;
+  return { gold: r(MEDALS.gold), silver: r(MEDALS.silver) };
+}
 
 const SHIP_VALUE = { snow: 300, schooner: 450, sloop: 700, brigantine: 1000, frigate: 1800, galleon: 2200 } as const;
 
@@ -51,9 +61,10 @@ export function computeScore(g: Game): ScoreBreakdown {
   const bonusKey = g.settings.bonus;
   const subtotal = parts.hoard + parts.happiness + parts.fleet + parts.captains + parts.pirates + (parts as any)[bonusKey] * 2;
   const total = Math.max(0, Math.round(subtotal * g.difficulty));
+  const medals = medalThresholds(g.settings.years);
   return {
     ...Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, Math.round(v)])) as any,
     bonusKey, subtotal: Math.round(subtotal), difficulty: g.difficulty, total,
-    medal: total >= MEDALS.gold ? 'gold' : total >= MEDALS.silver ? 'silver' : 'bronze',
+    medal: total >= medals.gold ? 'gold' : total >= medals.silver ? 'silver' : 'bronze',
   };
 }

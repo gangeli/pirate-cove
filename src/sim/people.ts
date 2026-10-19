@@ -6,6 +6,7 @@ import { NATIONS, type Nation } from './data/kings';
 import { personName, CAPTAIN_NAMES, SHIP_NAMES } from './names';
 import { SHIPS, type ShipType } from './data/ships';
 import { workerTask, haulerTask, builderTask, haulStep } from './economy';
+import { SULK } from './sea';
 import { Terrain } from './map';
 
 const PIRATE_NEEDS: PirateNeed[] = ['feast', 'drink', 'company', 'gamble', 'rest', 'stash'];
@@ -238,7 +239,7 @@ export function updatePeople(g: Game, dt: number): void {
       if (!p.ship && p.task.timer !== undefined) {
         p.task.timer -= dt;
         if (p.task.timer <= 0) returnFromCaptivity(g, p);
-      }
+      } else if (p.ship && p.kind === 'pirate') seaLife(g, p, dt, slowTick);
       continue;
     }
     decayNeeds(g, p, dt);
@@ -288,6 +289,20 @@ function decayNeeds(g: Game, p: Person, dt: number): void {
   }
 }
 
+/**
+ * Life aboard: biscuit and grog keep hunger and thirst at bay for a while and the hammocks are fine, but
+ * there is no company, no game worth the name and no hoard to tend. Needs run down at sea (more slowly
+ * than ashore) and the mood follows them, so crews come home wanting a run ashore.
+ */
+const SEA_DECAY: Record<PirateNeed, number> = { feast: 0.5, drink: 0.5, company: 0.8, gamble: 0.5, rest: 0, stash: 0.6 };
+function seaLife(g: Game, p: Person, dt: number, slowTick: boolean): void {
+  for (const n of PIRATE_NEEDS) {
+    p.needs[n] = Math.max(0, p.needs[n] - PIRATE_DECAY[n] * SEA_DECAY[n] * dt * (0.6 + 0.4 * (p.weights[n] ?? 1)));
+    p.opinion[n] = (p.opinion[n] ?? 0.5) + (p.needs[n] - (p.opinion[n] ?? 0.5)) * Math.min(1, dt / 240);
+  }
+  if (slowTick) p.happiness += (pirateMood(g, p) - p.happiness) * Math.min(1, 0.5 / 20);
+}
+
 function absorbEnv(g: Game, p: Person, dt: number): void {
   if (g.time - p.arrived < g.auraDelay()) return;
   if (p.kind === 'skeleton') return;
@@ -319,7 +334,8 @@ export function pirateFactors(g: Game, p: Person): Record<string, number> {
   return f;
 }
 
-function updatePirateMood(g: Game, p: Person, dt: number): void {
+/** the happiness a pirate's needs and surroundings add up to (weighted mean of the factors) */
+function pirateMood(g: Game, p: Person): number {
   const f = pirateFactors(g, p);
   let tot = 0, wsum = 0;
   for (const n of PIRATE_NEEDS) {
@@ -329,7 +345,11 @@ function updatePirateMood(g: Game, p: Person, dt: number): void {
   }
   tot += f.anarchy * 1.2 + f.defense * 1.0;
   wsum += 2.2;
-  let h = tot / wsum;
+  return tot / wsum;
+}
+
+function updatePirateMood(g: Game, p: Person, dt: number): void {
+  let h = pirateMood(g, p);
   if (p.kind === 'wealthy') {
     p.happiness = h;
     return;
@@ -571,7 +591,7 @@ function thinkPirate(g: Game, p: Person): void {
     p.mood = 'disgruntled';
   }
   // ship bell (disgruntled pirates refuse to sail)
-  if (p.ship && p.mood !== 'disgruntled') {
+  if (p.ship && p.mood !== 'disgruntled' && (p.happiness >= SULK || p.captain)) {
     const s = g.ships.get(p.ship);
     if (s && s.status === 'boarding' && s.dock) {
       const d = g.buildings.get(s.dock);
@@ -767,10 +787,11 @@ function arrive(g: Game, p: Person): void {
       if (p.kind === 'soldier' || p.rebel) {
         // reached palace door
         const palace = g.findBuilding('palace');
+        // the palace guard holds the door, and so does any pirate fighting close by
         const guards = palace ? palace.guards.filter((id) => {
           const q = g.people.get(id);
           return q && q.task.kind !== 'dead' && Math.hypot(q.x - p.x, q.y - p.y) < 12;
-        }).length : 0;
+        }).length + [...g.people.values()].filter((q) => q.kind === 'pirate' && q.task.kind === 'fight' && !palace.guards.includes(q.id) && Math.hypot(q.x - palace.door[0], q.y - palace.door[1]) < 8).length * 0.5 : 0;
         const attackers = [...g.people.values()].filter((q) => (q.kind === 'soldier' || q.rebel) && q.task.kind !== 'dead' && palace && Math.hypot(q.x - palace.door[0], q.y - palace.door[1]) < 4).length;
         if (attackers >= 5 && attackers > guards * 2 + 1) {
           g.endGame(false, p.kind === 'soldier' ? 'Enemy soldiers have stormed your palace. You will hang in Port Royal.' : 'The captives have stormed the palace. You are now their prisoner!');

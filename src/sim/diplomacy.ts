@@ -71,7 +71,8 @@ export function monthlyDiplomacy(g: Game): void {
     const inv = st.invasion;
     const protectedBy = pat !== null && !g.ongoing.has('jolly_roger');
     if (inv.stage === 0) {
-      if (st.knows && !protectedBy && g.time > MONTH * 6) {
+      const appeased = g.ongoing.has(`peace:${n}`) && st.relation > -45;
+      if (st.knows && !protectedBy && !appeased && g.time > MONTH * 6) {
         const p = st.relation < -50 ? 0.12 : st.relation < -15 ? 0.03 : 0;
         if (g.rng.chance(p)) {
           inv.stage = 1;
@@ -80,7 +81,9 @@ export function monthlyDiplomacy(g: Game): void {
         }
       }
     } else if (inv.stage === 1 || inv.stage === 2) {
-      if (st.relation > -15 || protectedBy) {
+      // a fresh promise of peace buys time: a Power you are at peace with stands its fleet down unless
+      // it still hates you
+      if (st.relation > -15 || protectedBy || (g.ongoing.has(`peace:${n}`) && st.relation > -45)) {
         inv.stage = 0;
         g.msg('good', 'Crisis Averted', `${NATION_NAMES[n]} has called off its plans against you.`, 'invasion_cancelled');
         continue;

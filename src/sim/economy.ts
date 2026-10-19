@@ -487,7 +487,8 @@ function employ(g: Game): void {
     // building-specific haulers
     const nh = def.haulers ?? 0;
     while (b.haulers.filter((id) => g.people.get(id)?.jobRole === 'hauler').length < nh) {
-      const p = take(b, 'hauler');
+      // a workshop with hands but nobody to fetch its inputs makes nothing: haulers are poached like workers
+      const p = take(b, 'hauler') ?? poach(b, 'hauler');
       if (!p) break;
       p.job = b.id;
       p.jobRole = 'hauler';
