@@ -69,7 +69,7 @@ export class BuildMenu {
         const afford = (cost.gold === 0 || g.treasury >= cost.gold) && g.lumber() >= cost.lumber;
         const lock = miss.length ? (miss[0] === 'unique' ? 'Built' : 'Locked') : '';
         const tip = `<b>${d.name}</b><br>${d.desc}${d.workers.length ? `<br><i>Staff: ${d.workers.map((w) => `${w.count} ${JOB_NAMES[w.job]}`).join(', ')}${d.overseer ? ', overseer' : ''}${d.guards ? `, ${d.guards} guards` : ''}</i>` : ''}${d.upkeep ? `<br>Upkeep ${d.upkeep}/month` : ''}${miss.length && miss[0] !== 'unique' ? `<br><span style="color:#ff9070">Requires a skilled ${miss.map((m) => JOB_NAMES[m as keyof typeof JOB_NAMES] ?? m).join(', ')}</span>` : ''}`;
-        return html`<div class="bcard ${lock || !afford ? 'disabled' : ''}" data-act="pick:${d.id}" data-tip="${raw(tip)}">
+        return html`<div class="bcard ${lock || !afford ? 'disabled' : ''}" data-act="pick:${d.id}" data-tip="${tip}">
           ${lock ? html`<span class="lock">${lock}</span>` : ''}
           ${d.id === 'road' ? html`<div style="height:80px;display:grid;place-items:center">${icon('road', 54)}</div>` : html`<img src="${thumbOrQueue(this.app.world, d.id, this.onThumb) ?? THUMB_PLACEHOLDER}" data-thumb="${d.id}" alt="">`}
           <div class="nm">${d.name}</div>

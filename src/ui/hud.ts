@@ -105,7 +105,7 @@ export class Hud {
       ['menu', 'wheel', 'Esc', '<b>Game Menu</b><br>Save, load and settings.'],
     ];
     setHTML(this.bar, html`
-      ${tools.map(([id, ic, k, tip]) => html`<div class="tool" data-act="tool:${id}" data-tool="${id}" data-tip="${raw(tip)}">${icon(ic, 26)}${k ? html`<span class="key">${k}</span>` : ''}</div>`)}
+      ${tools.map(([id, ic, k, tip]) => html`<div class="tool" data-act="tool:${id}" data-tool="${id}" data-tip="${tip}">${icon(ic, 26)}${k ? html`<span class="key">${k}</span>` : ''}</div>`)}
 `);
     setHTML(this.clock, html`
       <div class="speed">

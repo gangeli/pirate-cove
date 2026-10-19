@@ -83,16 +83,16 @@ await step('open build menu (B)', async () => {
   await p.waitForTimeout(800);
   await shot(p, 'play_build');
 });
-await step('pick a tavern and place it', async () => {
+await step('pick a gambling den and place it', async () => {
   await p.click('.cat[data-act="cat:entertainment"]', { timeout: 300000 });
   await p.waitForTimeout(600);
   const ok = await p.evaluate(() => {
-    const el = [...document.querySelectorAll('[data-act^="pick:"], [data-act^="build:"]')].find((e) => /tavern/i.test(e.getAttribute('data-act') ?? '') || /tavern/i.test(e.textContent ?? ''));
+    const el = [...document.querySelectorAll('[data-act^="pick:"], [data-act^="build:"]')].find((e) => /gambling/i.test(e.getAttribute('data-act') ?? '') || /gambling/i.test(e.textContent ?? ''));
     if (!el) return false;
     el.click();
     return true;
   });
-  if (!ok) throw new Error('no tavern button in the build menu');
+  if (!ok) throw new Error('no gambling den button in the build menu');
   await p.waitForTimeout(600);
   // sweep the cursor around the screen centre until a placement is accepted
   const before = (await gameState(p)).buildings;
