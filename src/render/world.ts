@@ -129,6 +129,9 @@ export class World {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     // the shadow map is redrawn on demand (view moved, or at quality.shadowHz), not on every render call
     this.renderer.shadowMap.autoUpdate = false;
+    // reading the compile log after every link stalls the thread until the driver finishes each shader in turn;
+    // release builds skip it (and so let shaders compile in parallel), ?shadercheck turns it back on
+    this.renderer.debug.checkShaderErrors = !import.meta.env.PROD || location.search.includes('shadercheck');
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
     this.rig = new CameraRig(canvas);
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -242,6 +245,16 @@ export class World {
     this.setupComposer();
     const wu = this.water.uniforms;
     (wu.uSunDir.value as THREE.Vector3).copy(this.sunDir);
+  }
+
+  /** compile every material in the scene off the main thread (KHR_parallel_shader_compile), so the first
+   *  frames of a new game don't stall on shader builds; gives up waiting after `ms` */
+  async warmShaders(ms = 8000): Promise<void> {
+    try {
+      await Promise.race([this.renderer.compileAsync(this.scene, this.rig.camera), new Promise((r) => setTimeout(r, ms))]);
+    } catch (e) {
+      console.warn('shader warm-up', e);
+    }
   }
 
   private setupComposer(): void {

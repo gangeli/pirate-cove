@@ -155,6 +155,7 @@ export class App {
     this.game = g;
     this.world.attach(g);
     await Promise.all([this.world.ships.ready, this.world.people.ready]);
+    await this.world.warmShaders();
     (window as any).__game = g;
   }
 

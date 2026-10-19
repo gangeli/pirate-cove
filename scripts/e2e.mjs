@@ -36,7 +36,7 @@ const presets = ['calm', 'fair', 'brethren', 'marooned', 'hardtack'];
 for (const preset of presets) {
   const p = await page();
   const t0 = Date.now();
-  await p.goto(base);
+  await p.goto(base, { timeout: 600000 });
   await p.waitForSelector('.menu .item[data-act="new"]', { timeout: 300000 });
   const tMenu = Date.now() - t0;
   await p.click('.menu .item[data-act="new"]', { timeout: 300000 });
