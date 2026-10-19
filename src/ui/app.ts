@@ -117,8 +117,21 @@ export class App {
     (window as any).__game = g;
   }
 
-  async newGame(settings: Partial<Settings>, king: KingDef): Promise<void> {
+  async newGame(settings: Partial<Settings>, king: KingDef, botYears = 0): Promise<void> {
     const g = new Game(settings, king);
+    if (botYears > 0) {
+      // debug/screenshots: let the bot play for a while before the world is built
+      const { Bot } = await import('../sim/bot');
+      const { MONTH } = await import('../sim/game');
+      const bot = new Bot(g, {});
+      const n = Math.round((botYears * 12 * MONTH) / 0.1);
+      for (let i = 0; i < n && !g.over; i++) {
+        g.step();
+        bot.step();
+        g.events.length = 0;
+      }
+      g.over = null as any;
+    }
     await this.attach(g);
     this.startPlaying();
   }

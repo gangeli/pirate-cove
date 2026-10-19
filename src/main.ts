@@ -39,7 +39,7 @@ async function boot() {
   (window as any).__app = app;
   const seed = params.get('seed');
   if (params.get('play') || params.get('shot')) {
-    await app.newGame({ seed: seed ? +seed : 7, ...(params.get('adv') ? { advantage: params.get('adv') as any } : {}) }, (await import('./sim/data/kings')).KINGS[2]);
+    await app.newGame({ seed: seed ? +seed : 7, ...(params.get('adv') ? { advantage: params.get('adv') as any } : {}) }, (await import('./sim/data/kings')).KINGS[2], +(params.get('bot') ?? 0));
     if (params.get('run')) app.game.run(+params.get('run')!);
   } else await app.showMenu();
   bar.style.width = '85%';

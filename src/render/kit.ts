@@ -93,7 +93,7 @@ function makeMats() {
     black: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 }),
     window: new THREE.MeshStandardMaterial({ color: 0x1a1410, roughness: 0.6, emissive: new THREE.Color(0xff9a40), emissiveIntensity: 0 }),
     bone: new THREE.MeshStandardMaterial({ color: 0xe8e0c8, roughness: 0.7 }),
-    rope: new THREE.MeshStandardMaterial({ color: 0x9a8058, roughness: 1 }),
+    rope: new THREE.MeshStandardMaterial({ color: 0x6e5a3e, roughness: 1 }), // hemp darkened with tar and weather
     leaf: new THREE.MeshStandardMaterial({ color: 0x4a7a2a, roughness: 0.8, side: THREE.DoubleSide }),
     crop: new THREE.MeshStandardMaterial({ color: 0x7a9a3a, roughness: 0.85, side: THREE.DoubleSide }),
     soil: new THREE.MeshStandardMaterial({ color: 0x5a3e28, roughness: 1 }),
