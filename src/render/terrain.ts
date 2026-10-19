@@ -143,13 +143,17 @@ float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx
 float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(hash12(i),hash12(i+vec2(1,0)),f.x), mix(hash12(i+vec2(0,1)),hash12(i+vec2(1,1)),f.x), f.y); }
 // sample texture twice at different scales and rotation to kill tiling
-vec4 antiTile(sampler2D t, vec2 uv){
-  vec4 a = texture2D(t, uv);
-  vec2 uv2 = mat2(0.8,-0.6,0.6,0.8) * uv * 0.37 + 0.13;
-  vec4 b = texture2D(t, uv2);
+// explicit gradients (the same ones the hardware would take) so layers can be skipped where their weight is 0:
+// implicit-derivative lookups are undefined inside such branches
+vec4 antiTile(sampler2D t, vec2 uv, vec2 dx, vec2 dy){
+  vec4 a = textureGrad(t, uv, dx, dy);
+  mat2 R = mat2(0.8,-0.6,0.6,0.8);
+  vec2 uv2 = R * uv * 0.37 + 0.13;
+  vec4 b = textureGrad(t, uv2, R * dx * 0.37, R * dy * 0.37);
   float m = smoothstep(0.3, 0.7, vnoise(uv * 0.35));
   return mix(a, b, m*0.6);
 }
+#define AT(t, s) antiTile(t, tuv * (s), tdx * (s), tdy * (s))
 float caustic(vec2 p, float t){
   float c = 0.0;
   for(int i=0;i<3;i++){
@@ -158,12 +162,14 @@ float caustic(vec2 p, float t){
   }
   return pow(1.0 - c/3.0, 6.0);
 }
-vec4 gW; // splat weights for normal blending`,
+vec4 gW; // splat weights for normal blending
+vec3 gOv = vec3(0.0); // overlay glow`,
         )
         .replace(
           '#include <map_fragment>',
           `
 vec2 tuv = vWPos.xz * 0.22;
+vec2 tdx = dFdx(tuv), tdy = dFdy(tuv);
 float nz = vnoise(vWPos.xz*0.15)*0.6 + vnoise(vWPos.xz*0.6)*0.4;
 vec4 w = vSplat;
 // break up blends with noise so transitions look natural
@@ -176,19 +182,27 @@ float roadV = texture2D(uRoads, vWPos.xz / uMapN).r;
 float roadW = smoothstep(0.32, 0.6, roadV + (vnoise(vWPos.xz*2.3)-0.5)*0.25);
 float dirtW = max(smoothstep(0.3, 0.95, vDirt + (nz-0.5)*0.5) * 0.75, roadW);
 float wet = 1.0 - smoothstep(0.0, 0.45, vWPos.y);
-vec3 sand = antiTile(t_sand, tuv*0.8).rgb;
-sand = mix(vec3(dot(sand, vec3(0.33))), sand, 0.5) * vec3(1.42,1.26,0.98);
-vec3 wets = antiTile(t_wetsand, tuv).rgb * vec3(0.95,0.9,0.8);
-sand = mix(sand, wets, wet);
-vec3 grass = antiTile(t_grass, tuv).rgb;
-// push grass toward lush tropical green
-float gl = dot(grass, vec3(0.3,0.59,0.11));
-grass = mix(vec3(gl), grass, 1.25) * vec3(0.62, 0.98, 0.42);
-vec3 jung = antiTile(t_jungle, tuv*1.2).rgb * vec3(0.62, 0.78, 0.45);
-vec3 rock = mix(antiTile(t_rock, tuv*0.6).rgb, antiTile(t_cliff, tuv*0.35).rgb * vec3(0.85,0.8,0.72), cliffW);
-vec3 dirt = antiTile(t_dirt, tuv*0.9).rgb * vec3(1.05,0.92,0.78);
-vec3 col = sand*w.x + grass*w.y + jung*w.z + rock*w.w;
-col = mix(col, dirt, dirtW*0.95);
+// only layers with weight are sampled (most ground has one or two): same result, far fewer texture reads
+vec3 col = vec3(0.0);
+if (w.x > 0.0) {
+  vec3 sand = AT(t_sand, 0.8).rgb;
+  sand = mix(vec3(dot(sand, vec3(0.33))), sand, 0.5) * vec3(1.42,1.26,0.98);
+  if (wet > 0.0) sand = mix(sand, AT(t_wetsand, 1.0).rgb * vec3(0.95,0.9,0.8), wet);
+  col += sand * w.x;
+}
+if (w.y > 0.0) {
+  vec3 grass = AT(t_grass, 1.0).rgb;
+  // push grass toward lush tropical green
+  float gl = dot(grass, vec3(0.3,0.59,0.11));
+  col += (mix(vec3(gl), grass, 1.25) * vec3(0.62, 0.98, 0.42)) * w.y;
+}
+if (w.z > 0.0) col += AT(t_jungle, 1.2).rgb * vec3(0.62, 0.78, 0.45) * w.z;
+if (w.w > 0.0) {
+  vec3 rock = AT(t_rock, 0.6).rgb;
+  if (cliffW > 0.0) rock = mix(rock, AT(t_cliff, 0.35).rgb * vec3(0.85,0.8,0.72), cliffW);
+  col += rock * w.w;
+}
+if (dirtW > 0.0) col = mix(col, AT(t_dirt, 0.9).rgb * vec3(1.05,0.92,0.78), dirtW*0.95);
 // worn wheel ruts darken the road centre slightly
 col *= 1.0 - roadW * smoothstep(0.75, 1.0, roadV) * 0.12;
 // underwater tint + caustics
@@ -200,8 +214,12 @@ if (depth > 0.0) {
 }
 gW = w;
 if (uOverlayOn > 0.5) {
+  // bold, readable overlay: the ground goes grey and dim, the tint goes on nearly opaque and glows a little so
+  // shadows and dusk don't swallow it
   vec4 ov = texture2D(uOverlay, vWPos.xz / uMapN);
-  col = mix(col * 0.55 + 0.12, ov.rgb, ov.a * 0.75);
+  float lum = dot(col, vec3(0.3, 0.59, 0.11));
+  col = mix(vec3(lum * 0.45 + 0.04), ov.rgb, clamp(ov.a * 0.95, 0.0, 1.0));
+  gOv = ov.rgb * ov.a * 0.32;
 }
 diffuseColor.rgb *= col;
 `,
@@ -209,13 +227,13 @@ diffuseColor.rgb *= col;
         .replace(
           '#include <normal_fragment_maps>',
           `{
-  vec3 ns = antiTile(n_sand, tuv*0.8).xyz*2.0-1.0;
-  vec3 ng = antiTile(n_grass, tuv).xyz*2.0-1.0;
-  vec3 nj = antiTile(n_jungle, tuv*1.2).xyz*2.0-1.0;
-  vec3 nr = antiTile(n_rock, tuv*0.6).xyz*2.0-1.0;
-  vec3 nd = antiTile(n_dirt, tuv*0.9).xyz*2.0-1.0;
-  vec3 tn = normalize(ns*gW.x + ng*gW.y + nj*gW.z + nr*gW.w*1.4);
-  tn = normalize(mix(tn, nd, dirtW*0.9));
+  vec3 tn = vec3(0.0);
+  if (gW.x > 0.0) tn += (AT(n_sand, 0.8).xyz*2.0-1.0) * gW.x;
+  if (gW.y > 0.0) tn += (AT(n_grass, 1.0).xyz*2.0-1.0) * gW.y;
+  if (gW.z > 0.0) tn += (AT(n_jungle, 1.2).xyz*2.0-1.0) * gW.z;
+  if (gW.w > 0.0) tn += (AT(n_rock, 0.6).xyz*2.0-1.0) * gW.w * 1.4;
+  tn = normalize(tn);
+  if (dirtW > 0.0) tn = normalize(mix(tn, AT(n_dirt, 0.9).xyz*2.0-1.0, dirtW*0.9));
   tn.xy *= 0.9;
   // world-aligned tangent frame (terrain uv = world xz)
   vec3 Nw = normalize(vWNorm);
@@ -225,12 +243,13 @@ diffuseColor.rgb *= col;
   normal = normalize((viewMatrix * vec4(nw, 0.0)).xyz);
 }`,
         )
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += gOv;')
         .replace(
           '#include <roughnessmap_fragment>',
           `float roughnessFactor = mix(0.95, 0.55, wet*w.x);`,
         );
     };
-    mat.customProgramCacheKey = () => 'terrain-v1';
+    mat.customProgramCacheKey = () => 'terrain-v3';
     return mat;
   }
 }

@@ -141,7 +141,8 @@ export class Modal {
     const slider = (k: keyof typeof a, label: string) => html`<label style="display:grid;grid-template-columns:110px 1fr;align-items:center;gap:8px">${label}<input type="range" min="0" max="1" step="0.05" value="${a[k]}" data-vol="${k}"></label>`;
     this.show(html`<h2>Settings</h2><hr class="rule">
       <h3>Sound</h3>${slider('master', 'Master')}${slider('music', 'Music')}${slider('voice', 'Voices')}${slider('sfx', 'Effects')}${slider('ambient', 'Ambience')}
-      <h3>Graphics</h3><div class="row">${(['low', 'medium', 'high'] as const).map((x) => html`<button class="btn small ${q === x ? 'on' : ''}" data-act="do:q_${x}">${x[0].toUpperCase() + x.slice(1)}</button>`)}<span class="sub">(applies after reload)</span></div>
+      <h3>Graphics</h3><div class="row">${(['low', 'medium', 'high'] as const).map((x) => html`<button class="btn small ${q === x ? 'on' : ''}" data-act="do:q_${x}">${x[0].toUpperCase() + x.slice(1)}</button>`)}</div>
+      <div class="sub" style="font-size:12px;margin-top:4px;user-select:text;-webkit-user-select:text">Renderer: ${this.app.world.gpu.renderer}${this.app.world.gpu.software ? ' (software, no graphics acceleration)' : ''} &middot; resolution ${Math.round(this.app.world.pr * 100)}%</div>
       <h3>Advisor</h3><div class="row">${(['full', 'brief', 'off'] as const).map((x) => html`<button class="btn small ${adv === x ? 'on' : ''}" data-act="do:a_${x}">${x === 'full' ? 'Chatty' : x === 'brief' ? 'Brief' : 'Silent'}</button>`)}</div>
       <h3>Camera</h3><label><input type="checkbox" data-edge ${this.app.world.rig.edgeScroll ? 'checked' : ''}> Scroll at the screen edges</label>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn green" data-act="do:done">Done</button></div>`, {
@@ -170,6 +171,7 @@ export class Modal {
     } catch {
       /* ignore */
     }
+    this.app.applyQuality();
     this.close();
     this.settings();
   }

@@ -4,7 +4,7 @@ import { BUILDING, type BuildingDef } from '../sim/data/buildings';
 import { canPlace, footprint } from '../sim/placement';
 import type { Settings } from '../sim/types';
 import type { KingDef } from '../sim/data/kings';
-import { World } from '../render/world';
+import { World, type Quality } from '../render/world';
 import { buildPrefab } from '../render/prefabs';
 import { audio } from '../audio/audio';
 import { el } from './dom';
@@ -75,12 +75,16 @@ export class App {
     }
   }
 
-  /** render settings per tier; dynamic resolution keeps each tier inside its frame budget (?dynres=0 turns it off) */
+  /**
+   * Render settings per tier. 'high' draws the same image as ever (4096 soft shadows, full-res GTAO, full bloom, SMAA,
+   * device pixel ratio up to 2); its savings are all lossless (see World). 'medium' and 'low' trade looks for speed and
+   * let dynamic resolution keep them inside the frame budget (?dynres=0 turns that off).
+   */
   qualitySettings(): Partial<Quality> {
     const dyn = !/[?&](dynres=0|shot=1)/.test(location.search);
     if (this.quality === 'low') return { shadows: false, ao: false, bloom: false, post: false, aa: 'none', pixelRatio: 1, minPixelRatio: 0.6, dynamicRes: dyn, flashLights: 0 };
-    if (this.quality === 'medium') return { shadows: true, shadowSize: 1024, softShadows: false, shadowHz: 20, ao: false, bloom: true, bloomScale: 0.25, aa: 'fxaa', pixelRatio: 1, minPixelRatio: 0.7, dynamicRes: dyn, flashLights: 0 };
-    return { shadows: true, shadowSize: 2048, softShadows: true, shadowHz: 30, ao: true, aoScale: 0.5, aoSamples: 8, bloom: true, bloomScale: 0.5, aa: 'smaa', pixelRatio: 1.25, minPixelRatio: 0.8, dynamicRes: dyn, flashLights: 2 };
+    if (this.quality === 'medium') return { shadows: true, shadowSize: 2048, softShadows: false, shadowHz: 30, ao: false, bloom: true, bloomScale: 0.5, aa: 'fxaa', pixelRatio: 1.25, minPixelRatio: 0.75, dynamicRes: dyn, flashLights: 1 };
+    return { shadows: true, shadowSize: 4096, softShadows: true, shadowHz: 1000, ao: true, aoScale: 1, aoSamples: 12, bloom: true, bloomScale: 1, aa: 'smaa', pixelRatio: 2, dynamicRes: false, flashLights: 2 };
   }
 
   /** switch the graphics tier live (settings) */
@@ -99,6 +103,7 @@ export class App {
     await audio.init();
     this.modal = new Modal(this);
     this.hud = new Hud(this);
+    if (this.world.gpu.software) this.hud.gpuNotice(this.world.gpu.renderer);
     this.inspector = new Inspector(this);
     this.build = new BuildMenu(this);
     this.edicts = new EdictsPanel(this);
@@ -257,6 +262,8 @@ export class App {
     if (t.kind !== 'select' && this.touchMode) this.select(null);
     // on touch screens one finger drags roads / clears trees; otherwise it pans the map
     this.world.rig.touchPan = !(t.kind === 'road' || t.kind === 'clear' || t.kind === 'unroad');
+    // see-through trees while laying roads, so the ground (and existing paths) under the canopy stay visible
+    this.world.veg?.setGhost(t.kind === 'road' || t.kind === 'unroad');
     this.touchPlace?.classList.toggle('hidden', !(t.kind === 'build' && this.touchMode));
   }
 
@@ -562,6 +569,8 @@ export class App {
       g.advance(dt, SIM_BUDGET_MS);
     }
     this.updateGhost();
+    // nothing advancing: the world may redraw at a low rate until something moves
+    this.world.idle = this.state === 'game' && (g.paused || this.modal.pausing);
     this.world.render(dt);
     if (this.state === 'game') {
       this.handleEvents();
@@ -670,6 +679,7 @@ export class App {
   }
 
   // ------------------------------------------------------------------------------------------------- ghost
+  private previewRes?: { geo: THREE.BufferGeometry; road: THREE.Material; bad: THREE.Material };
   private updateGhost(): void {
     const tool = this.tool;
     const h = this.hover;
@@ -737,9 +747,13 @@ export class App {
         while (x !== h.x) (x += Math.sign(h.x - x)), pts.push([x, y]);
         while (y !== h.y) (y += Math.sign(h.y - y)), pts.push([x, y]);
       } else pts.push([h.x, h.y]);
-      const col = tool.kind === 'road' ? 0xe0c070 : 0xff5040;
-      const geo = new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2);
-      const mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, depthWrite: false });
+      // one shared tile quad and two materials (this used to allocate and upload a new geometry every frame)
+      const pv = (this.previewRes ??= {
+        geo: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
+        road: new THREE.MeshBasicMaterial({ color: 0xe0c070, transparent: true, opacity: 0.45, depthWrite: false }),
+        bad: new THREE.MeshBasicMaterial({ color: 0xff5040, transparent: true, opacity: 0.45, depthWrite: false }),
+      });
+      const geo = pv.geo, mat = tool.kind === 'road' ? pv.road : pv.bad;
       for (const [x, y] of pts) {
         const m = new THREE.Mesh(geo, mat);
         m.position.set(x + 0.5, Math.max(0.05, this.game.map.heightAt(x + 0.5, y + 0.5)) + 0.06, y + 0.5);

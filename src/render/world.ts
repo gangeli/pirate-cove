@@ -6,7 +6,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
-import { HalfResAO, ScaledBloom } from './post';
+import { FastAO, ScaledBloom } from './post';
 import type { Game } from '../sim/game';
 import { TerrainMesh } from './terrain';
 import { Water } from './water';
@@ -31,6 +31,8 @@ export interface Quality {
   ao: boolean;
   aoScale: number;
   aoSamples: number;
+  /** AO normals reconstructed from the main depth buffer (no second scene render) instead of a normal pass */
+  aoDepthNormals: boolean;
   bloom: boolean;
   /** bloom blur chain resolution relative to the frame */
   bloomScale: number;
@@ -47,7 +49,7 @@ export interface Quality {
 }
 
 export const QUALITY_DEFAULTS: Quality = {
-  shadows: true, shadowSize: 2048, softShadows: false, shadowHz: 30, ao: false, aoScale: 0.5, aoSamples: 8, bloom: true, bloomScale: 0.25,
+  shadows: true, shadowSize: 2048, softShadows: false, shadowHz: 30, ao: false, aoScale: 1, aoSamples: 12, aoDepthNormals: true, bloom: true, bloomScale: 0.25,
   aa: 'fxaa', post: true, pixelRatio: 1, minPixelRatio: 0.7, dynamicRes: true, flashLights: 1,
 };
 
@@ -249,13 +251,13 @@ export class World {
     const pr = this.renderer.getPixelRatio();
     const W = Math.floor(size.x * pr), H = Math.floor(size.y * pr);
     // HalfFloat keeps the HDR highlights the bloom picks out; AO reads the main pass's depth texture
-    const rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, samples: 0, depthTexture: q.ao ? new THREE.DepthTexture(W, H) : undefined });
+    const rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, samples: 0, depthTexture: q.ao && q.aoDepthNormals ? new THREE.DepthTexture(W, H) : undefined });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.rig.camera));
-    if (q.ao) this.composer.addPass(new HalfResAO(this.scene, this.rig.camera, W, H, q.aoScale, q.aoSamples, 0.85));
+    if (q.ao) this.composer.addPass(new FastAO(this.scene, this.rig.camera, W, H, q.aoScale, q.aoSamples, 0.85, q.aoScale < 1 ? 8 : 16, q.aoDepthNormals));
     if (q.bloom) this.composer.addPass(new ScaledBloom(new THREE.Vector2(W, H), 0.18, 0.5, 0.92, q.bloomScale));
     this.composer.addPass(new OutputPass());
-    if (q.aa === 'smaa' && pr < 1.5) this.composer.addPass(new SMAAPass(W, H));
+    if (q.aa === 'smaa') this.composer.addPass(new SMAAPass(W, H));
     else if (q.aa === 'fxaa' && pr < 1.5) {
       this.fxaa = new ShaderPass(FXAAShader);
       this.composer.addPass(this.fxaa);
@@ -363,16 +365,23 @@ export class World {
       const N = this.sun.shadow.mapSize.x;
       // grow by 20% of slack, quantise the size so panning at a fixed zoom keeps a constant texel size
       const quant = (v: number) => Math.ceil((v * 1.2) / 8) * 8;
-      const sw = quant(x1 - x0), sh = quant(y1 - y0);
+      // never wider than the square the view-centred frustum used to be (2 * ext), so texels are never coarser;
+      // an axis that hits that cap is centred on the view target, as that square was
+      const cap = 2 * Math.min(120, this.rig.dist * 1.25 + 20);
+      const tl = this.tmpV.copy(this.rig.target).applyMatrix4(inv);
+      const sw = Math.min(cap, quant(x1 - x0)), sh = Math.min(cap, quant(y1 - y0));
       const tx = sw / N, ty = sh / N;
-      const cx = Math.round((x0 + x1) / 2 / tx) * tx, cy = Math.round((y0 + y1) / 2 / ty) * ty;
-      this.shadowRect = { x0: cx - sw / 2, x1: cx + sw / 2, y0: cy - sh / 2, y1: cy + sh / 2 };
-      sc.left = this.shadowRect.x0;
-      sc.right = this.shadowRect.x1;
-      sc.bottom = this.shadowRect.y0;
-      sc.top = this.shadowRect.y1;
-      sc.updateProjectionMatrix();
-      changed = true;
+      const cx = Math.round((sw >= cap ? tl.x : (x0 + x1) / 2) / tx) * tx, cy = Math.round((sh >= cap ? tl.y : (y0 + y1) / 2) / ty) * ty;
+      const nr = { x0: cx - sw / 2, x1: cx + sw / 2, y0: cy - sh / 2, y1: cy + sh / 2 };
+      if (!r || nr.x0 !== r.x0 || nr.x1 !== r.x1 || nr.y0 !== r.y0 || nr.y1 !== r.y1) {
+        this.shadowRect = nr;
+        sc.left = nr.x0;
+        sc.right = nr.x1;
+        sc.bottom = nr.y0;
+        sc.top = nr.y1;
+        sc.updateProjectionMatrix();
+        changed = true;
+      }
     }
     this.shadowAge += dt;
     if (changed || this.shadowAge >= 1 / q.shadowHz - 0.002) {
@@ -402,6 +411,8 @@ export class World {
     const u = this.terrain.uniforms as any;
     if (!this.overlayTex || this.overlayTex.image.width !== n) {
       this.overlayTex = new THREE.DataTexture(new Uint8Array(n * n * 4), n, n, THREE.RGBAFormat);
+      // the overlay colours are authored like CSS colours (sRGB), so they come out as picked
+      this.overlayTex.colorSpace = THREE.SRGBColorSpace;
       this.overlayTex.magFilter = THREE.LinearFilter;
       this.overlayTex.minFilter = THREE.LinearFilter;
       u.uOverlay = { value: this.overlayTex };

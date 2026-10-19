@@ -30,17 +30,27 @@ export class CameraRig {
 
   constructor(private dom: HTMLElement) {
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.5, 2000);
+    // physical WASD works on every keyboard layout (AZERTY, Dvorak...), the arrow keys and +/- by name
+    const PHYS: Record<string, string> = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd' };
     window.addEventListener('keydown', (e) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if (e.metaKey || e.ctrlKey) return; // shortcuts (Cmd+S...) are not camera moves; macOS never sends their keyup
       this.keys.add(e.key.toLowerCase());
+      if (PHYS[e.code]) this.keys.add(PHYS[e.code]);
       if (e.key === 'q' || e.key === 'Q') this.rotateStep(-1);
       if (e.key === 'e' || e.key === 'E') this.rotateStep(1);
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.key.toLowerCase()));
+    window.addEventListener('keyup', (e) => {
+      this.keys.delete(e.key.toLowerCase());
+      if (PHYS[e.code]) this.keys.delete(PHYS[e.code]);
+      if (e.key === 'Meta' || e.key === 'Control') this.keys.clear();
+    });
     window.addEventListener('blur', () => this.keys.clear());
     dom.addEventListener('wheel', (e) => {
       e.preventDefault();
-      this.distGoal = THREE.MathUtils.clamp(this.distGoal * Math.pow(1.0015, e.deltaY), this.minDist, this.maxDist);
+      // line/page wheel deltas (Firefox, some mice) to pixels; clamp so one fling can't jump the whole range
+      const dy = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1);
+      this.distGoal = THREE.MathUtils.clamp(this.distGoal * Math.pow(1.0015, THREE.MathUtils.clamp(dy, -400, 400)), this.minDist, this.maxDist);
     }, { passive: false });
     dom.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'touch') return this.touchDown(e);

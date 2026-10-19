@@ -16,6 +16,12 @@ const LIST: [Kind, string, string][] = [
   ['ore', 'Iron deposits', 'Mines must be built next to dark red patches.'],
 ];
 
+// overlay palette (sRGB)
+const NEUTRAL = [150, 150, 150], ORDER = [30, 110, 255], ANARCHY = [240, 40, 20];
+const LOW = [40, 38, 48], FEAR = [190, 40, 235], DEFENSE = [30, 130, 255], AWE = [255, 205, 20], ORE = [235, 40, 20];
+const POOR = [215, 45, 25], FAIR = [245, 215, 40], RICH = [40, 215, 50];
+const css = (c: number[]) => `rgb(${c.join(',')})`;
+
 export class Overlays {
   private panel: HTMLElement;
   visible = false;
@@ -57,8 +63,16 @@ export class Overlays {
   private render(): void {
     setHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button><h3 style="margin-top:0">Overlays</h3>
       ${LIST.map(([k, n, d]) => html`<div class="row" style="cursor:pointer;padding:2px 4px;border-radius:4px;${this.kind === k ? 'background:rgba(200,160,72,0.4)' : ''}" data-act="pick:${k}" data-tip="${d}">${n}</div>`)}
-      <div class="grad" style="background:${this.kind === 'order' ? 'linear-gradient(90deg,#d02a1a,#888,#2a6ad0)' : 'linear-gradient(90deg,#333,#e8c040)'}"></div>
+      <div class="grad" style="background:${this.legend()}"></div>
       <div class="row" style="justify-content:space-between;font-size:12px"><span>${this.kind === 'order' ? 'Anarchy' : 'Low'}</span><span>${this.kind === 'order' ? 'Order' : 'High'}</span></div>`);
+  }
+
+  /** legend gradient matching the colours drawn on the ground */
+  private legend(): string {
+    const k = this.kind;
+    if (k === 'order') return `linear-gradient(90deg,${css(ANARCHY)},${css(NEUTRAL)},${css(ORDER)})`;
+    if (k === 'fear' || k === 'defense' || k === 'awe' || k === 'ore') return `linear-gradient(90deg,${css(LOW)},${css(k === 'fear' ? FEAR : k === 'defense' ? DEFENSE : k === 'awe' ? AWE : ORE)})`;
+    return `linear-gradient(90deg,${css(POOR)},${css(FAIR)},${css(RICH)})`;
   }
 
   update(): void {
@@ -76,25 +90,26 @@ export class Overlays {
         const i = (y * n + x) * 4;
         if (!m.isLand(x, y)) continue;
         let r = 0, gg = 0, b = 0, al = 230;
+        // strong, saturated ramps (the terrain shader greys the ground underneath so these read at a glance)
+        const mixc = (c0: readonly number[], c1: readonly number[], t: number) => ((r = c0[0] + (c1[0] - c0[0]) * t), (gg = c0[1] + (c1[1] - c0[1]) * t), (b = c0[2] + (c1[2] - c0[2]) * t));
         if (k === 'order') {
           const v = a.order[Math.floor(y / CLUSTER) * a.cw + Math.floor(x / CLUSTER)] / 100;
           const t = Math.max(-1, Math.min(1, v));
-          if (t > 0) (r = 136 - t * 94), (gg = 136 - t * 30), (b = 136 + t * 72);
-          else (r = 136 - t * 72), (gg = 136 + t * 94), (b = 136 + t * 110);
-          al = 60 + Math.abs(t) * 195;
+          mixc(NEUTRAL, t > 0 ? ORDER : ANARCHY, Math.min(1, Math.abs(t) * 1.4));
+          al = 110 + Math.min(1, Math.abs(t) * 1.4) * 145;
         } else if (k === 'fear' || k === 'defense' || k === 'awe') {
           const v = Math.min(1, a[k][Math.floor(y / CLUSTER) * a.cw + Math.floor(x / CLUSTER)] / 100);
-          const base = k === 'fear' ? [150, 30, 160] : k === 'defense' ? [40, 90, 200] : [230, 190, 40];
-          (r = 50 + base[0] * v), (gg = 50 + base[1] * v), (b = 50 + base[2] * v);
-          al = 70 + v * 185;
+          mixc(LOW, k === 'fear' ? FEAR : k === 'defense' ? DEFENSE : AWE, Math.sqrt(v));
+          al = 120 + Math.sqrt(v) * 135;
         } else if (k === 'ore') {
           const v = m.ore[y * n + x];
-          (r = 60 + 160 * v), (gg = 50), (b = 40);
-          al = v > 0.05 ? 90 + v * 160 : 40;
+          mixc(LOW, ORE, Math.min(1, v * 1.3));
+          al = v > 0.05 ? 160 + v * 95 : 90;
         } else {
-          const v = cropFertility(g, k as Good, x, y);
-          (r = 120 - v * 90), (gg = 70 + v * 170), (b = 40);
-          al = 200;
+          const v = Math.max(0, Math.min(1, cropFertility(g, k as Good, x, y)));
+          if (v < 0.5) mixc(POOR, FAIR, v * 2);
+          else mixc(FAIR, RICH, (v - 0.5) * 2);
+          al = 215;
         }
         data[i] = r;
         data[i + 1] = gg;

@@ -232,11 +232,6 @@ function broadleafGeometry(): { trunk: THREE.BufferGeometry; crown: THREE.Buffer
 
 export class Vegetation {
   readonly group = new THREE.Group();
-  private palmTrunk!: THREE.InstancedMesh;
-  private palmFronds!: THREE.InstancedMesh;
-  private bTrunk!: THREE.InstancedMesh;
-  private bCrown!: THREE.InstancedMesh;
-  private bush!: THREE.InstancedMesh;
   private geo = { palm: palmGeometry(), broad: broadleafGeometry() };
   private mats: Record<string, THREE.Material> = {};
 
@@ -254,19 +249,39 @@ export class Vegetation {
     this.rebuild();
   }
 
+  /** trees are instanced per CHUNK x CHUNK tile block so off-screen blocks drop out of the main and shadow passes */
+  static readonly CHUNK = 40;
+  private ghost = false;
+
+  /** see-through trees (road tool): the ground underneath stays readable */
+  setGhost(on: boolean): void {
+    if (on === this.ghost) return;
+    this.ghost = on;
+    for (const m of Object.values(this.mats)) {
+      m.transparent = on;
+      m.opacity = on ? 0.28 : 1;
+      m.depthWrite = !on;
+      m.needsUpdate = true;
+    }
+    for (const c of this.group.children) c.castShadow = !on && c.userData.shadow !== false;
+  }
+
   rebuild(): void {
     for (const c of [...this.group.children]) {
       this.group.remove(c);
       (c as THREE.InstancedMesh).dispose?.();
     }
     const m = this.map, n = m.size;
-    const palms: THREE.Matrix4[] = [], broads: THREE.Matrix4[] = [], bushes: THREE.Matrix4[] = [];
+    const C = Vegetation.CHUNK, cn = Math.ceil(n / C);
+    const chunks = Array.from({ length: cn * cn }, () => ({ palms: [] as THREE.Matrix4[], broads: [] as THREE.Matrix4[], bushes: [] as THREE.Matrix4[], pi: [] as number[], bi: [] as number[] }));
+    let palmN = 0, broadN = 0;
     const q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), e = new THREE.Euler();
     for (let y = 0; y < n; y++)
       for (let x = 0; x < n; x++) {
         const k = y * n + x;
         const cnt = m.trees[k];
         if (!cnt) continue;
+        const ch = chunks[Math.floor(y / C) * cn + Math.floor(x / C)];
         const t = m.terrain[k];
         const jungle = t === Terrain.Jungle;
         const per = jungle && cnt >= 3 ? 2 : 1;
@@ -279,39 +294,42 @@ export class Vegetation {
           q.setFromEuler(e);
           s.set(sc, sc * (0.9 + hash(x, y, 14) * 0.25), sc);
           p.set(jx, h - 0.05, jz);
-          (usePalm ? palms : broads).push(new THREE.Matrix4().compose(p, q, s));
+          const mat = new THREE.Matrix4().compose(p, q, s);
+          // the colour variety keeps its old per-tree sequence (index over the whole island)
+          if (usePalm) ch.palms.push(mat), ch.pi.push(palmN++);
+          else ch.broads.push(mat), ch.bi.push(broadN++);
         }
         if (jungle && hash(x, y, 40) < 0.7) {
           const jx = x + hash(x, y, 41), jz = y + hash(x, y, 42);
           const sc = 0.35 + hash(x, y, 43) * 0.35;
           q.setFromEuler(e.set(0, hash(x, y, 44) * 6.28, 0));
-          bushes.push(new THREE.Matrix4().compose(p.set(jx, m.heightAt(jx, jz) - 1.2 * sc, jz), q, s.set(sc, sc * 0.8, sc)));
+          ch.bushes.push(new THREE.Matrix4().compose(p.set(jx, m.heightAt(jx, jz) - 1.2 * sc, jz), q, s.set(sc, sc * 0.8, sc)));
         }
       }
     const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, list: THREE.Matrix4[], shadow = true) => {
-      const im = new THREE.InstancedMesh(geo, mat, Math.max(1, list.length));
-      im.count = list.length;
+      if (!list.length) return null;
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
       list.forEach((mm, i) => im.setMatrixAt(i, mm));
-      im.castShadow = shadow;
+      im.userData.shadow = shadow;
+      im.castShadow = shadow && !this.ghost;
       im.receiveShadow = true;
-      im.frustumCulled = false;
+      // wind sway moves crowns by well under a tile; pad the bounds so culling never clips a swaying edge
+      im.computeBoundingSphere();
+      im.boundingSphere!.radius += 1.5;
+      im.frustumCulled = true;
       this.group.add(im);
       return im;
     };
-    this.palmTrunk = mk(this.geo.palm.trunk, this.mats.trunkMat, palms);
-    this.palmFronds = mk(this.geo.palm.fronds, this.mats.frondMat, palms);
-    this.bTrunk = mk(this.geo.broad.trunk, this.mats.bTrunkMat, broads);
-    this.bCrown = mk(this.geo.broad.crown, this.mats.leafMat, broads);
-    // per-instance colour variety for crowns
     const col = new THREE.Color();
-    for (let i = 0; i < broads.length; i++) {
-      col.setHSL(0.22 + hash(i, 1) * 0.08, 0.35 + hash(i, 2) * 0.3, 0.72 + hash(i, 3) * 0.25);
-      this.bCrown.setColorAt(i, col);
+    for (const ch of chunks) {
+      mk(this.geo.palm.trunk, this.mats.trunkMat, ch.palms);
+      const fr = mk(this.geo.palm.fronds, this.mats.frondMat, ch.palms);
+      mk(this.geo.broad.trunk, this.mats.bTrunkMat, ch.broads);
+      const cr = mk(this.geo.broad.crown, this.mats.leafMat, ch.broads);
+      // per-instance colour variety for crowns
+      if (cr) ch.bi.forEach((g, i) => cr.setColorAt(i, col.setHSL(0.22 + hash(g, 1) * 0.08, 0.35 + hash(g, 2) * 0.3, 0.72 + hash(g, 3) * 0.25)));
+      if (fr) ch.pi.forEach((g, i) => fr.setColorAt(i, col.setHSL(0.2 + hash(g, 4) * 0.06, 0.4 + hash(g, 5) * 0.3, 0.75 + hash(g, 6) * 0.25)));
+      mk(this.geo.broad.crown, this.mats.leafMat, ch.bushes, false);
     }
-    for (let i = 0; i < palms.length; i++) {
-      col.setHSL(0.2 + hash(i, 4) * 0.06, 0.4 + hash(i, 5) * 0.3, 0.75 + hash(i, 6) * 0.25);
-      this.palmFronds.setColorAt(i, col);
-    }
-    this.bush = mk(this.geo.broad.crown, this.mats.leafMat, bushes, false);
   }
 }

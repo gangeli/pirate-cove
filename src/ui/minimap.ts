@@ -102,8 +102,9 @@ export class Minimap {
   draw(): void {
     if (this.wrap.classList.contains('hidden')) return;
     const now = performance.now();
-    // ~10 Hz is plenty for dots on a 160 px map; the base layer only when something was built or cleared
-    if (now - this.lastDraw < 100) return;
+    // ~15 Hz (as before: every third frame at 45-60 fps), but time-based so slow frames don't redraw more often;
+    // the base layer only when something was built or cleared
+    if (now - this.lastDraw < 66) return;
     this.lastDraw = now;
     this.t++;
     if (!this.base || (this.baseDirty && now - this.baseAt > 500) || now - this.baseAt > 10000) this.buildBase();
