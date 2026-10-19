@@ -75,10 +75,10 @@ def frustum(k, mat, x, y, z, w0, d0, w1, d1, h, ox=0.0, oz=0.0, uvscale=1.0, bot
     k.mesh(mat, vs, fs, uvscale=uvscale)
 
 
-def rock(k, mat, x, y, z, sx, sy, sz, seed=0.0, sub=2, rough=0.22, ry=0.0, floor=None, uvscale=1.0):
+def rock(k, mat, x, y, z, sx, sy, sz, seed=0.0, sub=3, rough=0.22, ry=0.0, floor=None, uvscale=1.0):
     """a lumpy boulder: a displaced icosphere (floor clips the underside flat)"""
     t = bmesh.new()
-    bmesh.ops.create_icosphere(t, subdivisions=max(0, sub - 1) if k.lod else sub, radius=1.0)
+    bmesh.ops.create_icosphere(t, subdivisions=max(1, sub - 2) if k.lod else max(1, sub), radius=1.0)
     t.verts.index_update()
     verts = []
     for v in t.verts:
@@ -127,7 +127,7 @@ def heap(k, mat, x, z, r, h, seed=0.0, rz=None, y=0.0, uvscale=1.2, lumps=0, lum
             t = math.sqrt(k.r()) * 0.92
             s = lumpsize * (0.6 + k.r() * 0.8)
             rock(k, lumpmat or mat, x + math.cos(a) * r * t, y + hgt(t) + s * 0.25, z + math.sin(a) * rz * t, s, s * 0.75, s * 0.9,
-                 seed=seed + i * 1.37, sub=0, rough=0.3, ry=k.r() * 3)
+                 seed=seed + i * 1.37, sub=1, rough=0.3, ry=k.r() * 3)
 
 
 def yard(k, w, d, mat='dirt', y=0.006, wob=0.12, seed=1.0):
@@ -592,9 +592,11 @@ def cannon_barrel(k, x, y, z, ry=0.0, s=1.0, mat='iron', rz=-math.pi / 2, rx=0.0
             (0.1, 0.06), (0.091, 0.068), (0.09, 0.3), (0.096, 0.31), (0.096, 0.335), (0.083, 0.345), (0.076, 0.62), (0.082, 0.63),
             (0.082, 0.65), (0.07, 0.66), (0.065, 0.85), (0.076, 0.875), (0.079, 0.915), (0.071, 0.94), (0.042, 0.94), (0.042, 0.84)]
     prof = [(r * s, h * s) for (r, h) in prof]
-    lathe(k, mat, prof, x, y, z, seg=16, top=True, rz=rz, ry=ry, rx=rx, uvscale=1.0)
-    k.push(x, y, z, ry, rx, rz)
+    k.push(x, y, z, ry)
+    lathe(k, mat, prof, 0, 0, 0, seg=16, top=True, rz=rz, rx=rx, uvscale=1.0)
+    k.push(0, 0, 0, 0, rx, rz)
     k.cyl(mat, 0.032 * s, 0.032 * s, 0.26 * s, 0, 0.42 * s, -0.13 * s, seg=8, rx=math.pi / 2)
+    k.pop()
     k.pop()
 
 
@@ -1219,7 +1221,7 @@ def ration_factory(k):
     k.box('plaster', 0.88, 0.01, 0.31, 0, 0.385, 0)
     if not k.lod:
         for i in range(12):
-            rock(k, 'red' if i % 3 else 'bone', (k.r() - 0.5) * 0.75, 0.395, (k.r() - 0.5) * 0.22, 0.06, 0.03, 0.05, seed=i * 0.7, sub=0, rough=0.2)
+            rock(k, 'red' if i % 3 else 'bone', (k.r() - 0.5) * 0.75, 0.395, (k.r() - 0.5) * 0.22, 0.06, 0.03, 0.05, seed=i * 0.7, sub=1, rough=0.2)
     k.pop()
     # a barrel half packed, its head off, and the cooper's mallet
     tub(k, -0.2, 0.3, 0.15, 0.36, fill='red', hoops=3)
@@ -1320,12 +1322,18 @@ def carpenter(k):
     k.pop()
     for x in (x0 + 0.05, x1 - 0.05):
         post(k, x, zb + 0.04, 1.05, 0.09)
-    k.push((x0 + x1) / 2 + 0.04, 0, 0)
-    shingles(k, x1 - x0 + 0.08, zb - 0.04, zf + 0.12, 1.1, 0.82)
-    k.pop()
+    # an old topsail stretched over spars for a roof
     for x in (x0 + 0.08, 0.72, x1 - 0.06):
-        post(k, x, zf - 0.04, 0.82, 0.09)
-    k.box('darkwood', x1 - x0, 0.08, 0.1, (x0 + x1) / 2, 0.74, zf - 0.04)
+        k.beam('bark', V(x, 1.06, zb), V(x, 0.92, zf + 0.06), 0.05, round_=True)
+    awning(k, x0 - 0.02, x1 + 0.04, zb - 0.02, zf + 0.1, 1.1, 0.9, 'canvas', posts=False, drop=0.05)
+    for x in (x0 + 0.08, 0.72, x1 - 0.06):
+        post(k, x, zf - 0.04, 0.92, 0.09)
+    k.box('darkwood', x1 - x0, 0.08, 0.1, (x0 + x1) / 2, 0.84, zf - 0.04)
+    # finished legs hung along the front plate for the customers
+    for i in range(4):
+        x = 0.05 + i * 0.13 + (0.45 if i > 1 else 0)
+        k.beam('rope', V(x, 0.8, zf + 0.04), V(x, 0.68, zf + 0.04), 0.008, round_=True, seg=4)
+        peg_leg(k, x, 0.34, zf + 0.04, 0.8)
     # peg legs on pegs along the back boards
     for i in range(7):
         x = x0 + 0.25 + i * 0.13
@@ -1365,7 +1373,7 @@ def carpenter(k):
     k.pop()
     k.beam('bark', V(1.05, 0.62, zb + 0.08), V(lx, 0.95, lz - 0.05), 0.045, round_=True)
     k.box('wood', 0.07, 0.62, 0.07, 1.05, 0, zb + 0.08)
-    heap(k, 'sand', lx + 0.05, lz + 0.05, 0.38, 0.06, seed=6.0, sq=0.6)
+    heap(k, 'thatch', lx + 0.05, lz + 0.05, 0.38, 0.06, seed=6.0, sq=0.6)
     # timber: blanks and boards, a ship's wheel and a rudder in for repair, oars
     board_stack(k, 1.32, 0.22, 0.75, 3, 3, bw=0.1, ry=0.0)
     ships_wheel(k, -1.62, 0.36, 0.58, 0.24, ry=0.1, rx=-0.15)
@@ -1449,7 +1457,7 @@ def sawmill(k):
     k.box('wood', 0.04, 0.05, 0.36, xc, 1.4, lz)
     k.box('wood', 0.05, 0.04, 0.05, xc, 1.38, lz)
     k.box('wood', 0.035, 0.04, 0.3, xc, 0.2, lz)
-    heap(k, 'sand', xc + 0.05, lz + 0.05, 0.45, 0.13, seed=8.0, sq=0.8)
+    heap(k, 'thatch', xc + 0.05, lz + 0.05, 0.45, 0.13, seed=8.0, sq=0.8)
     # chalk line pegs and a cant hook on the log
     if not k.lod:
         k.beam('wood', V(-0.6, ly + r, lz - 0.3), V(-0.1, ly + 0.05, lz + 0.5), 0.03, round_=True)
@@ -1492,7 +1500,7 @@ def sawmill(k):
     k.push(1.35, 0, 1.2, 0.4)
     for s in (-1, 1):
         k.box('wood', 0.05, 0.36, 0.05, s * 0.11, 0, 0)
-    k.cyl('stone', 0.17, 0.17, 0.07, 0, 0.36, -0.035, seg=18, rx=math.pi / 2)
+    k.cyl('stoneDark', 0.17, 0.17, 0.07, 0, 0.36, -0.035, seg=18, rx=math.pi / 2)
     k.beam('iron', V(-0.16, 0.36, 0), V(0.18, 0.36, 0), 0.016, round_=True, seg=5)
     k.beam('iron', V(0.18, 0.36, 0), V(0.18, 0.26, 0.05), 0.012, round_=True, seg=4)
     k.pop()
@@ -1536,8 +1544,8 @@ def iron_mine(k):
     ore, a winding shaft with its windlass and kibble, an ore pile and a spoil heap, picks and shovels"""
     yard(k, 3.6, 2.7, seed=21.0, mat='dirt')
     # the rock face
-    rock(k, 'stoneDark', -1.0, 0.15, -0.9, 0.78, 1.05, 0.5, seed=1.0, floor=0.0, rough=0.16, ry=0.1)
-    rock(k, 'stoneDark', 0.35, 0.1, -0.95, 0.95, 1.22, 0.48, seed=2.0, floor=0.0, rough=0.16)
+    rock(k, 'stoneDark', -1.0, 0.15, -0.9, 0.78, 1.05, 0.5, seed=1.0, floor=0.0, rough=0.16, ry=0.1, sub=4)
+    rock(k, 'stoneDark', 0.35, 0.1, -0.95, 0.95, 1.22, 0.48, seed=2.0, floor=0.0, rough=0.16, sub=4)
     rock(k, 'stoneDark', 1.3, 0.0, -0.85, 0.45, 0.75, 0.45, seed=3.0, floor=0.0, rough=0.2)
     rock(k, 'stone', -1.5, 0.0, -0.55, 0.3, 0.45, 0.32, seed=4.0, floor=0.0, rough=0.25)
     rock(k, 'stoneDark', -0.3, 0.95, -1.05, 0.6, 0.5, 0.35, seed=5.0, rough=0.2)
@@ -1546,7 +1554,7 @@ def iron_mine(k):
         # rusty ore showing in the face, and scrub clinging on top
         for i in range(14):
             a = k.r()
-            rock(k, 'red', -1.3 + a * 2.6, 0.2 + k.r() * 0.8, -0.55 - k.r() * 0.15, 0.06, 0.04, 0.03, seed=i * 2.1, sub=0, rough=0.3)
+            rock(k, 'red', -1.3 + a * 2.6, 0.2 + k.r() * 0.8, -0.55 - k.r() * 0.15, 0.06, 0.04, 0.03, seed=i * 2.1, sub=1, rough=0.3)
         for (x, y, z, s) in ((-1.1, 1.12, -0.95, 0.16), (0.2, 1.35, -1.0, 0.2), (0.55, 1.28, -1.1, 0.14), (1.35, 0.78, -0.85, 0.13), (-0.55, 1.35, -1.1, 0.12)):
             rock(k, 'leaf', x, y, z, s * 1.3, s * 0.7, s, seed=x * 7, sub=1, rough=0.35)
     # the adit: a timber set of round props and a cap, lagging above, the dark heading behind
@@ -1599,4 +1607,249 @@ def iron_mine(k):
     shovel(k, ax + 0.52, az + 0.12, ry=0.1, lean=0.3)
     bucket(k, 0.3, 0.9)
     crate(k, 1.55, 0, 0.1, 0.26, 0.3)
+    return {'ao': 1024}
+
+
+# ------------------------------------------------------------------------------------------- blast furnace
+
+def battered_stack(k, cx, cz, b0, b1, h, ops=(), rh=0.15, mat='stone'):
+    """a square, battered masonry stack in courses of big blocks; ops are (face, width, height) openings at its foot"""
+    if k.lod:
+        frustum(k, mat, cx, 0, cz, b0, b0, b1, b1, h, uvscale=1.0)
+        return
+    frustum(k, 'stoneDark', cx, 0, cz, b0 - 0.1, b0 - 0.1, b1 - 0.1, b1 - 0.1, h, uvscale=2.0)
+    rows = max(1, round(h / rh))
+    rh = h / rows
+    lean = math.atan2((b0 - b1) / 2, h)
+    for r in range(rows):
+        y = r * rh
+        t = (y + rh / 2) / h
+        size = b0 + (b1 - b0) * t
+        for f in FACES:
+            mine = [o for o in ops if o[0] == f and y < o[2]]
+            k.push(cx, 0, cz)
+            k.face(f, size, size)
+            x = -size / 2 + (0.12 if (r + FACES.index(f)) % 2 else 0.0)
+            if x > -size / 2:
+                x0 = -size / 2
+                k.cbox(mat if k.r() > 0.15 else 'coral', 0.105, rh - 0.016, 0.13, x0 + 0.06, y + rh / 2, -0.05, rx=-lean, uvscale=2.0)
+            while x < size / 2 - 0.03:
+                sw = min(size / 2 - x, 0.2 + k.r() * 0.16)
+                if not any(x + sw > -o[1] / 2 and x < o[1] / 2 for o in mine):
+                    k.cbox(mat if k.r() > 0.15 else 'coral', sw - 0.016, rh - 0.016 - k.r() * 0.02, 0.13, x + sw / 2, y + rh / 2, -0.05,
+                           rx=-lean + (k.r() - 0.5) * 0.04, rz=(k.r() - 0.5) * 0.05, uvscale=2.0)
+                x += sw
+            k.pop()
+            k.pop()
+
+
+def bellows(k, x, y, z, s=1.0, ry=0.0):
+    """great leather bellows: teardrop boards with pleated hide between, nozzle toward local +z"""
+    pts = []
+    for i in range(14):
+        a = TAU * i / 14
+        r = 0.16 * s * (1 + 0.85 * max(0.0, -math.cos(a)) ** 1.5)
+        pts.append((math.sin(a) * r * 0.9, math.cos(a) * r * 1.3))
+    pts.reverse()
+    k.push(x, y, z, ry)
+    prism(k, 'planksDark', pts, 0.0, 0.03 * s, uvscale=1.3)
+    if k.lod:
+        prism(k, 'soil', [(a * 0.95, b * 0.95) for (a, b) in pts], 0.03 * s, 0.165 * s)
+    else:
+        for j in range(3):
+            sc = 1.0 - 0.06 * (j % 2)
+            prism(k, 'soil', [(a * sc * 0.97, b * sc * 0.97) for (a, b) in pts], (0.03 + j * 0.045) * s, (0.075 + j * 0.045) * s)
+    prism(k, 'planksDark', pts, 0.165 * s, 0.195 * s, uvscale=1.3)
+    k.cyl('brass', 0.03 * s, 0.018 * s, 0.24 * s, 0, 0.08 * s, 0.2 * s, seg=8, rx=math.pi / 2)
+    k.pop()
+
+
+@building('blast_furnace')
+def blast_furnace(k):
+    """a charcoal blast furnace: a battered stack of coursed stone with a deep tapping arch glowing at its
+    foot and flame at its throat, a timber charging stage and stair at the back, a bellows house with two
+    great bellows blowing into the tuyere, a sand casting floor laid out in sows and pigs, charcoal and ore"""
+    yard(k, 4.6, 3.6, seed=23.0)
+    fx, fz, b0, b1, fh = -0.55, -0.4, 1.45, 0.95, 2.2
+    tw, th = 0.46, 0.66
+    battered_stack(k, fx, fz, b0, b1, fh, ops=[('front', tw + 0.06, th + 0.02), ('right', 0.3, 0.55)])
+    # tapping arch: piers projecting forward with a heavy lintel and a relieving course
+    zf = fz + b0 / 2
+    for sx in (-1, 1):
+        k.box('stone', 0.24, th + 0.05, 0.42, fx + sx * (tw / 2 + 0.12), 0, zf - 0.12, uvscale=2.0)
+    k.box('stoneDark', tw + 0.56, 0.18, 0.46, fx, th, zf - 0.13, uvscale=2.0)
+    k.box('stone', tw + 0.4, 0.12, 0.36, fx, th + 0.18, zf - 0.17, uvscale=2.0)
+    k.box('black', tw, th, 0.02, fx, 0, zf - 0.32)
+    k.box('stoneDark', tw, 0.01, 0.45, fx, 0.0, zf - 0.1, uvscale=2.0)
+    k.marker('glow:0.28x0.16x0.08', fx, 0.12, zf - 0.27)
+    k.box('fire', 0.06, 0.02, 0.5, fx, 0.0, zf + 0.2)
+    # tuyere arch on the bellows side
+    k.box('black', 0.02, 0.55, 0.3, fx + b0 / 2 - 0.06, 0, fz)
+    k.box('stoneDark', 0.18, 0.12, 0.5, fx + b0 / 2 - 0.02, 0.55, fz, uvscale=2.0)
+    # the throat: a cast-iron charging ring and flames
+    ty = fh
+    k.box('stoneDark', b1 + 0.06, 0.08, b1 + 0.06, fx, ty, fz, uvscale=2.0)
+    lathe(k, 'iron', [(0.3, 0), (0.3, 0.12), (0.26, 0.12), (0.26, 0.02)], fx, ty + 0.08, fz, seg=16, top=False)
+    k.cyl('black', 0.27, 0.27, 0.01, fx, ty + 0.085, fz, seg=16)
+    k.marker('glow:0.36x0.04x0.36', fx, ty + 0.1, fz)
+    k.marker('smoke', fx, ty + 0.3, fz)
+    # charging stage at the throat, on posts, with a stair down the back
+    pz0, pz1 = fz - b1 / 2 - 0.02, -1.72
+    px0, px1 = fx - 0.55, fx + 0.75
+    k.push((px0 + px1) / 2, 0, (pz0 + pz1) / 2)
+    deck(k, px1 - px0, pz0 - pz1, ty + 0.04, 'oldplanks', along='x', joists=True)
+    k.pop()
+    for x in (px0 + 0.05, px1 - 0.05):
+        for z in (pz1 + 0.05,):
+            post(k, x, z, ty - 0.08, 0.1)
+        k.beam('wood', V(x, 0.3, pz1 + 0.05), V(x, ty - 0.12, pz0 - 0.05), 0.06)
+    k.box('darkwood', px1 - px0, 0.08, 0.1, (px0 + px1) / 2, ty - 0.14, pz1 + 0.05)
+    k.box('wood', px1 - px0, 0.04, 0.04, (px0 + px1) / 2, ty + 0.45, pz1 + 0.04)
+    for x in (px0 + 0.05, (px0 + px1) / 2, px1 - 0.05):
+        k.box('wood', 0.04, 0.45, 0.04, x, ty + 0.04, pz1 + 0.04)
+    # stair: two stringers and treads rising from the yard to the stage
+    sa, sb = V(2.1, 0.0, -1.5), V(px1, ty + 0.04, -1.5)
+    for dz in (-0.17, 0.17):
+        k.beam('wood', sa + V(0, 0.05, dz), sb + V(0, -0.02, dz), 0.05, 0.12)
+    n = 14
+    for i in range(1, n):
+        p = sa + (sb - sa) * (i / n)
+        k.box('oldplanks', 0.12, 0.03, 0.36, p.x, p.y, -1.5, uvscale=1.3)
+    post(k, (sa.x + sb.x) / 2, -1.5, (sa.y + sb.y) / 2 - 0.05, 0.08)
+    k.beam('wood', sa + V(0, 0.55, 0.17), sb + V(0, 0.45, 0.17), 0.035, round_=True)
+    if not k.lod:
+        # a barrow of charcoal and baskets on the stage
+        lathe(k, 'weave', [(0.1, 0), (0.13, 0.12), (0.12, 0.125), (0.1, 0.02)], px0 + 0.3, ty + 0.04, pz1 + 0.25, seg=10, top=False, uvscale=3.0)
+        k.cyl('black', 0.12, 0.12, 0.01, px0 + 0.3, ty + 0.15, pz1 + 0.25, seg=10)
+    # the bellows house: open shed, two bellows on a frame and an overhead rocker
+    bx, bz = 1.25, -0.3
+    k.push(bx, 0, bz)
+    open_frame(k, [-0.6, 0.6], [-0.5, 0.5], 1.05, s=0.1)
+    shingle_gable(k, 1.2, 1.0, 0.42, 1.05, over=0.18, gable='oldplanks')
+    for dz in (-0.2, 0.2):
+        k.box('wood', 0.9, 0.06, 0.08, 0.05, 0.32, dz)
+        for xx in (-0.35, 0.45):
+            k.box('wood', 0.06, 0.32, 0.06, xx, 0, dz)
+        bellows(k, 0.12, 0.38, dz, s=1.15, ry=-math.pi / 2)
+    k.beam('wood', V(-0.45, 0.75, 0), V(0.6, 0.75, 0), 0.07)
+    k.box('wood', 0.1, 0.2, 0.1, 0.55, 0.55, 0)
+    for dz in (-0.2, 0.2):
+        k.beam('iron', V(0.15, 0.75, dz * 0.4), V(0.15, 0.6, dz), 0.008, round_=True, seg=4)
+    k.pop()
+    # casting floor: sand bed with a runner, sows and pigs
+    cz0 = zf + 0.25
+    k.box('sand', 1.5, 0.03, 1.1, fx, 0, cz0 + 0.55, uvscale=1.0)
+    k.box('black', 0.07, 0.002, 1.0, fx, 0.03, cz0 + 0.55)
+    if not k.lod:
+        for j in range(4):
+            z = cz0 + 0.18 + j * 0.25
+            for sx in (-1, 1):
+                k.box('iron', 0.44, 0.03, 0.05, fx + sx * 0.28, 0.025, z)
+                for i in range(4):
+                    k.box('iron', 0.04, 0.03, 0.09, fx + sx * (0.12 + i * 0.1), 0.025, z + 0.07)
+        k.box('fire', 0.05, 0.004, 0.25, fx, 0.032, cz0 + 0.15)
+    # charcoal and ore
+    heap(k, 'black', -1.75, 0.95, 0.5, 0.42, seed=12.0, lumps=20, lumpsize=0.04)
+    heap(k, 'red', -1.8, -0.35, 0.45, 0.36, seed=13.0, lumps=20, lumpsize=0.05)
+    bar_stack(k, 1.55, 1.1, 12, 0.5, ry=0.2)
+    k.beam('iron', V(0.35, 0.0, 0.45), V(0.25, 1.05, 0.15), 0.025, round_=True)  # tapping bar
+    shovel(k, -1.3, 0.3, ry=0.8, lean=0.3)
+    cask(k, 2.05, 0.5, 0.85)
+    return {'ao': 1024}
+
+
+# ------------------------------------------------------------------------------------------- cannon foundry
+
+def shot_pile(k, x, z, n=4, r=0.055):
+    """round shot in a square pyramid"""
+    for j in range(n):
+        m = n - j
+        for a in range(m):
+            for b in range(m):
+                xx = x + (a - (m - 1) / 2) * r * 2
+                zz = z + (b - (m - 1) / 2) * r * 2
+                if k.lod and j < n - 1 and 0 < a < m - 1 and 0 < b < m - 1:
+                    continue
+                rock(k, 'iron', xx, r + j * r * 1.41, zz, r, r, r, sub=2, rough=0.0)
+
+
+@building('cannon_foundry')
+def cannon_foundry(k):
+    """a gun foundry: a stone casting hall under tiles, a brick air furnace with a tall stack, a clay runner
+    to the casting pit where moulds stand rammed in the earth, a timber gantry with a crab and chain lifting
+    a new-cast barrel, barrels cooling on skids, a finished gun on its carriage, shot and pig iron"""
+    yard(k, 5.6, 4.6, seed=25.0)
+    # the hall
+    w, d, h = 2.8, 1.7, 1.35
+    hx, hz = -1.35, -1.35
+    k.push(hx, 0, hz)
+    plinth(k, w + 0.06, d + 0.06, 0.1)
+    k.push(0, 0.1, 0)
+    plastered(k, w, d, h, 'plaster', [Op('front', -0.65, 'arch', w=0.7, h=1.05), Op('front', 0.55, 'arch', w=0.7, h=1.05), Op('left', 0.0, 'window', bars=True),
+                                       Op('right', 0.0, 'window', bars=True), Op('back', 0.0, 'window', bars=True)], quoins='stone')
+    tile_gable(k, w, d, 0.7, over=0.2, y=h, gable='plaster', tile_len=0.2, tile_w=0.135)
+    k.pop()
+    k.pop()
+    # air furnace with its stack
+    fx, fz = 1.15, -1.55
+    brick_block(k, fx, fz, 1.2, 0.85, 0.9)
+    lathe(k, 'terracotta', [(0.45, 0), (0.42, 0.1), (0.32, 0.2), (0.15, 0.26), (0.001, 0.27)], fx, 0.9, fz, seg=14, top=False, sz=0.75, uvscale=2.0)
+    k.box('black', 0.26, 0.24, 0.02, fx - 0.25, 0.12, fz + 0.455)
+    k.box('iron', 0.32, 0.03, 0.03, fx - 0.25, 0.37, fz + 0.46)
+    k.marker('glow:0.22x0.18x0.04', fx - 0.25, 0.22, fz + 0.45)
+    k.box('black', 0.2, 0.14, 0.02, fx + 0.3, 0.3, fz + 0.455)
+    chimney(k, fx + 0.1, -2.05, 0.0, 3.3, 0.48)
+    # clay runner to the pit
+    px, pz = 1.35, 0.35
+    for i in range(6):
+        t0, t1 = i / 6, (i + 1) / 6
+        a = V(fx + 0.3, 0.3 - 0.2 * t0, fz + 0.5 + (pz - 0.55 - fz - 0.5) * t0)
+        b = V(fx + 0.3, 0.3 - 0.2 * t1, fz + 0.5 + (pz - 0.55 - fz - 0.5) * t1)
+        k.beam('terracotta', a, b, 0.12, 0.06)
+    for i in range(3):
+        y = 0.12 + 0.18 * (2 - i) / 2
+        k.box('wood', 0.05, y, 0.05, fx + 0.3, 0, fz + 0.75 + i * 0.32)
+    # the casting pit: a stone curb rammed full of earth with moulds standing in it
+    for (x, z, L, ry) in ((px, pz - 0.55, 1.2, 0), (px, pz + 0.55, 1.2, 0), (px - 0.55, pz, 0.9, math.pi / 2), (px + 0.55, pz, 0.9, math.pi / 2)):
+        rubble_wall(k, x, z, L, 0.26, 0.18, ry=ry, ends=False, faces=('front',))
+    k.box('soil', 1.0, 0.24, 0.92, px, 0, pz)
+    for (dx, dz) in ((-0.22, -0.15), (0.2, 0.18)):
+        lathe(k, 'terracotta', [(0.12, 0), (0.12, 0.2), (0.1, 0.26), (0.06, 0.3), (0.06, 0.36), (0.04, 0.36), (0.04, 0.3)], px + dx, 0.24, pz + dz, seg=12, top=True)
+        k.torus('iron', 0.123, 0.008, px + dx, 0.32, pz + dz, seg=12, rseg=3)
+        k.torus('iron', 0.123, 0.008, px + dx, 0.4, pz + dz, seg=12, rseg=3)
+    # gantry over the pit
+    gy = 2.05
+    for gx in (px - 0.82, px + 0.82):
+        for sz in (-1, 1):
+            k.beam('wood', V(gx, 0, pz + sz * 0.6), V(gx, gy, pz), 0.11)
+        k.box('wood', 0.08, 0.06, 0.9, gx, 0.55, pz)
+        k.cbox('darkwood', 0.14, 0.16, 0.14, gx, gy + 0.02, pz)
+    k.box('darkwood', 1.9, 0.14, 0.14, px, gy + 0.08, pz)
+    k.box('darkwood', 0.2, 0.1, 0.22, px + 0.05, gy - 0.02, pz)   # the crab
+    k.cbox('darkwood', 0.07, 0.18, 0.06, px + 0.05, gy - 0.18, pz)
+    k.beam('iron', V(px + 0.05, gy - 0.28, pz), V(px + 0.05, 1.25, pz), 0.02, round_=True, seg=4)
+    cannon_barrel(k, px + 0.05, 0.3, pz, s=0.95, rz=0.0)
+    for s in (-1, 1):
+        k.beam('iron', V(px + 0.05, 1.25, pz), V(px + 0.05 + s * 0.09, 1.05, pz), 0.012, round_=True, seg=4)
+    # winch on the near frame
+    k.cyl('wood', 0.06, 0.06, 0.36, px + 0.82, 0.75, pz - 0.18, seg=10, rx=math.pi / 2)
+    k.beam('iron', V(px + 0.86, 0.75, pz + 0.2), V(px + 0.86, 0.88, pz + 0.26), 0.02)
+    # a flagstaff on the gantry
+    k.cyl('wood', 0.02, 0.015, 0.75, px - 0.82, gy + 0.1, pz, seg=6)
+    k.marker('flag', px - 0.82, gy + 0.85, pz)
+    # barrels cooling on skids
+    for zz in (0.55, 1.35):
+        k.box('darkwood', 2.0, 0.08, 0.1, -1.35, 0, zz)
+    for i in range(4):
+        cannon_barrel(k, -2.15 + i * 0.52, 0.18, 0.45, ry=-math.pi / 2, s=0.98 - 0.05 * (i % 2))
+    # a finished gun, shot, pig iron and fuel
+    gun_carriage(k, 0.55, 1.6, ry=0.3, s=1.0)
+    shot_pile(k, -0.35, 1.85, 4, 0.05)
+    bar_stack(k, -2.2, 1.85, 12, 0.5, ry=0.1)
+    k.push(2.35, 0, 1.45)
+    for j, m in enumerate((3, 2)):
+        for i in range(m):
+            log(k, (i - (m - 1) / 2) * 0.27, 0.13 + j * 0.23, 0, 1.2, 0.13, ry=math.pi / 2)
+    k.pop()
+    heap(k, 'black', -0.1, -0.15, 0.45, 0.3, seed=14.0, lumps=12, lumpsize=0.04)
     return {'ao': 1024}

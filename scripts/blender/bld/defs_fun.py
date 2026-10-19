@@ -1029,7 +1029,6 @@ def eatery(k):
     for i in range(5):
         a = i / 5 * math.tau
         k.beam('bark', V(fx + math.cos(a) * 0.18, 0.02, fz + math.sin(a) * 0.1), V(fx - math.cos(a) * 0.04, 0.06, fz - math.sin(a) * 0.02), 0.035, round_=True)
-    k.marker('glow:0.3x0.04x0.16', fx, 0.05, fz)
     k.marker('smoke', fx, 0.2, fz)
     for s in (-1, 1):
         xx = fx + s * 0.34
@@ -1055,7 +1054,8 @@ def eatery(k):
         k.cbox('stoneDark', 0.05, 0.035, 0.07, math.cos(a) * 0.1, 0.12 * 0.7 + math.sin(a) * 0.08, 0.02, rz=a - math.pi / 2, uvscale=2.0)
     k.box('stone', 0.28, 0.03, 0.12, 0, -0.03, 0.08, uvscale=2.0)
     k.pop()
-    k.marker('glow:0.12x0.07x0.02', ox, 0.31, oz + 0.25)
+    for i in range(3):
+        k.cbox('fire', 0.035, 0.02, 0.02, ox - 0.04 + i * 0.04, 0.275, oz + 0.275, ry=i)
     k.cyl('stoneDark', 0.06, 0.05, 0.28, ox + 0.08, 0.5, oz - 0.12, seg=8)
     k.marker('smoke', ox + 0.08, 0.82, oz - 0.12)
     # peel and firewood
@@ -1075,4 +1075,76 @@ def eatery(k):
     # a barrel table at the front and the sign on the corner post
     barrel_table(k, 0.25, 0.78 - 0.02, stools=2)
     hanging_sign(k, px1 - 0.04, 0.92, 0.57 - 0.05 + 0.0, 'EATS')
+    return {'ao': 1024}
+
+
+# ------------------------------------------------------------------------------------------- the gambling den
+
+def shingle_gable(k, w, d, h, rise, over=0.22, mat='planksDark', gable='oldplanks'):
+    """a wooden-shingle gable roof on walls w x d of height h (current frame), with ridge board and boarded gables"""
+    for s in (-1, 1):
+        k.push(0, 0, 0, 0 if s > 0 else math.pi)
+        shingle_lean(k, w + 2 * over * 0.7, d / 2 + over, h + rise, h - over * rise / (d / 2), z0=0.0, mat=mat)
+        k.pop()
+    k.beam('darkwood', V(-w / 2 - over * 0.7, h + rise + 0.02, 0), V(w / 2 + over * 0.7, h + rise + 0.02, 0), 0.08, 0.06)
+    gables(k, w, d, rise, h, gable, 'boards', barge=True)
+
+
+@building('gambling_den')
+def gambling_den(k):
+    """Gambling Den: a weatherboarded shack with its shutters propped open, a purple-striped awning over the
+    card and dice tables, strings of lanterns, a tally board, casks of beer and the black flag on the gable"""
+    w, d, h, zb = 2.9, 1.5, 1.0, -0.6
+    k.push(0, 0, zb)
+    plinth(k, w + 0.06, d + 0.06, 0.1)
+    k.push(0, 0.1, 0)
+    ops = [Op('front', 0.0, 'double', w=0.62, h=0.86), Op('front', -0.85, 'hatch', w=0.62, h=0.42, y=0.42), Op('front', 0.85, 'hatch', w=0.62, h=0.42, y=0.42),
+           Op('left', 0.0, 'window', shutters=True), Op('right', 0.2, 'window'), Op('back', -0.6, 'window'), Op('back', 0.7, 'door', h=0.8)]
+    clapboard(k, w, d, h, 'oldplanks', ops, trim='darkwood')
+    # inside the hatches: a dim room with a lit table and a bottle shelf
+    for xx in (-0.85, 0.85):
+        k.box('planksDark', 0.7, 0.02, 0.5, xx, 0.4, d / 2 - 0.32)
+        k.box('planks', 0.6, 0.02, 0.08, xx, 0.66, -d / 2 + 0.3)
+        for i in range(5):
+            bottle(k, xx - 0.24 + i * 0.12, 0.68, -d / 2 + 0.3, 'black' if i % 2 else 'brass')
+    shingle_gable(k, w, d, h, 0.62, over=0.24)
+    flagpole(k, -w / 2 - 0.05, 0.0, 0.75, base=h + 0.5)
+    k.pop()
+    k.pop()
+    zf = zb + d / 2
+    # a plank stoop, then the striped awning out to its poles
+    k.push(0, 0, zf + 0.12)
+    deck(k, w - 0.1, 0.24, 0.1, 'planks', along='x', joists=False)
+    k.pop()
+    awning(k, 'canvasPurple', -w / 2 + 0.05, w / 2 - 0.05, 1.08, zf + 0.02, 0.9, zf + 0.98, sag=0.05, valance=0.08)
+    k.box('darkwood', w, 0.06, 0.06, 0, 1.06, zf + 0.04)
+    string_lights(k, (-w / 2 + 0.08, 0.86, zf + 0.99), (w / 2 - 0.08, 0.86, zf + 0.99), n=6, sag=0.08)
+    k.push(0, 0, zf)
+    lantern(k, -0.45, 0.95, 0.02)
+    k.pop()
+    # tables: cards to the left, dice to the right, a cask table between
+    card_table(k, -0.85, zf + 0.62, 0.24, chairs=3, cloth='red')
+    card_table(k, 0.85, zf + 0.62, 0.24, chairs=3, cloth='canvasGreen')
+    barrel_table(k, 0.0, zf + 0.82, stools=0)
+    if not k.lod:
+        lathe(k, 'planksDark', [(0.025, 0), (0.03, 0.06), (0.032, 0.07), (0.0, 0.065)], 0.05, 0.375, zf + 0.82, seg=8, cap=False)
+        dice(k, -0.06, 0.375, zf + 0.84)
+    # the tally board on an easel and a cask stand by the door
+    k.push(-1.6, 0, zf + 0.35, 0.5)
+    for s in (-1, 1):
+        k.beam('wood', V(s * 0.17, 0, 0.05), V(s * 0.12, 0.85, 0), 0.025)
+    k.beam('wood', V(0, 0, -0.25), V(0, 0.82, 0), 0.025)
+    k.cbox('black', 0.38, 0.32, 0.02, 0, 0.6, 0.03, rx=-0.08)
+    k.box('darkwood', 0.42, 0.03, 0.04, 0, 0.42, 0.04)
+    if not k.lod:
+        for r in range(4):
+            for c in range(3 + r % 2):
+                k.cbox('bone', 0.006, 0.05, 0.004, -0.13 + c * 0.03 + (0.12 if r % 2 else 0), 0.7 - r * 0.065, 0.045, rx=-0.08)
+            k.cbox('bone', 0.11, 0.005, 0.004, -0.09, 0.7 - r * 0.065, 0.047, rz=0.4)
+    k.pop()
+    for (xx, zz, s_) in ((1.58, zf + 0.3, 0.85), (1.6, zf - 0.05, 0.85), (1.6, zf + 0.62, 0.8)):
+        barrel(k, xx, zz, s_)
+    barrel(k, 1.6, zf + 0.12, 0.8, 0.31, 0.0, lying=True) if False else None
+    crate(k, 1.35, 0, zf - 0.85 + 0.2, 0.26, 0.3)
+    hanging_sign(k, w / 2 - 0.12, 1.0, zf + 0.04, 'DICE')
     return {'ao': 1024}

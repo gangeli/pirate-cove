@@ -312,14 +312,15 @@ def bunkhouse(k):
     k.pop()
     steps(k, -0.45, d / 2 + 0.26, 0.4, lift, 2, 'oldplanks')
     # a hammock slung between the porch posts
-    k.cyl('bark', 0.03, 0.03, 0.7, 0.9, lift, 0.55, seg=7)
-    k.cyl('bark', 0.03, 0.03, 0.7, 0.15, lift, 0.55, seg=7)
+    # (slung at the outer edge of the porch, clear of the eave)
+    k.cyl('bark', 0.03, 0.03, 0.7, 0.9, lift, 0.76, seg=7)
+    k.cyl('bark', 0.03, 0.03, 0.7, 0.15, lift, 0.76, seg=7)
     hv, hf = [], []
     for i in range(9):
         t = i / 8
         x = 0.18 + 0.69 * t
         y = lift + 0.5 - 0.18 * math.sin(math.pi * t)
-        hv += [V(x, y, 0.47), V(x, y - 0.02, 0.63)]
+        hv += [V(x, y, 0.68), V(x, y - 0.02, 0.84)]
     for i in range(8):
         a = i * 2
         hf += [(a, a + 2, a + 3, a + 1), (a, a + 1, a + 3, a + 2)]

@@ -142,7 +142,9 @@ class BuildingModels {
     if (farSrc && force !== 'near') {
       const lod = new THREE.LOD();
       lod.addLevel(near, 0);
-      lod.addLevel(farSrc.clone(true), force === 'far' ? 0.001 : this.lodDistance);
+      // big buildings stay big on screen for longer: switch by apparent size, not a fixed distance
+      const r = (s.userData.radius as number | undefined) ?? (s.userData.radius = new THREE.Box3().setFromObject(s).getBoundingSphere(new THREE.Sphere()).radius);
+      lod.addLevel(farSrc.clone(true), force === 'far' ? 0.001 : this.lodDistance * (0.6 + r * 0.55));
       if (force === 'far') near.visible = false;
       g.add(lod);
     } else g.add(near);

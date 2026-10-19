@@ -1408,12 +1408,15 @@ def black_market(k):
         k.push(A.x, 0, A.z, ang)
         n = max(1, round(L / (0.25 if k.lod else 0.11)))
         for i in range(n):
-            hh = 0.95 + (k.r() - 0.5) * 0.12
+            hh = 0.78 + (k.r() - 0.5) * 0.12
             k.box('oldplanks', L / n - 0.01, hh, 0.025, (i + 0.5) * L / n, 0, 0, ry=(k.r() - 0.5) * 0.05, uvscale=1.3, grain=1)
-        for yy in (0.2, 0.75):
+        for yy in (0.15, 0.6):
             k.box('darkwood', L, 0.06, 0.04, L / 2, yy, -0.03)
         for i in range(round(L / 0.8) + 1):
-            k.box('darkwood', 0.08, 1.02, 0.08, i * L / round(L / 0.8), 0, -0.04)
+            k.box('darkwood', 0.08, 0.84, 0.08, i * L / round(L / 0.8), 0, -0.04)
+        if not k.lod and L > 2:
+            # an old sail patched over the gaps, held with battens
+            k.mesh('canvas', [V(0.4, 0.72, -0.05), V(1.3, 0.75, -0.05), V(1.35, 0.12, -0.06), V(0.45, 0.2, -0.06)], [(0, 3, 2, 1), (1, 2, 3, 0)], uvscale=1.0)
         k.pop()
     # stall 1 (left): the armourer's table under a purple tarp
     stall(k, -0.6, -0.45, 1.2, 0.85, 'canvasPurple')
@@ -1481,10 +1484,14 @@ def outcrop(k, x, z, ex, ey, ez, seed=0.0, mouth=None, ry=0.0, mat='stoneDark', 
         for i in range(seg if j < rings else 1):
             a = TAU * i / seg
             d = Vector((math.cos(ph) * math.cos(a), math.sin(ph), math.cos(ph) * math.sin(a)))
-            n = noise.noise(d * 1.8 + off) * 0.6 + noise.noise(d * 4.5 + off * 2) * 0.3 + (0.5 - abs(noise.noise(d * 3.0 + off * 3))) * 0.35
+            n = noise.noise(d * 1.3 + off) * 0.7 + noise.noise(d * 3.8 + off * 2) * 0.3 + (0.5 - abs(noise.noise(d * 2.6 + off * 3))) * 0.6
             r = 1 + amp * n
             p = Vector((d.x * ex * r, d.y * ey * r, d.z * ez * r))
-            p.y += 0.03 * math.sin(p.y * 22 + noise.noise(d * 3 + off) * 2) * (1 if j else 0)  # bedding planes
+            if j:
+                # limestone weathers into ledges: pull heights toward bedding planes, and flatten the crown
+                st = 0.16 + 0.03 * noise.noise(d * 2 + off)
+                p.y = p.y * 0.6 + 0.4 * (round(p.y / st) * st)
+                p.y = min(p.y, ey * (0.82 + 0.1 * noise.noise(d * 3 + off)))
             if j == 0:
                 p.y = -0.03
             f = 0.0
@@ -1524,14 +1531,14 @@ def outcrop(k, x, z, ex, ey, ez, seed=0.0, mouth=None, ry=0.0, mat='stoneDark', 
         k.mesh(cap, verts, top, uvscale=1.0, local=L)
 
 
-def palm(k, x, z, h=1.6, lean=(0.2, 0.0), seed=0.0, fronds=9):
+def palm(k, x, z, h=1.6, lean=(0.2, 0.0), seed=0.0, fronds=9, y0=0.0):
     """a coconut palm: a ringed, curving trunk, a crown of drooping fronds and a bunch of nuts"""
     n = 4 if k.lod else 9
-    p = Vector((x, 0, z))
+    p = Vector((x, y0, z))
     pts = [p.copy()]
     for i in range(1, n + 1):
         t = i / n
-        pts.append(Vector((x + lean[0] * h * t * t, h * t, z + lean[1] * h * t * t)))
+        pts.append(Vector((x + lean[0] * h * t * t, y0 + h * t, z + lean[1] * h * t * t)))
     for i in range(n):
         r0 = 0.055 - 0.02 * i / n
         limb(k, 'bark', pts[i], pts[i + 1] + (pts[i + 1] - pts[i]) * 0.03, r0, r0 - 0.004, seg=8 if not k.lod else 5)
@@ -1553,14 +1560,14 @@ def _frond(k, base, d, L, droop):
     d = Vector(d).normalized()
     side = d.cross(Vector((0, 1, 0)))
     side = side.normalized() if side.length > 1e-3 else Vector((1, 0, 0))
-    seg = 3 if k.lod else 8
+    seg = 3 if k.lod else 12
     verts, faces = [], []
     p, dd = Vector(base), d.copy()
     for i in range(seg + 1):
         t = i / seg
-        ww = 0.16 * math.sin(math.pi * min(1.0, 0.1 + t * 0.95)) + 0.01
-        dn = Vector((0, -1, 0)) * ww * 0.35
-        jag = 0 if k.lod else (0.03 if i % 2 else -0.02)
+        ww = 0.13 * math.sin(math.pi * min(1.0, 0.1 + t * 0.95)) + 0.01
+        dn = Vector((0, -1, 0)) * ww * 0.6
+        jag = 0 if k.lod else (0.025 if i % 2 else -0.015)
         verts += [p + side * ww + dn + dd * jag, p, p - side * ww + dn + dd * jag]
         p = p + dd * (L / seg)
         dd = (dd + Vector((0, -droop * 2.0 / seg, 0))).normalized()
@@ -1568,7 +1575,6 @@ def _frond(k, base, d, L, droop):
         a = i * 3
         faces += [(a, a + 3, a + 4, a + 1), (a + 1, a + 4, a + 5, a + 2)]
     k.mesh('leaf', verts, faces, uvscale=2.0)
-    k.mesh('leaf', verts, [f[::-1] for f in faces], uvscale=2.0)
 
 
 def rowboat(k, x, y, z, ry=0.0, L=0.85, B=0.17, D=0.12, oars=True):
@@ -1634,7 +1640,7 @@ def torch(k, x, z, h=0.85):
             a = TAU * i / 4
             k.beam('iron', V(x + math.cos(a) * 0.035, h - 0.02, z + math.sin(a) * 0.035), V(x + math.cos(a) * 0.05, h + 0.06, z + math.sin(a) * 0.05), 0.008)
     blob(k, 'soil', x, h + 0.02, z, 0.035, 0.03, 0.035, amp=0.1, rings=4, seg=7)
-    lathe(k, 'fire', [(0.035, h + 0.04), (0.04, h + 0.08), (0.025, h + 0.14), (0.008, h + 0.2), (0.002, h + 0.23)], x, 0, z, seg=7)
+    lathe(k, 'fire', [(0.03, h + 0.04), (0.045, h + 0.07), (0.035, h + 0.11), (0.015, h + 0.15), (0.002, h + 0.17)], x, 0, z, seg=8)
     k.marker('smoke', x, h + 0.25, z)
 
 
@@ -1644,7 +1650,9 @@ def cave(k):
     a skull nailed over the lintel, torches either side, casks and a chest of coin at the threshold, a lantern
     inside, vines and a palm clinging to the top"""
     cz = -0.35
-    outcrop(k, 0.0, cz, 1.25, 1.35, 0.95, seed=3.0, mouth=(0.38, 0.82, 0.75))
+    outcrop(k, 0.0, cz, 1.2, 1.2, 0.95, seed=3.0, mouth=(0.38, 0.82, 0.75), amp=0.24)
+    outcrop(k, -0.5, cz - 0.4, 0.7, 1.55, 0.6, seed=13.0, amp=0.25)
+    outcrop(k, 0.7, cz - 0.3, 0.6, 0.85, 0.65, seed=17.0, amp=0.25)
     # flanking boulders
     outcrop(k, 0.95, 0.55, 0.38, 0.4, 0.34, seed=5.0, ry=0.4, cap=None)
     outcrop(k, -0.98, 0.45, 0.32, 0.3, 0.3, seed=8.0, ry=1.2, cap=None)
@@ -1682,15 +1690,20 @@ def cave(k):
     k.cbox('iron', 0.24, 0.025, 0.025, 0, 0.015, 0.55, ry=math.pi / 2)
     k.pop()
     # trodden earth before the mouth, vines over the brow, a palm and scrub on top
-    k.box('dirt', 1.0, 0.006, 0.8, 0, 0, fz + 0.4, uvscale=0.8)
+    blob(k, 'dirt', 0, 0.0, fz + 0.4, 0.55, 0.012, 0.42, amp=0.25, freq=3, seed=2, rings=4, seg=14, flat=0.0)
     if not k.lod:
-        for i in range(9):
-            x = -0.45 + i * 0.11
-            L = 0.15 + 0.2 * abs(math.sin(i * 1.7))
-            yb = 1.0 + 0.1 * math.cos(i)
-            k.beam('leaf', V(x, yb, fz + 0.12), V(x + 0.02, yb - L, fz + 0.14), 0.012, round_=True, seg=4)
-            leaf_blade(k, V(x, yb - L * 0.5, fz + 0.15), V(0.3, -0.5, 1), 0.06, 0.04, 0.2)
-    palm(k, 0.45, cz - 0.3, 1.3, lean=(0.25, 0.1), seed=1.0, fronds=8)
+        # creepers trailing over the brow of the mouth
+        for i in range(7):
+            x0 = -0.42 + i * 0.14
+            yb = 0.98 + 0.08 * math.cos(i * 1.3)
+            L = 0.12 + 0.22 * abs(math.sin(i * 1.7))
+            for j in range(int(L / 0.045)):
+                vx, vy = x0 + 0.015 * math.sin(j * 1.9 + i), yb - j * 0.045
+                if j:
+                    k.beam('leaf', V(vx, vy, fz + 0.1 + 0.01 * j), V(x0 + 0.015 * math.sin((j - 1) * 1.9 + i), vy + 0.045, fz + 0.09 + 0.01 * j), 0.006, round_=True, seg=3)
+                a = (i * 2.3 + j * 1.7)
+                leaf_blade(k, V(vx, vy, fz + 0.1 + 0.01 * j), V(math.cos(a), -0.4, 0.8 + 0.3 * math.sin(a)), 0.06, 0.035, 0.3, seg=3)
+    palm(k, 0.75, cz - 0.35, 1.0, lean=(0.3, 0.15), seed=1.0, fronds=8, y0=0.75)
     k.push(0, 0, 0)
     for (x, y, z, s) in ((-0.5, 1.15, cz - 0.1, 0.18), (-0.2, 1.3, cz - 0.4, 0.14), (0.75, 0.95, cz + 0.1, 0.13), (-0.85, 0.8, cz - 0.3, 0.15)):
         blob(k, 'leaf', x, y, z, s, s * 0.7, s, amp=0.35, freq=4, seed=x * 5, rings=6, seg=10)

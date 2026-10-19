@@ -1,11 +1,12 @@
 import type { Game } from './game';
 import { MONTH } from './time';
-import { BUILDING } from './data/buildings';
+import { BUILDING, JOB_SEX, SKILLED_ONLY, type Job } from './data/buildings';
 import { SHIPS, type ShipType } from './data/ships';
+import type { Ship } from './types';
 import { findSpot, buildRoadBetween, footprint, canPlace } from './placement';
 import { Terrain } from './map';
-import { NATIONS } from './data/kings';
-import { regionReachable, regionDistance } from './sea';
+import { NATIONS, type Nation } from './data/kings';
+import { regionReachable, regionDistance, judgement } from './sea';
 
 /** Strategy knobs. The defaults are a competent human's play; scripts/tune.ts searches over them. */
 export interface Policy {
@@ -40,18 +41,47 @@ export interface Policy {
   lumber: number;
   /** fraction of decisions skipped at random (sloppiness) */
   sloppy: number;
+  /** plan around the labour actually available and the needs actually unmet (else build by rote) */
+  plan: boolean;
+  /** run a smuggler's cove and export industries */
+  trade: boolean;
+  /** send small ships to kidnap the craftsmen the island lacks (else only the odd random snatch) */
+  kidnap: boolean;
   /** degenerate strategies probed for reward hacking */
-  exploit?: 'idle' | 'pressgang' | 'gouge' | 'nofun' | 'nofleet';
+  exploit?: 'idle' | 'pressgang' | 'gouge' | 'nofun' | 'nofleet' | 'raidonly' | 'enddump';
 }
 
 export const DEFAULT_POLICY: Policy = {
   cadence: 0.5, hoardRate: 0.15, priceBias: 0, entertainment: 1, raid: 0.3, shipAt: 1600, reserve: 400, fear: true,
   festivalAt: 0.4, peaceAt: -55, patron: false, spoils: 'auto', sloppy: 0, lumber: 0, caution: 0.5, bigShipAt: 3500,
+  plan: true, trade: true, kidnap: true,
 };
+
+/** The skill ladder used for balance: each rung is a recognisable kind of player. */
+export const LADDER: Record<string, Partial<Policy>> = {
+  // checks in rarely, builds by rote, never trades, never plans a kidnapping
+  novice: { cadence: 3, sloppy: 0.4, fear: false, priceBias: -1, entertainment: 0.5, shipAt: 4000, festivalAt: 0, peaceAt: -101, plan: false, trade: false, kidnap: false },
+  // plays sensibly but casually: no export economy and no labour planning
+  casual: { cadence: 1.5, sloppy: 0.2, entertainment: 0.8, plan: false, trade: false },
+  default: {},
+};
+
+/** venues that serve each need, cheapest / lowest rank first */
+const VENUES: Record<'feast' | 'drink' | 'company' | 'gamble', string[]> = {
+  feast: ['dive', 'eatery', 'inn'],
+  drink: ['dive', 'tavern', 'gambling_den', 'casino', 'inn'],
+  company: ['wench_hut', 'brothel', 'courtesan'],
+  gamble: ['animal_pit', 'gambling_den', 'casino'],
+};
+
+/** craftsmen worth kidnapping, in the order a good player wants them */
+const KIDNAP_ORDER: Job[] = ['trader', 'server', 'cook', 'engineer', 'farmer', 'distiller', 'wench', 'tobacconist', 'gunsmith', 'surgeon'];
 
 /**
  * A scripted player used for automated playtesting and balance. It follows the strategy a competent
- * human would use: food and lumber first, then pirate entertainment, then ships, and fear when needed.
+ * human would use: food and lumber first, labour for every building it raises, entertainment matched to
+ * the needs the pirates actually feel, craftsmen kidnapped to order, an export trade through a smuggler's
+ * cove, and bigger ships as the treasury allows.
  */
 export class Bot {
   log: string[] = [];
@@ -96,6 +126,7 @@ export class Bot {
         const r = g.cmd({ type: 'build', def, x: pl.x, y: pl.y, rot: pl.rot });
         if (r.ok) {
           this.say(`built ${d.name}`);
+          this.labourCache = null;
           return true;
         }
       }
@@ -150,7 +181,7 @@ export class Bot {
     return best;
   }
 
-  private fertile(crop: 'corn' | 'banana' | 'papaya' | 'sugarcane' | 'tobacco' = 'corn'): (x: number, y: number) => boolean {
+  private fertile(): (x: number, y: number) => boolean {
     return (x, y) => {
       const m = this.g.map;
       let f = 0;
@@ -169,78 +200,131 @@ export class Bot {
     if (slot === this.lastMonth) return;
     this.lastMonth = slot;
     if (this.p.sloppy && g.rng.chance(this.p.sloppy)) return;
+    this.labourCache = null;
     this.economy();
     if (this.p.exploit === 'pressgang') {
       for (const c of g.captives()) if (c.kind === 'captive' && !c.skilled) g.cmd({ type: 'edict', id: 'press_gang', target: c.id });
     }
+    if (this.p.exploit === 'enddump') this.endDump();
   }
+
+  // ------------------------------------------------------------------------------------------- labour
+
+  private labourCache: { free: number; freeF: number } | null = null;
+  /**
+   * Unskilled captives who could take up a new job (and how many are women): the unemployed, plus those
+   * idling at a construction tent with nothing to build or at a producer whose store is full, whom the
+   * employment pass will move to a new building anyway.
+   */
+  private labour(): { free: number; freeF: number } {
+    if (this.labourCache) return this.labourCache;
+    const g = this.g;
+    const sites = [...g.buildings.values()].some((b) => b.built < 1);
+    const soft = new Set<number>();
+    for (const b of g.buildings.values()) {
+      if (b.built < 1) continue;
+      const d = BUILDING[b.def];
+      const out = d.recipe?.out ?? d.gather?.out;
+      const full = !!out && !d.captiveService && (b.inv[out] ?? 0) >= (d.storage ?? 30) * 0.95;
+      if ((b.def === 'construction_tent' && !sites) || full) soft.add(b.id);
+    }
+    let free = 0, freeF = 0;
+    for (const p of g.people.values()) {
+      if (p.kind !== 'captive' || p.rebel || p.skilled || p.task.kind === 'dead' || p.task.kind === 'escape') continue;
+      if (p.job && !soft.has(p.job)) continue;
+      free++;
+      if (p.sex === 'F') freeF++;
+    }
+    return (this.labourCache = { free, freeF });
+  }
+
+  /** can the island staff (most of) a new building of this kind right now? */
+  private canStaff(def: string, frac = 0.75): boolean {
+    if (!this.p.plan) return true;
+    const d = BUILDING[def];
+    let need = d.haulers ?? 0, needF = 0;
+    for (const s of d.workers) {
+      if (SKILLED_ONLY.includes(s.job)) {
+        if (!this.g.hasProfession(s.job)) return false;
+        continue;
+      }
+      need += s.count;
+      if (JOB_SEX[s.job] === 'F') needF += s.count;
+    }
+    const { free, freeF } = this.labour();
+    return free >= Math.ceil(need * frac) && freeF >= Math.ceil(needF * frac);
+  }
+
+  /** a building of this kind already stands idle for want of hands: don't raise another */
+  private idleOne(def: string): boolean {
+    for (const b of this.g.buildings.values()) if (b.def === def && b.built >= 1 && !b.workers.length && BUILDING[def].workers.length) return true;
+    return false;
+  }
+
+  /** labour-aware build: only when it can be staffed, and none of its kind stands empty */
+  private staffed(def: string, near?: [number, number], pred?: (x: number, y: number) => boolean): boolean {
+    if (this.p.plan && (this.idleOne(def) || !this.canStaff(def))) {
+      this.skip(`staff:${def}`);
+      return false;
+    }
+    return this.build(def, near, pred);
+  }
+
+  /** the island wants more hands than it has */
+  private labourShort(): boolean {
+    const { free } = this.labour();
+    return free < 4;
+  }
+
+  // ------------------------------------------------------------------------------------------- economy
 
   private economy(): void {
     const g = this.g;
     const cap = g.captives().length, pir = g.pirates().length;
-    const ashore = g.pirates().filter((p) => p.task.kind !== 'atsea').length;
-    // pirates should pay for their fun
     const ashoreP = g.pirates().filter((p) => p.task.kind !== 'atsea');
-    const wealth = ashoreP.length ? ashoreP.reduce((a, p) => a + p.gold, 0) / ashoreP.length : 0;
+    const ashore = ashoreP.length;
+    // pirates should pay for their fun, but not more than they have
+    const wealth = ashore ? ashoreP.reduce((a, p) => a + p.gold, 0) / ashore : 0;
     const level = this.p.exploit === 'gouge' ? 2 : Math.max(0, Math.min(2, (wealth > 120 ? 2 : wealth > 35 ? 1 : 0) + this.p.priceBias));
     for (const b of g.buildings.values()) if (BUILDING[b.def].service && b.price !== level) g.cmd({ type: 'setPrice', id: b.id, price: level });
     // hoard
     if (!this.count('cave') && g.treasury > 400) this.build('cave');
     if (this.count('cave', false) && g.hoardRate !== this.p.hoardRate) g.cmd({ type: 'hoardRate', rate: this.p.hoardRate });
+    // a good player sees to the fleet first: plunder pays for everything else
+    if (this.p.plan) this.fleet();
     // lumber
     const timber = this.count('timber_camp');
-    if ((g.lumber() < 30 || timber < this.p.lumber) && timber < 2 + Math.floor(g.yearsElapsed) + this.p.lumber) this.build('timber_camp', this.forest());
+    if ((g.lumber() < 30 || timber < this.p.lumber) && timber < 2 + Math.floor(g.yearsElapsed) + this.p.lumber) {
+      if (!this.p.plan || this.canStaff('timber_camp', 0.6) || g.lumber() < 15) this.build('timber_camp', this.forest());
+    }
     if (this.count('sawmill') < Math.ceil(timber / 2)) this.build('sawmill', this.forest());
     // food
+    const kitchens = this.count('brewery') + this.count('ration_factory');
     if (this.count('chuck_tent') < Math.ceil(cap / 26)) this.build('chuck_tent');
-    if (this.count('corn_farm') < Math.ceil(cap / 16) + Math.floor((this.count('brewery') + this.count('ration_factory')) / 2) && g.goodTotal('corn') < 60) this.build('corn_farm', undefined, this.fertile());
+    if (this.count('corn_farm') < Math.ceil(cap / 16) + Math.floor(kitchens / 2) && g.goodTotal('corn') < 60) this.build('corn_farm', undefined, this.fertile());
     if (this.count('bunkhouse') * 5 < cap * 0.6) this.build('bunkhouse');
     // housing
     const homeless = g.pirates().filter((p) => !p.home && !p.captain).length;
     const freePlots = [...g.buildings.values()].filter((b) => b.def === 'housing_plot' && !b.owner).length;
     if (homeless > freePlots) this.build('housing_plot', this.dockSide());
-    // entertainment (near docks)
-    const E = this.p.exploit === 'nofun' ? 0 : this.p.entertainment;
-    const want = (n: number) => Math.ceil(n * E);
-    if (this.count('dive') < want(ashore / 16)) this.build('dive', this.dockSide());
-    if (this.count('wench_hut') < want(ashore / 5)) this.build('wench_hut', this.dockSide());
-    if (this.count('animal_pit') < want(ashore / 25)) this.build('animal_pit', this.dockSide());
-    if (pir > 15 && this.count('tavern') < want(pir / 25)) this.build('tavern', this.dockSide());
-    if (pir > 18 && this.count('gambling_den') < want(pir / 30)) this.build('gambling_den', this.dockSide());
-    if (pir > 20 && this.count('eatery') < want(pir / 30)) this.build('eatery', this.dockSide());
-    if (pir > 25 && this.count('brothel') < want(1)) this.build('brothel', this.dockSide());
-    if (pir > 30 && this.count('inn') < want(1) && g.treasury > 900) this.build('inn', this.dockSide());
-    if (pir > 30 && this.count('casino') < want(1) && g.treasury > 900) this.build('casino', this.dockSide());
-    if (this.count('brewery') < 1 && g.yearsElapsed > 0.2) this.build('brewery');
+    // entertainment
+    if (this.p.plan) this.entertainmentByNeed(ashoreP);
+    else this.entertainmentByRote(ashore, pir);
+    if (this.count('brewery') < 1 && g.yearsElapsed > 0.2) this.staffed('brewery');
     // ships' supplies
-    if (this.count('ration_factory') < 1 + Math.floor(g.ships.size / 3)) this.build('ration_factory');
-    if (this.count('iron_mine') < 1 && g.yearsElapsed > 0.5) this.build('iron_mine', this.oreSpot());
-    if (this.count('iron_mine') && this.count('blast_furnace') < 1) this.build('blast_furnace', this.oreSpot());
-    if (this.count('blast_furnace') && this.count('blacksmithy') < 1) this.build('blacksmithy');
-    if (this.count('blast_furnace') && this.count('gunsmithy') < 1) this.build('gunsmithy');
-    if (this.count('blast_furnace') && this.count('cannon_foundry') < 1) this.build('cannon_foundry');
-    // fleet
-    if (!this.count('boatyard')) this.buildShore('boatyard');
-    const docks = this.count('dock');
-    const ships = g.ships.size;
-    const queued = [...g.buildings.values()].filter((b) => b.building_ship).length;
-    if (docks <= ships + queued && g.treasury > 300) this.buildDock();
-    const yard = g.findBuilding('shipyard') ?? g.findBuilding('boatyard');
-    const captainless = [...g.ships.values()].filter((x) => !x.captain).length;
-    // no fleet at all: build whatever we can afford, even a humble snow
-    if (yard && !yard.building_ship && ships === 0 && docks > queued) {
-      const t: ShipType = g.treasury > 900 ? 'sloop' : g.treasury > 300 ? 'schooner' : 'snow';
-      if (g.cmd({ type: 'commission', yard: yard.id, ship: t }).ok) this.say(`commissioned a ${SHIPS[t].name} to rebuild the fleet`);
-    }
-    if (yard && !yard.building_ship && docks > ships + queued && captainless === 0 && g.treasury > this.p.shipAt) {
-      const want: ShipType = yard.def === 'shipyard' && g.treasury > this.p.bigShipAt ? (g.lumber() >= 150 && g.rng.chance(0.4) ? 'galleon' : 'frigate')
-        : yard.def === 'shipyard' && g.treasury > 2000 ? 'brigantine' : g.treasury > 900 ? 'sloop' : g.treasury > 300 ? 'schooner' : 'snow';
-      if (g.cmd({ type: 'commission', yard: yard.id, ship: want }).ok) this.say(`commissioned a ${SHIPS[want].name}`);
-    }
-    if (g.yearsElapsed > 3 && !this.count('shipyard') && g.treasury > this.p.shipAt) this.buildShore('shipyard');
+    if (this.count('ration_factory') < 1 + Math.floor(g.ships.size / 3)) this.staffed('ration_factory');
+    if (this.count('iron_mine') < 1 && g.yearsElapsed > 0.5) this.staffed('iron_mine', this.oreSpot());
+    if (this.count('iron_mine') && this.count('blast_furnace') < 1) this.staffed('blast_furnace', this.oreSpot());
+    if (this.count('blast_furnace') && this.count('blacksmithy') < 1) this.staffed('blacksmithy');
+    if (this.count('blast_furnace') && this.count('gunsmithy') < 1) this.staffed('gunsmithy');
+    if (this.count('blast_furnace') && this.count('cannon_foundry') < 1) this.staffed('cannon_foundry');
+    // the export trade
+    if (this.p.trade) this.trade();
+    if (!this.p.plan) this.fleet();
     // captains
     const capless = [...g.ships.values()].some((s) => !s.captain && s.status !== 'atsea');
-    if (capless && g.treasury > g.edictAvailability('recruit_captain').cost + 300 && g.edictAvailability('recruit_captain').ok) {
+    const noneSail = ![...g.ships.values()].some((s) => s.captain);
+    if (capless && g.treasury > g.edictAvailability('recruit_captain').cost + (noneSail ? 0 : 300) && g.edictAvailability('recruit_captain').ok) {
       g.cmd({ type: 'edict', id: 'recruit_captain' });
       this.say('recruited a captain');
     }
@@ -251,7 +335,7 @@ export class Bot {
       else if (this.count('very_scary_decor') < 6) this.build('very_scary_decor', this.workSide());
     }
     // church when captives want religion
-    if (g.yearsElapsed > 2 && !this.count('church')) this.build('church');
+    if (g.yearsElapsed > 2 && !this.count('church')) this.staffed('church');
     // defence if discovered and hated
     const threat = NATIONS.some((n) => g.nations[n].knows && g.nations[n].relation < -30);
     const invasion = NATIONS.some((n) => g.nations[n].invasion.stage >= 1);
@@ -278,6 +362,144 @@ export class Bot {
         break;
       }
     }
+  }
+
+  /** the old fixed ratios: a venue per so many pirates, whether or not anyone can staff it */
+  private entertainmentByRote(ashore: number, pir: number): void {
+    const E = this.p.exploit === 'nofun' ? 0 : this.p.entertainment;
+    const want = (n: number) => Math.ceil(n * E);
+    if (this.count('dive') < want(ashore / 16)) this.build('dive', this.dockSide());
+    if (this.count('wench_hut') < want(ashore / 5)) this.build('wench_hut', this.dockSide());
+    if (this.count('animal_pit') < want(ashore / 25)) this.build('animal_pit', this.dockSide());
+    if (pir > 15 && this.count('tavern') < want(pir / 25)) this.build('tavern', this.dockSide());
+    if (pir > 18 && this.count('gambling_den') < want(pir / 30)) this.build('gambling_den', this.dockSide());
+    if (pir > 20 && this.count('eatery') < want(pir / 30)) this.build('eatery', this.dockSide());
+    if (pir > 25 && this.count('brothel') < want(1)) this.build('brothel', this.dockSide());
+    if (pir > 30 && this.count('inn') < want(1) && this.g.treasury > 900) this.build('inn', this.dockSide());
+    if (pir > 30 && this.count('casino') < want(1) && this.g.treasury > 900) this.build('casino', this.dockSide());
+  }
+
+  /**
+   * Find the need the pirates ashore feel most and add a venue for it that they can afford, that suits
+   * their rank, and that the island can staff. Seats are budgeted per pirate so the bot does not raise
+   * venues nobody visits.
+   */
+  private entertainmentByNeed(ashoreP: { needs: Record<string, number>; rank: number; gold: number }[]): void {
+    const g = this.g;
+    if (this.p.exploit === 'nofun' || !ashoreP.length) return;
+    const E = this.p.entertainment;
+    const needs = (['feast', 'drink', 'company', 'gamble'] as const).map((n) => [n, ashoreP.reduce((a, p) => a + p.needs[n], 0) / ashoreP.length] as const).sort((a, b) => a[1] - b[1]);
+    const rank = ashoreP.reduce((a, p) => a + p.rank, 0) / ashoreP.length;
+    // seats already serving each need (capacity-weighted)
+    const seats: Record<string, number> = { feast: 0, drink: 0, company: 0, gamble: 0 };
+    for (const b of g.buildings.values()) {
+      const sv = BUILDING[b.def].service;
+      if (!sv) continue;
+      for (const n in sv.needs) if (n in seats) seats[n] += sv.capacity * (b.built >= 1 && !b.workers.length ? 0.2 : 1);
+    }
+    for (const [need, lvl] of needs) {
+      // company is served one at a time, so it needs more venues per seat
+      const perSeat = need === 'company' ? 3.5 : 5;
+      if (lvl > 0.62 && seats[need] * perSeat >= ashoreP.length * 0.6 * E) continue;
+      if (seats[need] * perSeat >= ashoreP.length * 1.6 * E) continue;
+      for (const def of VENUES[need]) {
+        const d = BUILDING[def];
+        const [lo, hi] = d.service!.ranks;
+        if (rank < lo - 1.5 || rank > hi + 2) continue;
+        if (g.missingReqs(d).length) continue;
+        const cost = g.costOf(d);
+        if (cost.gold > 0 && g.treasury < cost.gold + 600) continue;
+        if (this.idleOne(def) || !this.canStaff(def)) continue;
+        if (this.build(def, this.dockSide())) return;
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------------------------------- trade
+
+  /** cheapest-to-annoy power: the one we're friendliest with, preferring one that already knows us */
+  private tradePartner(): Nation {
+    const g = this.g;
+    return [...NATIONS].sort((a, b) => (g.nations[b].relation + (g.nations[b].knows ? 15 : 0) + (g.ongoing.has(`peace:${b}`) ? 30 : 0))
+      - (g.nations[a].relation + (g.nations[a].knows ? 15 : 0) + (g.ongoing.has(`peace:${a}`) ? 30 : 0)))[0];
+  }
+
+  private trade(): void {
+    const g = this.g;
+    if (!g.hasProfession('trader') && !this.count('smugglers_cove')) return;
+    if (!this.count('smugglers_cove')) {
+      this.build('smugglers_cove', this.dockSide());
+      return;
+    }
+    const cove = g.findBuilding('smugglers_cove');
+    if (!cove) return;
+    const open = NATIONS.filter((n) => g.ongoing.has(`open_cove:${n}`));
+    if (!open.length) {
+      const n = this.tradePartner();
+      // keep the buyer sweet: a peace promise first, so knowing where we are is no threat
+      if (!g.ongoing.has(`peace:${n}`) && g.edictAvailability('peace', n).ok) g.cmd({ type: 'edict', id: 'peace', nation: n });
+      if (g.cmd({ type: 'edict', id: 'open_cove', nation: n }).ok) this.say(`opened the smuggler's cove to ${n}`);
+    }
+    // goods for export: beer from surplus corn, rum and cigars once the craftsmen are here, arms from the forge
+    if (this.count('brewery') < 2 && g.yearsElapsed > 0.5) this.staffed('brewery');
+    if (g.hasProfession('farmer')) {
+      if (g.hasProfession('distiller') && this.count('sugar_farm') < 2 * Math.max(1, this.count('distillery'))) this.staffed('sugar_farm', undefined, this.fertile());
+      if (g.hasProfession('tobacconist') && this.count('tobacco_farm') < 2 * Math.max(1, this.count('cigar_factory'))) this.staffed('tobacco_farm', undefined, this.fertile());
+    }
+    if (this.count('sugar_farm', false) && this.count('distillery') < 1) this.staffed('distillery');
+    if (this.count('tobacco_farm', false) && this.count('cigar_factory') < 1) this.staffed('cigar_factory');
+    // the forge is the richest trade: a second mine once the foundry runs
+    if (this.count('cannon_foundry', false) && this.count('iron_mine') < 2) this.staffed('iron_mine', this.oreSpot());
+    if (this.count('iron_mine') >= 2 && this.count('blast_furnace') < 2) this.staffed('blast_furnace', this.oreSpot());
+  }
+
+  // ------------------------------------------------------------------------------------------- fleet
+
+  private fleet(): void {
+    const g = this.g;
+    if (!this.count('boatyard')) this.buildShore('boatyard');
+    const docks = this.count('dock');
+    const ships = g.ships.size;
+    const queued = [...g.buildings.values()].filter((b) => b.building_ship).length;
+    if (docks <= ships + queued && g.treasury > 300) this.buildDock();
+    const shipyard = g.findBuilding('shipyard');
+    const boatyard = g.findBuilding('boatyard');
+    const captainless = [...g.ships.values()].filter((x) => !x.captain).length;
+    const crewPool = g.pirates().filter((p) => !p.ship && !p.captain).length;
+    // no fleet at all: build whatever we can afford, even a humble snow
+    const yard = boatyard ?? shipyard;
+    if (yard && !yard.building_ship && ships === 0 && docks > queued) {
+      const t: ShipType = g.treasury > 900 + 1200 ? 'sloop' : g.treasury > 300 + 1200 ? 'schooner' : 'snow';
+      if (g.cmd({ type: 'commission', yard: yard.id, ship: t }).ok) this.say(`commissioned a ${SHIPS[t].name} to rebuild the fleet`);
+    }
+    // more ships only when there are hands to crew them and gold for a captain
+    const recruit = g.edictAvailability('recruit_captain').cost;
+    const roomForCrew = !this.p.plan || crewPool >= 6;
+    // a good player's first priority: a real warship to bring in plunder, the snow being an errand boy
+    const warships = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons > 8).length;
+    if (this.p.plan && boatyard && !boatyard.building_ship && !warships && !queued && docks > ships && g.treasury > SHIPS.sloop.gold + recruit + 150 && g.lumber() >= SHIPS.sloop.lumber) {
+      if (g.cmd({ type: 'commission', yard: boatyard.id, ship: 'sloop' }).ok) this.say('commissioned a Sloop');
+    }
+    if (docks > ships + queued && captainless === 0 && g.treasury > this.p.shipAt && roomForCrew) {
+      if (shipyard && !shipyard.building_ship && g.treasury > 500 + recruit) {
+        const want: ShipType = g.treasury > this.p.bigShipAt + recruit ? (g.lumber() >= 150 && crewPool >= 15 ? 'galleon' : 'frigate') : 'brigantine';
+        if (SHIPS[want].lumber <= g.lumber() && g.cmd({ type: 'commission', yard: shipyard.id, ship: want }).ok) this.say(`commissioned a ${SHIPS[want].name}`);
+      } else if (boatyard && !boatyard.building_ship && (!shipyard || ships < 2)) {
+        const want: ShipType = g.treasury > 900 ? 'sloop' : g.treasury > 300 ? 'schooner' : 'snow';
+        if (g.cmd({ type: 'commission', yard: boatyard.id, ship: want }).ok) this.say(`commissioned a ${SHIPS[want].name}`);
+      }
+    }
+    if (g.yearsElapsed > (this.p.plan ? 1.5 : 3) && !this.count('shipyard') && g.treasury > this.p.shipAt) this.buildShore('shipyard');
+  }
+
+  /** the last months: treasury is worth nothing at the final reckoning, so dump it into hulls and captains */
+  private endDump(): void {
+    const g = this.g;
+    if (g.yearsElapsed < g.settings.years - 0.5) return;
+    if (g.treasury > 1500) this.buildDock();
+    const yard = g.findBuilding('shipyard') ?? g.findBuilding('boatyard');
+    if (yard && !yard.building_ship) g.cmd({ type: 'commission', yard: yard.id, ship: yard.def === 'shipyard' ? 'galleon' : 'sloop' });
+    if (g.edictAvailability('recruit_captain').ok) g.cmd({ type: 'edict', id: 'recruit_captain' });
   }
 
   private dockSide(): [number, number] {
@@ -340,6 +562,37 @@ export class Bot {
     return false;
   }
 
+  // ------------------------------------------------------------------------------------------- ships
+
+  /** the craftsman the island most needs, if any (and nobody is already out fetching one) */
+  private kidnapTarget(): Job | null {
+    const g = this.g;
+    const enRoute = new Set([...g.ships.values()].filter((s) => s.status !== 'docked' && s.mission === 'kidnap').map((s) => s.kidnapJob));
+    const want = (j: Job) => !g.hasProfession(j) && !enRoute.has(j);
+    if (!this.p.kidnap) {
+      for (const j of ['shipwright', 'server', 'cook', 'engineer'] as Job[]) if (want(j) && (j !== 'engineer' || g.yearsElapsed > 1)) return j;
+      return null;
+    }
+    const pir = g.pirates().length;
+    // each craftsman is fetched when the island is ready to put them to work
+    const useful: Partial<Record<Job, boolean>> = {
+      shipwright: true,
+      server: pir > 14,
+      cook: pir > 18,
+      trader: this.p.trade && (this.count('brewery') > 0 || g.yearsElapsed > 1),
+      engineer: g.yearsElapsed > 1 || this.count('iron_mine') > 0,
+      farmer: this.p.trade && g.hasProfession('trader'),
+      distiller: this.p.trade && g.hasProfession('farmer'),
+      wench: pir > 25,
+      tobacconist: this.p.trade && g.hasProfession('distiller'),
+      gunsmith: g.hasProfession('engineer') && g.yearsElapsed > 2,
+      surgeon: g.yearsElapsed > 3,
+    };
+    const order: Job[] = ['shipwright', ...KIDNAP_ORDER];
+    for (const j of order) if (useful[j] && want(j)) return j;
+    return null;
+  }
+
   private ships(): void {
     const g = this.g;
     for (const s of g.ships.values()) {
@@ -356,7 +609,6 @@ export class Bot {
       const crewAshore = s.crew.filter((id) => g.people.get(id)?.task.kind !== 'dead').length;
       if (crewAshore < Math.ceil(d.men / 2)) {
         this.skip('crew');
-        if (g.rng.chance(0.01)) this.say(`${s.name} short of crew (${crewAshore}); pirates without ships: ${g.pirates().filter((p) => !p.ship).map((p) => `${p.mood}/${p.shoreJob ? 'job' : '-'}`).join(' ')}`);
         continue;
       }
       // let them party a little first
@@ -365,35 +617,78 @@ export class Bot {
         this.skip('partying');
         continue;
       }
-      // choose mission
-      const skilledWanted = !g.hasProfession('shipwright') ? 'shipwright' : !g.hasProfession('server') ? 'server' : !g.hasProfession('cook') ? 'cook' : !g.hasProfession('engineer') && g.yearsElapsed > 1 ? 'engineer' : null;
-      if (skilledWanted && g.treasury > 600 && g.rng.chance(0.25)) {
-        g.cmd({ type: 'shipOrders', ship: s.id, mission: 'kidnap', kidnapJob: skilledWanted as any });
-      } else if (g.captives().length < 26 + g.yearsElapsed * 6 && g.rng.chance(this.p.raid)) {
-        g.cmd({ type: 'shipOrders', ship: s.id, mission: 'raid' });
-      } else {
-        // best reachable known region by merchant traffic minus navy
-        let best = g.homeRegion, bs = -Infinity;
-        for (const r of g.regions) {
-          if (!regionReachable(g, s, r.id).ok) continue;
-          // further out is richer but patrolled; small ships stay near home, big ones go hunting
-          const far = Math.min(1, regionDistance(g, g.homeRegion, r.id) / 0.55);
-          const merch = NATIONS.reduce((a, n) => a + r.merchant[n], 0);
-          const nav = NATIONS.reduce((a, n) => a + r.naval[n], 0) * (0.35 + 0.9 * far) * (1 + r.heat * 0.3);
-          const big = d.cannons >= 12;
-          const sc = merch * (0.5 + far * (big ? 2.2 : 0.6)) - nav * (big ? 0.6 : 1.6) + (r.tradeRoute ? 0.4 : 0) - this.p.caution * far + g.rng.range(0, 0.3);
-          if (sc > bs) (bs = sc), (best = r.id);
-        }
-        const unexplored = g.regions.find((r) => r.knowledge === 0 && regionReachable(g, s, r.id).ok);
-        if (unexplored && g.rng.chance(0.2)) g.cmd({ type: 'shipOrders', ship: s.id, mission: 'explore', region: unexplored.id });
-        else g.cmd({ type: 'shipOrders', ship: s.id, mission: 'cruise', region: best, orders: s.cutlasses >= Math.min(4, d.cutlasses) || s.cannons < 2 ? 'board' : 'pound', spoils: this.p.spoils === 'auto' ? (g.avgHappiness() < 0.45 ? 'generous' : 'selfish') : this.p.spoils });
+      const mission = this.p.plan ? this.planMission(s) : this.roteMission(s);
+      if (mission === 'kidnap') g.cmd({ type: 'shipOrders', ship: s.id, mission: 'kidnap', kidnapJob: this.kidnapTarget()! });
+      else if (mission === 'raid') g.cmd({ type: 'shipOrders', ship: s.id, mission: 'raid' });
+      else if (mission === 'explore') g.cmd({ type: 'shipOrders', ship: s.id, mission: 'explore', region: g.regions.find((r) => r.knowledge === 0 && regionReachable(g, s, r.id).ok)!.id });
+      else {
+        const best = this.cruiseRegion(s);
+        g.cmd({ type: 'shipOrders', ship: s.id, mission: 'cruise', region: best, orders: s.cutlasses >= Math.min(4, d.cutlasses) || s.cannons < 2 ? 'board' : 'pound', spoils: this.p.spoils === 'auto' ? (g.avgHappiness() < 0.5 ? 'generous' : 'selfish') : this.p.spoils });
       }
       const r = g.cmd({ type: 'setSail', ship: s.id });
       if (r.ok) this.say(`${s.name} sails (${s.mission})`);
-      else {
-        this.skip(r.reason!.replace(/\(.*\)/, '').slice(0, 40));
-        if (g.rng.chance(0.05)) this.say(`${s.name} can't sail: ${r.reason}`);
-      }
+      else this.skip(r.reason!.replace(/\(.*\)/, '').slice(0, 40));
     }
   }
+
+  /** a casual player's choice: the odd kidnapping, raids when captives run low, otherwise cruise */
+  private roteMission(s: Ship): 'kidnap' | 'raid' | 'explore' | 'cruise' {
+    const g = this.g;
+    if (this.p.exploit === 'raidonly') return 'raid';
+    if (this.kidnapTarget() && g.treasury > 600 && g.rng.chance(0.25)) return 'kidnap';
+    if (g.captives().length < 26 + g.yearsElapsed * 6 && g.rng.chance(this.p.raid)) return 'raid';
+    if (g.regions.some((r) => r.knowledge === 0 && regionReachable(g, s, r.id).ok) && g.rng.chance(0.2)) return 'explore';
+    return 'cruise';
+  }
+
+  /**
+   * A good player's choice. Small hulls are the island's errand boys: they raid for hands while labour is
+   * short, fetch the craftsmen the island lacks, and chart the seas; they cruise only when idle. Real
+   * warships cruise, unless one is the island's only ship and the colony is starved of hands.
+   */
+  private planMission(s: Ship): 'kidnap' | 'raid' | 'explore' | 'cruise' {
+    const g = this.g;
+    if (this.p.exploit === 'raidonly') return 'raid';
+    const small = SHIPS[s.type].cannons <= 8;
+    const errandBoys = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons <= 8 && x.captain).length;
+    const errands = small || errandBoys === 0;
+    const { free } = this.labour();
+    const capTarget = 30 + g.yearsElapsed * 10;
+    const raiding = [...g.ships.values()].filter((x) => x !== s && x.status !== 'docked' && x.mission === 'raid').length;
+    if (errands && free < (small ? 5 : 2) && g.captives().length < capTarget && raiding === 0) return 'raid';
+    // a kidnapping costs 250: only when the treasury can spare it after the next ship and captain
+    const target = this.kidnapTarget();
+    if (errands && target && g.treasury > 250 + this.savingFor()) return 'kidnap';
+    if (errands && free < 8 && g.captives().length < capTarget && raiding === 0 && small) return 'raid';
+    const unexplored = g.regions.some((r) => r.knowledge === 0 && regionReachable(g, s, r.id).ok);
+    if (unexplored && (small ? g.rng.chance(0.6) : g.rng.chance(0.08))) return 'explore';
+    return 'cruise';
+  }
+
+  /** gold the bot is holding back for the next warship and her captain */
+  private savingFor(): number {
+    const g = this.g;
+    const warships = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons > 8).length;
+    if (warships === 0 && (g.findBuilding('boatyard') || g.findBuilding('shipyard'))) return SHIPS.sloop.gold + g.edictAvailability('recruit_captain').cost;
+    return this.p.reserve;
+  }
+
+  /** best reachable known region by merchant traffic minus navy; seasoned captains on big ships go further */
+  private cruiseRegion(s: Ship): number {
+    const g = this.g;
+    const d = SHIPS[s.type];
+    const j = judgement(g.people.get(s.captain));
+    let best = g.homeRegion, bs = -Infinity;
+    for (const r of g.regions) {
+      if (!regionReachable(g, s, r.id).ok) continue;
+      const far = Math.min(1, regionDistance(g, g.homeRegion, r.id) / 0.55);
+      const merch = NATIONS.reduce((a, n) => a + (g.ongoing.has(`peace:${n}`) ? 0.2 : 1) * r.merchant[n], 0);
+      const nav = NATIONS.reduce((a, n) => a + r.naval[n], 0) * (0.35 + 0.9 * far) * (1 + r.heat * 0.3);
+      const big = d.cannons >= 12;
+      const sc = merch * (0.5 + far * (big ? 2.2 : 0.6)) - nav * (big ? 0.6 : 1.6) + (r.tradeRoute && r.routeFound ? 0.4 : 0) - this.p.caution * far * (1.3 - j) + g.rng.range(0, 0.3);
+      if (sc > bs) (bs = sc), (best = r.id);
+    }
+    return best;
+  }
 }
+

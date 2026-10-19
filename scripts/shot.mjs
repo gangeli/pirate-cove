@@ -10,7 +10,7 @@ p.on('pageerror', (e) => logs.push('pageerror: ' + e.message));
 const t0 = Date.now();
 await p.goto(url);
 try { await p.waitForFunction(() => window.__shotDone, null, { timeout: 300000, polling: 500 }); } catch (e) { logs.push('timeout waiting for render'); }
-await p.screenshot({ path: out, timeout: 120000 });
+await p.screenshot({ path: out, timeout: 480000 });
 console.log(`rendered in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 console.log(logs.slice(0, 20).join('\n'));
 await b.close();

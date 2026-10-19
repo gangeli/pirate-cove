@@ -3,7 +3,7 @@ protective cannon, the five schools, observatory and the harbour anchor.
 
 Shared military props live here too (naval guns on truck carriages, shot, palisade logs, chains, racks)."""
 import math
-from mathutils import Vector, Matrix
+from mathutils import Vector, Matrix, noise
 from defs import building
 from arch import *
 from arch import _slope_grid
@@ -1221,3 +1221,662 @@ def anchor(k):
     chain(k, [V(0.24, 0.135, 0.12), V(0.18, 0.15, 0.0), V(0.24, 0.16, -0.12), V(0.12, 0.17, -0.06), V(0.2, 0.18, 0.08)], link=0.036, wire=0.009)
     rope_coil(k, -0.18, 0.15, 0.08) if False else None
     return {'ao': 512}
+
+
+# ------------------------------------------------------------------------------------------- school props
+
+def target(k, x, y, z, r=0.26, ry=0.0, holes=5):
+    """a round painted target board facing local +z (turned by ry), on two legs"""
+    k.push(x, y, z, ry)
+    k.cyl('planks', r, r, 0.04, 0, 0, -0.02, seg=20, rx=math.pi / 2)
+    for (rr, m, dz) in ((0.86, 'black', 0.022), (0.66, 'canvas', 0.024), (0.42, 'red', 0.026), (0.18, 'black', 0.028)):
+        k.cyl(m, r * rr, r * rr, 0.004, 0, 0, dz - 0.004, seg=20, rx=math.pi / 2)
+    if not k.lod:
+        for i in range(holes):
+            a = k.r() * math.tau
+            d = k.r() * r * 0.75
+            k.cyl('black', 0.012, 0.012, 0.004, math.cos(a) * d, math.sin(a) * d, 0.029, seg=5, rx=math.pi / 2)
+        for s in (-1, 1):
+            k.box('planksDark', 0.05, 0.05, 0.02, s * r * 0.6, -0.02, -0.035)
+    k.pop()
+
+
+def earth_bank(k, x0, x1, z, h, depth, mat='soil', seed=1.0):
+    """a heaped earth butt/bank running along x, mounded and lumpy"""
+    nx, nz = (8, 4) if k.lod else (24, 8)
+    verts, faces = [], []
+    for j in range(nz + 1):
+        t = j / nz
+        for i in range(nx + 1):
+            u = i / nx
+            xx = x0 + (x1 - x0) * u
+            prof = math.sin(math.pi * t) ** 0.8 * min(1.0, 4 * u, 4 * (1 - u)) ** 0.6
+            n = noise.noise(Vector((xx * 3, t * 3, seed))) * 0.06
+            verts.append(V(xx, max(0.0, h * prof + n * prof), z - depth / 2 + depth * t))
+    for j in range(nz):
+        for i in range(nx):
+            a = j * (nx + 1) + i
+            faces.append((a, a + nx + 1, a + nx + 2, a + 1))
+    k.mesh(mat, verts, faces, uvscale=1.0)
+
+
+def rack(k, x, z, ry=0.0, w=0.8, kind='musket', n=5):
+    """an A-frame arms rack with muskets, cutlasses or pikes"""
+    k.push(x, 0, z, ry)
+    for s in (-1, 1):
+        k.beam('wood', V(s * w / 2, 0, -0.15), V(s * w / 2, 0.7, 0), 0.05, 0.04)
+        k.beam('wood', V(s * w / 2, 0, 0.15), V(s * w / 2, 0.7, 0), 0.05, 0.04)
+    k.box('wood', w + 0.08, 0.05, 0.06, 0, 0.66, 0)
+    k.box('wood', w + 0.08, 0.04, 0.24, 0, 0.12, 0)
+    for i in range(n):
+        x_ = -w / 2 + 0.08 + i * (w - 0.16) / max(1, n - 1)
+        for s in (-1, 1):
+            if kind == 'musket':
+                musket(k, V(x_, 0.16, s * 0.08), V(0, 1, -s * 0.11), up=(0, 0, s))
+            elif kind == 'cutlass':
+                cutlass(k, V(x_, 0.62, s * 0.05), V(0, -1, s * 0.15), side=(1, 0, 0))
+            else:
+                k.beam('wood', V(x_, 0.16, s * 0.08), V(x_, 1.3, -s * 0.06), 0.022, round_=True, seg=5)
+                k.cbox('iron', 0.012, 0.12, 0.03, x_, 1.34, -s * 0.065)
+    k.pop()
+
+
+def ships_wheel(k, x, y, z, ry=0.0, r=0.2):
+    k.push(x, y, z, ry)
+    k.box('darkwood', 0.12, 0.0001 + y * 0 + 0.36, 0.1, 0, -0.36 + 0.0, 0.04 - 0.08) if False else None
+    k.push(0, 0, 0, 0, math.pi / 2)
+    k.torus('wood', r, 0.016, 0, 0, 0, seg=20, rseg=4)
+    k.torus('wood', r * 0.45, 0.012, 0, 0, 0, seg=14, rseg=4)
+    k.cyl('darkwood', 0.04, 0.04, 0.08, 0, -0.04, 0, seg=10)
+    k.pop()
+    for i in range(8):
+        a = i / 8 * math.tau
+        d = V(math.cos(a), math.sin(a), 0)
+        k.beam('wood', d * 0.03, d * (r + 0.07), 0.018, round_=True, seg=5)
+    k.pop()
+
+
+def globe(k, x, z, r=0.2, h=0.5):
+    """a terrestrial globe on a turned stand with brass meridian and a wooden horizon ring"""
+    k.push(x, 0, z)
+    for i in range(4):
+        a = i / 4 * math.tau + math.pi / 4
+        k.beam('darkwood', V(math.cos(a) * 0.2, 0, math.sin(a) * 0.2), V(math.cos(a) * 0.08, h * 0.55, math.sin(a) * 0.08), 0.03, round_=True, seg=6)
+    lathe(k, 'darkwood', [(0.09, h * 0.5), (0.05, h * 0.56), (0.04, h * 0.7), (0.025, h * 0.72)], seg=10)
+    sphere(k, 'plasterYellow', r, 0, h + 0.02, 0, seg=18, rings=12)
+    if not k.lod:
+        # painted continents as low patches
+        for (a, b, s) in ((0.4, 0.3, 0.09), (2.1, -0.2, 0.11), (3.6, 0.5, 0.08), (4.8, -0.4, 0.07)):
+            p = V(math.cos(a) * math.cos(b), math.sin(b), math.sin(a) * math.cos(b))
+            frame_along(k, V(0, h + 0.02, 0) + p * (r - 0.004), p)
+            k.cyl('leaf', s * 0.6, s * 0.5, 0.008, 0, 0, 0, seg=7)
+            k.pop()
+    k.push(0, h + 0.02, 0, 0.0, 0.0, 0.4)
+    k.torus('brass', r + 0.02, 0.008, 0, 0, 0, rx=math.pi / 2, seg=24, rseg=4)
+    k.pop()
+    k.torus('wood', r + 0.05, 0.014, 0, h + 0.02, 0, seg=24, rseg=4)
+    for i in range(4):
+        a = i / 4 * math.tau + math.pi / 4
+        k.beam('darkwood', V(math.cos(a) * (r + 0.05), h + 0.02, math.sin(a) * (r + 0.05)), V(math.cos(a) * 0.12, h * 0.5, math.sin(a) * 0.12), 0.02, round_=True, seg=5)
+    k.pop()
+
+
+def armillary(k, x, z, h=0.75):
+    """an armillary sphere on a stone pillar: brass rings round a small ball"""
+    k.push(x, 0, z)
+    lathe(k, 'stone', [(0.12, 0.0), (0.12, 0.08), (0.07, 0.12), (0.06, h - 0.12), (0.09, h - 0.08), (0.09, h - 0.03)], seg=10)
+    k.cyl('brass', 0.02, 0.012, 0.08, 0, h - 0.03, 0, seg=6)
+    c = h + 0.17
+    for (rx_, rz_) in ((0, 0), (math.pi / 2, 0), (math.pi / 2, math.pi / 2), (0.41, 0.0)):
+        k.push(0, c, 0, 0, rx_, rz_)
+        k.torus('brass', 0.13, 0.007 if not k.lod else 0.014, 0, 0, 0, seg=20, rseg=3)
+        k.pop()
+    k.beam('brass', V(0, c - 0.17, 0), V(0, c + 0.17, 0), 0.008, round_=True, seg=5) if False else k.beam('brass', V(0.0, c - 0.16, -0.06), V(0.0, c + 0.16, 0.06), 0.008, round_=True, seg=5)
+    sphere(k, 'brass', 0.03, 0, c, 0, seg=8, rings=5)
+    k.pop()
+
+
+def telescope(k, x, z, ry=0.0, elev=0.45, L=0.7):
+    """a brass refractor on a wooden tripod"""
+    k.push(x, 0, z, ry)
+    top = V(0, 0.6, 0)
+    for i in range(3):
+        a = i / 3 * math.tau + 0.5
+        k.beam('wood', V(math.cos(a) * 0.22, 0, math.sin(a) * 0.22), top, 0.025, round_=True, seg=5)
+    k.push(0, 0.62, 0, 0, math.pi / 2 - elev)
+    k.cyl('brass', 0.03, 0.04, L * 0.6, 0, -L * 0.3, 0, seg=10)
+    k.cyl('darkwood', 0.042, 0.042, L * 0.3, 0, L * 0.25, 0, seg=10)
+    k.cyl('brass', 0.046, 0.046, 0.05, 0, L * 0.53, 0, seg=10)
+    k.cyl('black', 0.04, 0.04, 0.003, 0, L * 0.58, 0, seg=10)
+    k.cyl('brass', 0.02, 0.016, 0.08, 0, -L * 0.36, 0, seg=8)
+    k.pop()
+    k.pop()
+
+
+def small_house(k, w, d, h, walls='planks', roof='thatch', ops=(), rise=None, kind='board', gable='oldplanks', over=0.25, base=True):
+    """a one-room schoolhouse/shed on a footing"""
+    if base:
+        plinth(k, w + 0.06, d + 0.06, 0.1)
+        k.push(0, 0.1, 0)
+    if kind == 'board':
+        board_batten(k, w, d, h, walls, list(ops))
+    elif kind == 'clap':
+        clapboard(k, w, d, h, walls, list(ops))
+    elif kind == 'framed':
+        framed(k, w, d, h, walls, list(ops))
+    else:
+        plastered(k, w, d, h, walls, list(ops))
+    rise = rise or d * 0.55
+    if roof in ('thatch', 'thatchDark'):
+        thatch_gable(k, w, d, rise, over=over, y=h, mat=roof, gable=gable, gable_kind='boards')
+    else:
+        tile_gable(k, w, d, rise * 0.85, over=over * 0.8, y=h, gable=gable)
+    if base:
+        k.pop()
+
+
+# ------------------------------------------------------------------------------------------- schools
+
+@building('school_gunnery')
+def school_gunnery(k):
+    """a gun drill ground: a stone powder house and classroom, a timber platform with two guns laid on a
+    canvas target screen backed by an earth butt, shot, kegs, rammers and sponges on a rack"""
+    k.box('dirt', 5.6, 0.012, 2.6, 0, 0, 0, uvscale=0.5)
+    # classroom and powder store
+    k.push(-2.05, 0, -0.3)
+    small_house(k, 1.4, 1.2, 0.9, 'plaster', 'tiles', [Op('front', -0.2, 'door', h=0.78), Op('right', 0.0, 'window'), Op('left', 0.0, 'window')], kind='plaster', gable='plaster', rise=0.65)
+    k.pop()
+    hanging_sign(k, -1.75, 0.95, 0.32, 'GUNNERY')
+    # gun platform on sleepers
+    k.push(-0.25, 0, 0.0)
+    for z in (-0.75, 0.0, 0.75):
+        k.box('bark', 1.6, 0.05, 0.1, 0, 0, z)
+    k.push(0, 0, 0)
+    deck(k, 1.6, 1.7, 0.1, 'planks', along='z', joists=False)
+    k.pop()
+    for z in (-0.42, 0.42):
+        gun(k, -0.15, z, math.pi / 2, 0.1, elev=0.02)
+        k.cbox('iron', 0.02, 0.02, 0.02, -0.75, 0.12, z)
+    k.pop()
+    # rammers and sponges racked, a worm, buckets, shot and powder
+    k.push(-0.6, 0, 1.05)
+    for s in (-1, 1):
+        k.box('wood', 0.05, 0.55, 0.05, s * 0.45, 0, 0)
+    for yy in (0.25, 0.5):
+        k.box('wood', 0.98, 0.04, 0.05, 0, yy, 0)
+    for i in range(4):
+        rammer(k, V(-0.4 + i * 0.26, 0.02, -0.05), V(-0.35 + i * 0.26, 0.92, 0.02), head=('canvas' if i % 2 else 'darkwood'))
+    k.pop()
+    shot_pile(k, 0.85, -0.85, 3)
+    shot_pile(k, 0.85, 0.9, 3)
+    for (x, z) in ((-1.2, 0.95), (-1.0, 1.05)):
+        cask(k, x, z, 0.5)
+    k.cyl('planksDark', 0.07, 0.06, 0.13, 0.6, 0, 0.0, seg=10)
+    k.cyl('water', 0.06, 0.06, 0.004, 0.6, 0.12, 0.0, seg=10)
+    # the target: a canvas screen on a timber frame, ringed and holed, an earth butt behind
+    tx = 2.2
+    earth_bank(k, -1.25, 1.25, tx + 0.35, 0.75, 0.6, seed=3.0) if False else None
+    k.push(tx + 0.42, 0, 0, math.pi / 2)
+    earth_bank(k, -1.2, 1.2, 0.0, 0.7, 0.55, seed=3.0)
+    k.pop()
+    for z in (-0.6, 0.6):
+        k.cyl('bark', 0.05, 0.045, 1.2, tx, -0.05, z, seg=8)
+    k.box('wood', 0.06, 0.06, 1.35, tx, 1.08, 0)
+    k.box('wood', 0.06, 0.06, 1.35, tx, 0.22, 0)
+    k.cbox('canvas', 0.015, 0.84, 1.15, tx - 0.03, 0.66, 0)
+    k.push(tx - 0.045, 0.66, 0, -math.pi / 2)
+    for (rr, m) in ((0.42, 'black'), (0.33, 'canvas'), (0.24, 'red'), (0.1, 'black')):
+        k.cyl(m, rr, rr, 0.003, 0, 0, 0.0, seg=20, rx=math.pi / 2)
+        k.push(0, 0, 0.001)
+    for _ in range(4):
+        k.pop()
+    if not k.lod:
+        for (a, d) in ((0.5, 0.2), (2.0, 0.35), (4.0, 0.15), (5.1, 0.45)):
+            k.cyl('black', 0.03, 0.03, 0.004, math.cos(a) * d, math.sin(a) * d, 0.005, seg=7, rx=math.pi / 2)
+    k.pop()
+    # spent shot in the butt and on the ground
+    for (x, z) in ((2.45, -0.4), (2.5, 0.3), (1.6, 0.8), (1.9, -0.9)):
+        sphere(k, 'iron', 0.034, x, 0.034, z, seg=8, rings=5)
+    # an instructor's slate on an easel
+    k.push(0.4, 0, 1.0, -0.4)
+    for s in (-1, 1):
+        k.beam('wood', V(s * 0.2, 0, 0.05), V(s * 0.15, 0.8, -0.02), 0.03)
+    k.beam('wood', V(0, 0, -0.25), V(0, 0.75, -0.04), 0.025)
+    k.cbox('black', 0.4, 0.3, 0.02, 0, 0.6, 0.0, rx=-0.12)
+    k.cbox('wood', 0.44, 0.03, 0.04, 0, 0.44, 0.02, rx=-0.12)
+    k.pop()
+    return {'ao': 1024}
+
+
+@building('school_marksman')
+def school_marksman(k):
+    """a musketry range: a shingled firing shed with a rest rail and arms racks, targets on posts down
+    the range before a turf butt, a powder table and bottles set up on a fence rail"""
+    k.box('dirt', 4.6, 0.012, 2.6, 0, 0, 0, uvscale=0.5)
+    # firing shed, open toward the range (+x)
+    k.push(-1.75, 0, 0.0, math.pi / 2)
+    lean_to(k, 2.4, 0.9, 1.15, 0.9, mat='thatch', posts='bark', seed=4.4)
+    for i in range(20):
+        x = -1.2 + (i + 0.5) * 2.4 / 20
+        k.box('oldplanks', 2.4 / 20 - 0.008, 1.05 + (k.r() - 0.5) * 0.02, 0.025, x, 0, -0.43, uvscale=1.3, grain=1)
+    k.box('oldplanks', 0.025, 0.9, 0.85, -1.2, 0, 0.0, uvscale=1.3)
+    rack(k, -0.55, -0.25, 0, w=0.75, kind='musket', n=4)
+    rack(k, 0.55, -0.25, 0, w=0.75, kind='musket', n=4)
+    # rest rail with sandbags
+    for x in (-1.05, 0.0, 1.05):
+        k.box('wood', 0.06, 0.48, 0.06, x, 0, 0.55)
+    k.box('planks', 2.2, 0.04, 0.16, 0, 0.48, 0.55)
+    for x in (-0.7, -0.15, 0.4, 0.85):
+        k.push(x, 0.52, 0.55)
+        sack(k, 0, 0, 0.55, 1.57)
+        k.pop()
+    musket(k, V(-0.45, 0.6, 0.35), V(0.02, 0.0, 1.0), up=(0, 1, 0))
+    k.pop()
+    hanging_sign(k, -1.4, 1.0, 1.2, 'MARKSMEN') if False else None
+    k.push(-1.25, 0, 1.25)
+    k.cyl('bark', 0.035, 0.03, 1.15, 0, 0, 0, seg=7)
+    hanging_sign(k, 0, 1.08, 0.0, 'MARKSMEN')
+    k.pop()
+    # targets down the range before a turf butt
+    k.push(2.05, 0, 0, math.pi / 2)
+    earth_bank(k, -1.25, 1.25, 0.0, 0.65, 0.5, seed=7.0)
+    k.pop()
+    for z in (-0.8, 0.0, 0.8):
+        for s in (-1, 1):
+            k.cyl('bark', 0.025, 0.022, 0.62, 1.65, 0, z + s * 0.15, seg=6)
+        k.box('wood', 0.05, 0.05, 0.36, 1.65, 0.5, z)
+        target(k, 1.62, 0.72, z, 0.24, -math.pi / 2, holes=6)
+    # range pegs
+    for x in (-0.4, 0.4, 1.1):
+        for z in (-1.15, 1.15):
+            k.cyl('wood', 0.02, 0.015, 0.16, x, 0, z, seg=5)
+    # a fence rail with bottles to shoot at
+    k.push(0.55, 0, -1.1)
+    for s in (-1, 1):
+        k.cyl('bark', 0.03, 0.026, 0.55, s * 0.45, 0, 0, seg=7)
+    k.box('oldplanks', 1.0, 0.04, 0.09, 0, 0.55, 0)
+    for i in range(5):
+        x = -0.38 + i * 0.19
+        if i == 2:
+            continue
+        k.cyl('black', 0.028, 0.028, 0.09, x, 0.59, 0, seg=8)
+        k.cyl('black', 0.012, 0.01, 0.05, x, 0.68, 0, seg=6)
+    k.pop()
+    # powder table: keg, horns and cartridge box
+    k.push(-0.5, 0, 0.9)
+    k.box('planks', 0.6, 0.04, 0.35, 0, 0.45, 0)
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            k.box('wood', 0.04, 0.45, 0.04, sx * 0.26, 0, sz * 0.14)
+    cask(k, -0.12, 0.0, 0.42, y=0.49, lying=True, ry=0.3)
+    k.box('darkwood', 0.14, 0.08, 0.1, 0.16, 0.49, 0.03)
+    k.beam('bone', V(0.05, 0.5, -0.12), V(0.22, 0.53, -0.08), 0.035, round_=True, seg=6)
+    k.pop()
+    cask(k, -0.95, 1.05, 0.7)
+    return {'ao': 1024}
+
+
+def pell(k, x, z, h=0.95):
+    """a hacked practice post with rope bindings"""
+    k.cyl('darkwood', 0.07, 0.065, h, x, -0.05, z, seg=9)
+    k.cyl('darkwood', 0.065, 0.03, 0.05, x, h - 0.05, z, seg=9)
+    if not k.lod:
+        for y in (0.35, 0.65):
+            k.torus('rope', 0.072, 0.012, x, y, z, seg=10, rseg=3)
+        for i in range(5):
+            a = k.r() * math.tau
+            k.cbox('wood', 0.08, 0.012, 0.01, x + math.cos(a) * 0.066, 0.5 + k.r() * 0.35, z + math.sin(a) * 0.066, ry=-a + math.pi / 2, rz=0.4)
+
+
+def dummy(k, x, z, ry=0.0):
+    """a straw-stuffed sack man on a post with outstretched arms"""
+    k.push(x, 0, z, ry)
+    k.cyl('bark', 0.035, 0.03, 1.3, 0, -0.05, 0, seg=7)
+    k.beam('wood', V(-0.35, 0.92, 0), V(0.35, 0.92, 0), 0.04, round_=True, seg=6)
+    k.push(0, 0.5, 0)
+    sack(k, 0, 0, 1.25)
+    k.pop()
+    sphere(k, 'canvas', 0.1, 0, 1.17, 0, seg=10, rings=6, squash=1.1)
+    for s in (-1, 1):
+        k.cyl('thatch', 0.05, 0.03, 0.12, s * 0.33, 0.92, 0, seg=6, rz=s * math.pi / 2)
+    k.cbox('canvasRed', 0.34, 0.06, 0.24, 0, 0.82, 0.0)
+    k.pop()
+
+
+@building('school_sword')
+def school_sword(k):
+    """a fencing school: a timber-framed hall, a sanded practice yard fenced with rails and roped into a
+    ring, pells and a straw dummy, cutlass and pike racks, a tub of wooden wasters and a bench"""
+    k.box('dirt', 4.6, 0.012, 3.6, 0, 0, 0, uvscale=0.5)
+    k.push(0, 0, -1.15)
+    small_house(k, 3.0, 1.1, 0.95, 'plasterYellow', 'thatch', [Op('front', -0.4, 'double', h=0.85), Op('front', 0.65, 'window'), Op('front', -1.1, 'window'), Op('left', 0.0, 'window')], kind='framed', gable='planksDark', rise=0.62)
+    k.pop()
+    # crossed cutlasses over the door
+    if not k.lod:
+        for s in (-1, 1):
+            cutlass(k, V(-0.4 + s * 0.15, 1.25, -0.56), V(-s * 0.7, 0.7, 0), side=(0.7, 0.7 * s, 0))
+    hanging_sign(k, 0.25, 1.0, -0.55, 'SWORDS')
+    # sanded yard with a post-and-rail fence, open to the road
+    k.box('sand', 4.1, 0.016, 2.25, 0, 0, 0.55, uvscale=0.6)
+    for (a, b) in (((-2.15, -0.5), (-2.15, 1.7)), ((2.15, -0.5), (2.15, 1.7)), ((-2.15, 1.7), (-0.5, 1.7)), ((0.5, 1.7), (2.15, 1.7))):
+        fence(k, a[0], a[1], b[0], b[1], h=0.48, mat='planks')
+    # a roped ring on pegs
+    cx, cz, r = -0.35, 0.65, 0.68
+    pts = []
+    for i in range(8):
+        a = i / 8 * math.tau
+        p = V(cx + math.cos(a) * r, 0, cz + math.sin(a) * r)
+        k.cyl('wood', 0.022, 0.018, 0.32, p.x, 0, p.z, seg=6)
+        pts.append(p + V(0, 0.28, 0))
+    if not k.lod:
+        for i in range(8):
+            rope_line(k, hang(pts[i], pts[(i + 1) % 8], 0.03, 3), 0.012)
+    # pells and a dummy
+    for (x, z) in ((1.1, 0.0), (1.55, 0.55), (1.15, 1.15)):
+        pell(k, x, z)
+    dummy(k, 1.75, -0.25, -0.5)
+    # racks
+    rack(k, -1.65, 0.35, math.pi / 2, w=0.8, kind='cutlass', n=4)
+    rack(k, -1.65, 1.25, math.pi / 2, w=0.6, kind='pike', n=3)
+    # a tub of wooden wasters and a bench
+    k.cyl('planksDark', 0.12, 0.1, 0.32, 0.55, 0, 1.35, seg=12)
+    if not k.lod:
+        for i in range(5):
+            a = i / 5 * math.tau
+            k.beam('wood', V(0.55 + math.cos(a) * 0.04, 0.1, 1.35 + math.sin(a) * 0.04), V(0.55 + math.cos(a) * 0.1, 0.72, 1.35 + math.sin(a) * 0.1), 0.025, 0.01)
+    k.box('planks', 1.0, 0.04, 0.16, -0.2, 0.26, -0.35)
+    for x in (-0.6, 0.2):
+        k.box('wood', 0.05, 0.26, 0.12, x, 0, -0.35)
+    cask(k, 1.85, -0.6, 0.65)
+    return {'ao': 1024}
+
+
+@building('school_seaman')
+def school_seaman(k):
+    """a seamanship school: a mast stepped on a mock deck, with a fighting top, yards (one with its sail
+    furled), shrouds and ratlines to deadeyes, a wheel to learn the helm, knot boards and a classroom hut"""
+    k.box('dirt', 3.6, 0.012, 3.6, 0, 0, 0, uvscale=0.5)
+    # classroom hut
+    k.push(-1.05, 0, -1.15)
+    small_house(k, 1.3, 0.95, 0.8, 'oldplanks', 'thatchDark', [Op('front', 0.2, 'door', w=0.38, h=0.7), Op('left', 0.0, 'window', w=0.24, h=0.22, y=0.35)], kind='board', gable='oldplanks', rise=0.5, over=0.22)
+    k.pop()
+    hanging_sign(k, -1.5, 0.85, -0.6, 'SEAMANSHIP')
+    # mock deck
+    mx, mz = 0.65, 0.3
+    dw, dd, dh = 1.9, 2.0, 0.2
+    k.push(mx, 0, mz)
+    for x in (-0.8, 0.0, 0.8):
+        k.box('bark', 0.1, 0.1, dd - 0.1, x, 0, 0)
+    deck(k, dw, dd, dh, 'planks', along='z', joists=False)
+    k.box('darkwood', dw + 0.04, 0.05, dd + 0.04, 0, dh - 0.09, 0)
+    # bulwark rail with stanchions on three sides
+    for (a, b) in (((-dw / 2, -dd / 2), (dw / 2, -dd / 2)), ((-dw / 2, -dd / 2), (-dw / 2, dd / 2)), ((dw / 2, -dd / 2), (dw / 2, dd / 2))):
+        A, B = V(a[0], dh, a[1]), V(b[0], dh, b[1])
+        n = max(1, round((B - A).length / 0.32))
+        for i in range(n + 1):
+            p = A + (B - A) * (i / n)
+            k.box('darkwood', 0.04, 0.32, 0.04, p.x, dh, p.z)
+        k.beam('darkwood', A + V(0, 0.32, 0), B + V(0, 0.32, 0), 0.07, 0.04)
+    # channels and deadeyes for the shrouds
+    mh = 3.5
+    chain_pts = []
+    for s in (-1, 1):
+        k.box('darkwood', 0.12, 0.05, 0.8, s * (dw / 2 + 0.05), dh + 0.1, 0.0)
+        for zz in (-0.3, 0.0, 0.3):
+            p = V(s * (dw / 2 + 0.07), dh + 0.2, zz)
+            k.cyl('darkwood', 0.03, 0.03, 0.025, p.x - s * 0.0, p.y, p.z, seg=10, rz=math.pi / 2)
+            k.beam('iron', p + V(0, -0.02, 0), p + V(0, -0.2, 0), 0.012)
+            chain_pts.append((s, p))
+    # the mast
+    k.cyl('darkwood', 0.12, 0.11, 0.06, 0, dh, 0, seg=12)
+    k.cyl('wood', 0.07, 0.055, 2.55, 0, dh, 0, seg=12)
+    for y in (0.9, 1.6, 2.2):
+        k.torus('iron', 0.068, 0.008, 0, dh + y, 0, seg=12, rseg=3)
+    # the top: trestle trees and a planked platform
+    ty = dh + 2.3
+    for s in (-1, 1):
+        k.box('darkwood', 0.05, 0.06, 0.55, s * 0.08, ty - 0.06, 0)
+        k.box('darkwood', 0.6, 0.05, 0.05, 0, ty - 0.01, s * 0.18)
+    k.box('planks', 0.62, 0.025, 0.5, 0, ty + 0.04, 0, uvscale=1.3)
+    # topmast with its cap
+    k.cyl('wood', 0.045, 0.03, 1.1, 0, ty - 0.2, -0.0, seg=10)
+    k.box('darkwood', 0.12, 0.06, 0.2, 0, ty + 0.18, 0.0)
+    k.cyl('wood', 0.04, 0.04, 0.04, 0, ty + 0.9, 0, seg=8)
+    # lower yard with the sail furled, topsail yard bare
+    yy = dh + 2.05
+    k.beam('wood', V(-0.9, yy, 0.09), V(0.9, yy, 0.09), 0.06, round_=True, seg=10)
+    for s in (-1, 1):
+        k.beam('wood', V(s * 0.9, yy, 0.09), V(s * 0.98, yy, 0.09), 0.035, round_=True, seg=6)
+    for i in range(8):
+        x0 = -0.78 + i * 0.195
+        k.beam('canvas', V(x0, yy - 0.04, 0.16), V(x0 + 0.2, yy - 0.04, 0.16), 0.1 - abs(i - 3.5) * 0.008, round_=True, seg=8)
+        if not k.lod and i % 2 == 0:
+            k.torus('rope', 0.06, 0.008, x0 + 0.1, yy - 0.03, 0.13, rx=0.0, seg=8, rseg=3) if False else None
+    k.beam('wood', V(-0.6, ty + 0.65, 0.06), V(0.6, ty + 0.65, 0.06), 0.04, round_=True, seg=8)
+    # foot ropes under the yard
+    if not k.lod:
+        for s in (-1, 1):
+            rope_line(k, hang(V(0, yy - 0.02, 0.14), V(s * 0.88, yy - 0.02, 0.14), 0.22, 5), 0.01)
+    # shrouds with ratlines
+    for s in (-1, 1):
+        mine = [p for (ss, p) in chain_pts if ss == s]
+        tops = [V(s * 0.05, ty - 0.05, zz * 0.25) for zz in (-0.3, 0.0, 0.3)]
+        for p, t in zip(mine, tops):
+            k.beam('rope', p, t, 0.016, round_=True, seg=5)
+        if not k.lod:
+            n = 14
+            for j in range(1, n):
+                f = j / n
+                ps = [p + (t - p) * f for p, t in zip(mine, tops)]
+                for a, b in zip(ps[:-1], ps[1:]):
+                    k.beam('rope', a, b, 0.008, round_=True, seg=4)
+    # stays fore and aft
+    k.beam('rope', V(0, ty + 0.85, 0), V(0, dh + 0.3, dd / 2 - 0.05), 0.014, round_=True, seg=5)
+    k.beam('rope', V(0, ty, 0), V(0, dh + 0.3, -dd / 2 + 0.05), 0.014, round_=True, seg=5)
+    # the helm on the deck, a capstan-like bitts and coils
+    k.box('darkwood', 0.1, 0.35, 0.12, 0, dh, 0.62)
+    ships_wheel(k, 0, dh + 0.38, 0.69, 0, 0.17)
+    for (x, z) in ((-0.5, -0.6), (0.55, 0.65)):
+        k.push(0, dh, 0)
+        rope_coil(k, x, z, 0.12)
+        k.pop()
+    for s in (-1, 1):
+        k.box('darkwood', 0.07, 0.3, 0.07, s * 0.2, dh, -0.45)
+    k.box('darkwood', 0.5, 0.06, 0.08, 0, dh + 0.24, -0.45)
+    k.pop()
+    # knot boards on a trestle
+    k.push(-1.0, 0, 0.55, math.pi / 2 - 0.25)
+    for s in (-1, 1):
+        k.box('wood', 0.05, 0.85, 0.05, s * 0.4, 0, 0)
+    k.cbox('planksDark', 0.9, 0.5, 0.03, 0, 0.62, 0.0)
+    if not k.lod:
+        for i in range(3):
+            for j in range(2):
+                x, y = -0.28 + i * 0.28, 0.5 + j * 0.22
+                k.beam('rope', V(x - 0.08, y, 0.02), V(x + 0.08, y, 0.02), 0.012, round_=True, seg=4)
+                k.torus('rope', 0.03, 0.009, x, y, 0.025, rx=math.pi / 2, seg=8, rseg=3)
+                k.cyl('rope', 0.012, 0.012, 0.03, x + 0.03, y + 0.01, 0.025, seg=5, rx=math.pi / 2)
+    k.pop()
+    k.push(-1.25, 0, 1.3)
+    rope_coil(k, 0, 0, 0.14)
+    k.pop()
+    cask(k, 1.6, -1.4, 0.7)
+    return {'ao': 1024}
+
+
+@building('school_nav')
+def school_nav(k):
+    """a navigation school: a rendered chart house with tall glazed windows under barrel tiles, a
+    lookout cupola with a weathervane, and a terrace with a great globe, an armillary sphere, a sundial
+    and a telescope on its tripod"""
+    k.box('dirt', 4.6, 0.012, 3.6, 0, 0, 0, uvscale=0.5)
+    w, d, h = 3.0, 1.7, 1.15
+    k.push(0, 0, -0.75)
+    plinth(k, w + 0.06, d + 0.06, 0.12)
+    k.push(0, 0.12, 0)
+    tall = dict(kind='window', w=0.32, h=0.66, y=0.25)
+    plastered(k, w, d, h, 'plasterBlue', [Op('front', 0.0, 'double', h=0.92), Op('front', -0.85, **tall), Op('front', 0.85, **tall),
+                                          Op('left', 0.0, **tall), Op('right', 0.0, **tall), Op('back', -0.6, **tall), Op('back', 0.6, **tall)], quoins='plaster')
+    tile_gable(k, w, d, 0.6, over=0.2, y=h, gable='plasterBlue')
+    # cupola on the ridge
+    cy = h + 0.5
+    k.push(0.6, cy, 0)
+    k.box('planksDark', 0.42, 0.18, 0.42, 0, 0, 0)
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            k.box('wood', 0.04, 0.32, 0.04, sx * 0.18, 0.18, sz * 0.18)
+    for f in FACES:
+        k.face(f, 0.36, 0.36)
+        k.box('window', 0.26, 0.26, 0.01, 0, 0.21, -0.01)
+        k.box('wood', 0.02, 0.26, 0.02, 0, 0.21, 0)
+        k.pop()
+    k.box('darkwood', 0.48, 0.04, 0.48, 0, 0.5, 0)
+    k.cyl('planksDark', 0.32, 0.02, 0.24, 0, 0.54, 0, seg=4, ry=math.pi / 4)
+    # weathervane
+    k.cyl('iron', 0.008, 0.008, 0.4, 0, 0.7, 0, seg=5)
+    k.beam('iron', V(-0.12, 0.98, 0), V(0.12, 0.98, 0), 0.01)
+    k.beam('iron', V(0, 0.98, -0.12), V(0, 0.98, 0.12), 0.01)
+    k.cbox('iron', 0.24, 0.07, 0.006, 0.04, 1.06, 0)
+    k.cyl('iron', 0.02, 0.0, 0.05, -0.1, 1.04, 0, seg=4, rz=math.pi / 2) if False else k.cbox('iron', 0.04, 0.04, 0.006, -0.1, 1.06, 0, rz=math.pi / 4)
+    k.pop()
+    chimney(k, -w / 2 + 0.35, -d / 2 + 0.3, h - 0.1, 0.85, 0.24)
+    k.pop()
+    k.pop()
+    steps(k, 0, -0.75 + d / 2 + 0.1, 0.8, 0.12, 1, 'stone')
+    # flagged terrace
+    if not k.lod:
+        for i in range(10):
+            for j in range(3):
+                k.box('stone', 0.39, 0.02, 0.38, -1.95 + i * 0.43 + (j % 2) * 0.1, 0, 0.55 + j * 0.42, ry=(k.r() - 0.5) * 0.04, uvscale=2.0)
+    else:
+        k.box('stone', 4.3, 0.02, 1.25, 0, 0, 0.97)
+    hanging_sign(k, 0.75, 1.0, -0.75 + d / 2, 'NAVIGATION')
+    globe(k, -1.2, 0.95, 0.24, 0.55)
+    armillary(k, 1.25, 0.9)
+    telescope(k, 1.85, 0.25, 2.3)
+    # sundial on a pillar
+    k.push(-1.95, 0, 0.3)
+    lathe(k, 'stone', [(0.1, 0.0), (0.1, 0.06), (0.06, 0.1), (0.05, 0.62), (0.13, 0.66), (0.13, 0.7)], seg=10)
+    k.cyl('brass', 0.11, 0.11, 0.008, 0, 0.7, 0, seg=14)
+    k.mesh('brass', [V(0, 0.708, -0.08), V(0, 0.708, 0.08), V(0, 0.8, -0.08)], [(0, 1, 2), (2, 1, 0)])
+    k.pop()
+    # a chart table under the window with rolled charts
+    k.push(0.0, 0, 1.25)
+    k.box('planks', 0.7, 0.04, 0.4, 0, 0.45, 0)
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            k.box('wood', 0.04, 0.45, 0.04, sx * 0.3, 0, sz * 0.16)
+    k.box('plasterYellow', 0.42, 0.004, 0.3, 0.05, 0.49, 0.0, ry=0.1)
+    for i in range(3):
+        k.cyl('plasterYellow', 0.025, 0.025, 0.36, -0.2 + i * 0.05, 0.515, -0.1 + i * 0.05, seg=8, rz=math.pi / 2 + 0.1)
+    k.box('brass', 0.07, 0.01, 0.07, 0.2, 0.494, -0.08)
+    k.pop()
+    return {'ao': 1024}
+
+
+# ------------------------------------------------------------------------------------------- observatory
+
+@building('observatory')
+def observatory(k):
+    """a round stone tower with a corbelled parapet and a turning dome of ribbed boards, its shutter open
+    and a long brass telescope trained out of the slot; a stair door, slit windows and a flag"""
+    r0, r1, H = 0.86, 0.78, 2.05
+    lathe(k, 'stoneDark', [(r0 - 0.02, 0.0), (r1 - 0.02, H)], seg=24, cap0=False)
+    # coursed blocks round the drum
+    if not k.lod:
+        rows = round(H / 0.14)
+        for j in range(rows):
+            y = j * H / rows
+            r = r0 + (r1 - r0) * (y + 0.07) / H
+            n = max(12, round(2 * math.pi * r / 0.26))
+            off = (j % 2) * 0.5
+            for i in range(n):
+                a = (i + off + (k.r() - 0.5) * 0.15) / n * math.tau
+                # leave the door and windows open
+                if abs(((a - math.pi / 2 + math.pi) % math.tau) - math.pi) < 0.2 and y < 0.85:
+                    continue
+                if any(abs(((a - wa + math.pi) % math.tau) - math.pi) < 0.07 and wy - 0.05 < y < wy + 0.3 for (wa, wy) in ((math.pi / 2, 1.3), (-0.6, 0.9), (3.6, 1.1), (-2.2, 1.55))):
+                    continue
+                k.cbox('stone' if k.r() > 0.15 else 'coral', 2 * math.pi * r / n - 0.014, H / rows - 0.014, 0.06, math.cos(a) * r, y + H / rows / 2, math.sin(a) * r, ry=-a + math.pi / 2, uvscale=2.0)
+    # door with a stone surround and steps
+    k.push(0, 0, r0 - 0.03)
+    door(k, 0, w=0.4, h=0.78, depth=0.06, mat='planksDark')
+    for j in range(5):
+        for s in (-1, 1):
+            k.box('stone', 0.12, 0.16, 0.08, s * 0.27, j * 0.16, 0.0, uvscale=2.0)
+    k.box('stone', 0.66, 0.1, 0.08, 0, 0.8, 0.0, uvscale=2.0)
+    k.pop()
+    steps(k, 0, r0 + 0.12, 0.6, 0.12, 1, 'stone')
+    for (wa, wy) in ((math.pi / 2, 1.3), (-0.6, 0.9), (3.6, 1.1), (-2.2, 1.55)):
+        r = r0 + (r1 - r0) * (wy + 0.12) / H
+        k.push(math.cos(wa) * r, wy, math.sin(wa) * r, -wa + math.pi / 2)
+        k.box('black', 0.07, 0.26, 0.04, 0, 0, 0.0)
+        k.box('stone', 0.16, 0.05, 0.1, 0, -0.03, 0.02, uvscale=2.0)
+        k.box('stone', 0.16, 0.05, 0.1, 0, 0.26, 0.02, uvscale=2.0)
+        k.pop()
+    # corbel table and parapet walk
+    nc = 20 if not k.lod else 10
+    for i in range(nc):
+        a = i / nc * math.tau
+        k.cbox('stone', 0.08, 0.12, 0.12, math.cos(a) * (r1 + 0.04), H - 0.04, math.sin(a) * (r1 + 0.04), ry=-a + math.pi / 2, uvscale=2.0)
+    lathe(k, 'stone', [(r1 + 0.13, H + 0.02), (r1 + 0.13, H + 0.09)], seg=24)
+    lathe(k, 'stoneDark', [(r1 + 0.12, H + 0.09), (r1 + 0.12, H + 0.32)], seg=24, cap0=False, cap1=False)
+    lathe(k, 'stoneDark', [(r1 + 0.03, H + 0.32), (r1 + 0.03, H + 0.09)], seg=24, cap0=False, cap1=False)
+    lathe(k, 'stone', [(r1 + 0.02, H + 0.32), (r1 + 0.15, H + 0.32), (r1 + 0.15, H + 0.36), (r1 + 0.02, H + 0.36)], seg=24, cap0=False, cap1=False)
+    # dome: ribbed boards with an open shutter slot facing +z/+x
+    dy = H + 0.1
+    R = 0.66
+    slot = (math.radians(30), math.radians(52))  # azimuth window of the slot
+    segs = 32 if not k.lod else 16
+    rings = 10 if not k.lod else 5
+    verts, faces = [], []
+    for j in range(rings + 1):
+        t = j / rings * (math.pi / 2)
+        for i in range(segs + 1):
+            a = i / segs * math.tau
+            verts.append(V(math.cos(a) * math.cos(t) * R, dy + math.sin(t) * R, math.sin(a) * math.cos(t) * R))
+    for j in range(rings):
+        for i in range(segs):
+            a = (i + 0.5) / segs * math.tau
+            if slot[0] < a < slot[1] and j < rings - 1:
+                continue
+            p = j * (segs + 1) + i
+            faces.append((p, p + segs + 1, p + segs + 2, p + 1))
+    k.mesh('plaster', verts, faces, uvscale=1.0)
+    k.mesh('black', [v * 0.985 + V(0, dy * 0.015, 0) for v in verts], [f[::-1] for f in faces], uvscale=1.0)
+    k.cyl('stone', R + 0.03, R + 0.03, 0.08, 0, dy - 0.04, 0, seg=segs)
+    # ribs and the slot shutters
+    for i in range(0, 16 if not k.lod else 0):
+        a = i / 16 * math.tau
+        prev = None
+        for j in range(7):
+            t = j / 6 * (math.pi / 2) * 0.96
+            p = V(math.cos(a) * math.cos(t) * (R + 0.012), dy + math.sin(t) * (R + 0.012), math.sin(a) * math.cos(t) * (R + 0.012))
+            if prev is not None:
+                k.beam('darkwood', prev, p, 0.025, 0.02)
+            prev = p
+    for a in slot:
+        prev = None
+        for j in range(7):
+            t = j / 6 * (math.pi / 2) * 0.93
+            p = V(math.cos(a) * math.cos(t) * (R + 0.02), dy + math.sin(t) * (R + 0.02), math.sin(a) * math.cos(t) * (R + 0.02))
+            if prev is not None:
+                k.beam('darkwood', prev, p, 0.05, 0.05)
+            prev = p
+    k.cyl('darkwood', 0.07, 0.03, 0.08, 0, dy + R - 0.01, 0, seg=10)
+    sphere(k, 'brass', 0.04, 0, dy + R + 0.1, 0, seg=8, rings=5)
+    # the telescope on its pier, aimed out of the slot
+    am = (slot[0] + slot[1]) / 2
+    k.cyl('stone', 0.1, 0.1, 0.45, 0, dy - 0.1, 0, seg=10)
+    k.push(0, dy + 0.38, 0, math.pi / 2 - am, 0)
+    k.push(0, 0, 0, 0, math.pi / 2 - 0.55)
+    k.cyl('brass', 0.055, 0.065, 1.05, 0, -0.25, 0, seg=12)
+    k.cyl('darkwood', 0.07, 0.07, 0.08, 0, 0.0, 0, seg=12)
+    k.cyl('brass', 0.07, 0.07, 0.06, 0, 0.75, 0, seg=12)
+    k.cyl('black', 0.06, 0.06, 0.004, 0, 0.808, 0, seg=12)
+    k.cyl('brass', 0.03, 0.024, 0.12, 0, -0.36, 0, seg=8)
+    k.cyl('brass', 0.016, 0.016, 0.3, 0.09, 0.2, 0, seg=6)  # finder
+    k.pop()
+    k.pop()
+    k.box('iron', 0.08, 0.08, 0.08, 0, dy + 0.34, 0)
+    return {'ao': 1024}
