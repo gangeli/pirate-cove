@@ -60,6 +60,19 @@ function mergeStatic(root: THREE.Object3D): void {
   }
 }
 
+/** lower tiers: little props stop casting shadows (their shadows are a few texels; each is a shadow-pass draw) */
+function dropSmallCasters(root: THREE.Object3D): void {
+  root.updateMatrixWorld(true);
+  const s = new THREE.Vector3();
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || !m.castShadow) return;
+    if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+    m.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), s);
+    if (m.geometry.boundingSphere!.radius * Math.max(s.x, s.y, s.z) < 0.45) m.castShadow = false;
+  });
+}
+
 /** flag cloth waving in the vertex shader (it used to rewrite and re-upload every flag's vertices each frame) */
 const flagMats = new Map<THREE.Material, THREE.Material>();
 function flagMaterial(base: THREE.Material): THREE.Material {
@@ -144,6 +157,7 @@ export class BuildingsView {
     }
     const model = buildPrefab(b.def, W, D, level);
     mergeStatic(model);
+    if (!this.world.quality.propShadows) dropSmallCasters(model);
     const group = new THREE.Group();
     group.add(model);
     const m = this.game.map;

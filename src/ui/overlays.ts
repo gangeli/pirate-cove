@@ -17,7 +17,7 @@ const LIST: [Kind, string, string][] = [
 ];
 
 // overlay palette (sRGB)
-const NEUTRAL = [150, 150, 150], ORDER = [30, 110, 255], ANARCHY = [240, 40, 20];
+const NEUTRAL = [120, 120, 128], ORDER = [30, 110, 255], ANARCHY = [240, 40, 20];
 const LOW = [40, 38, 48], FEAR = [190, 40, 235], DEFENSE = [30, 130, 255], AWE = [255, 205, 20], ORE = [235, 40, 20];
 const POOR = [215, 45, 25], FAIR = [245, 215, 40], RICH = [40, 215, 50];
 const css = (c: number[]) => `rgb(${c.join(',')})`;
@@ -96,7 +96,7 @@ export class Overlays {
           const v = a.order[Math.floor(y / CLUSTER) * a.cw + Math.floor(x / CLUSTER)] / 100;
           const t = Math.max(-1, Math.min(1, v));
           mixc(NEUTRAL, t > 0 ? ORDER : ANARCHY, Math.min(1, Math.abs(t) * 1.4));
-          al = 110 + Math.min(1, Math.abs(t) * 1.4) * 145;
+          al = 70 + Math.min(1, Math.abs(t) * 1.4) * 185;
         } else if (k === 'fear' || k === 'defense' || k === 'awe') {
           const v = Math.min(1, a[k][Math.floor(y / CLUSTER) * a.cw + Math.floor(x / CLUSTER)] / 100);
           mixc(LOW, k === 'fear' ? FEAR : k === 'defense' ? DEFENSE : AWE, Math.sqrt(v));

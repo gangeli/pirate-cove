@@ -55,8 +55,9 @@ function quantize(root: THREE.Object3D): void {
       if (uv && uv.array instanceof Float32Array) {
         let m = 0;
         for (const v of uv.array) m = Math.max(m, Math.abs(v));
-        // half floats keep ~1/1000 of a repeat below 2 repeats; beyond 8 the steps would show
-        if (m <= 8) {
+        // half floats resolve 1/1024 of a repeat below 2 repeats (half a texel of a 1024 map at worst); wider
+        // ranges stay full float
+        if (m <= 2) {
           const hq = new Uint16Array(uv.array.length);
           for (let i = 0; i < hq.length; i++) hq[i] = THREE.DataUtils.toHalfFloat(uv.array[i]);
           g.setAttribute('uv', new THREE.Float16BufferAttribute(hq, 2));

@@ -14,17 +14,17 @@ const r = await p.evaluate(async () => {
   app.game.paused = true;
   const px = new Uint8Array(4);
   const sync = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
-  for (let i = 0; i < 3; i++) { w.render(1 / 60); sync(); }
+  for (let i = 0; i < 3; i++) { w.idle = false; w.render(1 / 60); sync(); }
   r.info.autoReset = false; r.info.reset();
-  w.render(1 / 60); sync();
+  w.idle = false; w.render(1 / 60); sync();
   const calls = r.info.render.calls, tris = r.info.render.triangles;
   r.info.autoReset = true;
   const ts = [];
-  for (let i = 0; i < 12; i++) { const t = performance.now(); w.render(1 / 60); sync(); ts.push(performance.now() - t); await new Promise((r) => setTimeout(r, 0)); }
+  for (let i = 0; i < (window.__N ?? 5); i++) { const t = performance.now(); w.idle = false; w.render(1 / 60); sync(); ts.push(performance.now() - t); await new Promise((r) => setTimeout(r, 0)); }
   ts.sort((a, b) => a - b);
   let casters = 0, meshes = 0;
   w.scene.traverse((o) => { if (o.isMesh && o.visible) { meshes++; if (o.castShadow) casters++; } });
-  return { med: +ts[6].toFixed(1), min: +ts[0].toFixed(1), calls, tris, meshes, casters, pr: r.getPixelRatio(), canvas: [r.domElement.width, r.domElement.height], passes: w.composer?.passes?.map((x) => x.constructor.name).join(',') };
+  return { med: +ts[ts.length >> 1].toFixed(1), min: +ts[0].toFixed(1), calls, tris, meshes, casters, pr: r.getPixelRatio(), canvas: [r.domElement.width, r.domElement.height], passes: w.composer?.passes?.map((x) => x.constructor.name).join(',') };
 });
 console.log(JSON.stringify({ label, ...r, errs: errs.slice(0, 2) }));
 await b.close();

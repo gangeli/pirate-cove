@@ -2,8 +2,7 @@ import * as THREE from 'three';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 
 /**
- * Shared texture cache. Tiling material maps (tex/*) ship as GPU-compressed KTX2 (Basis: ETC1S colour maps,
- * UASTC normal maps at 512^2), transcoded to whatever the GPU takes (ASTC / ETC2 / BC7 / DXT): 4-8x less video
+ * Shared texture cache. Tiling material maps (tex/*) ship as GPU-compressed KTX2 (Basis UASTC, full resolution), transcoded to whatever the GPU takes (ASTC / ETC2 / BC7 / DXT): 4-8x less video
  * memory than the RGBA8 the JPGs expand to. The JPGs stay as the fallback (no worker/wasm, failed fetch,
  * or ?nocomp). Textures returned here are cache-owned and never disposed with a scene (see dispose.ts).
  */
@@ -18,13 +17,13 @@ const KTX2_DIRS = ['tex/'];
 /** identical maps shipped once */
 const ALIAS: Record<string, string> = { 'tex/whitewash_n.jpg': 'tex/plaster_n.jpg' };
 
-let ktx: KTX2Loader | null | undefined;
-function ktx2(): KTX2Loader | null {
-  if (ktx !== undefined) return ktx;
-  ktx = null;
+/**
+ * A KTX2 loader set up for this GPU (formats probed on a throwaway context, so no renderer is needed).
+ * Other loaders can use it too, e.g. gltfLoader.setKTX2Loader(createKTX2Loader()) for KHR_texture_basisu models.
+ */
+export function createKTX2Loader(): KTX2Loader | null {
   try {
     if (typeof document === 'undefined' || location.search.includes('nocomp')) return null;
-    // which compressed formats the GPU takes: ask a throwaway context (same GPU and driver as the renderer's)
     const c = document.createElement('canvas');
     const gl = c.getContext('webgl2');
     if (!gl) return null;
@@ -37,11 +36,31 @@ function ktx2(): KTX2Loader | null {
     l.setWorkerLimit(2);
     l.detectSupport({ extensions: { has: (n: string) => !!get(n), get } } as unknown as THREE.WebGLRenderer);
     (gl.getExtension('WEBGL_lose_context') as { loseContext(): void } | null)?.loseContext();
-    ktx = l;
+    return l;
   } catch {
-    ktx = null;
+    return null;
   }
+}
+
+let ktx: KTX2Loader | null | undefined;
+let ktxBusy = 0;
+let ktxIdle: ReturnType<typeof setTimeout> | null = null;
+function ktx2(): KTX2Loader | null {
+  if (ktxIdle) clearTimeout(ktxIdle);
+  ktxIdle = null;
+  if (ktx === undefined) ktx = createKTX2Loader();
   return ktx;
+}
+/** the transcoder workers each hold a wasm heap: let them go once loading has settled */
+function ktxDone(): void {
+  if (--ktxBusy > 0 || !ktx) return;
+  if (ktxIdle) clearTimeout(ktxIdle);
+  ktxIdle = setTimeout(() => {
+    if (ktxBusy > 0) return;
+    ktx?.dispose();
+    ktx = undefined;
+    ktxIdle = null;
+  }, 5000);
 }
 
 export function setMaxAnisotropy(a: number): void {
@@ -104,16 +123,22 @@ export function loadTex(rel: string, srgb: boolean, repeat = true): THREE.Textur
       () => done(0),
     );
   const k = KTX2_DIRS.some((d) => rel.startsWith(d)) ? ktx2() : null;
-  if (k)
+  if (k) {
+    ktxBusy++;
     k.load(
       assetUrl(rel.replace(/\.jpg$/, '.ktx2')),
       (c) => {
         adopt(t, c as THREE.CompressedTexture);
         done(0);
+        ktxDone();
       },
       undefined,
-      () => jpg(),
+      () => {
+        jpg();
+        ktxDone();
+      },
     );
+  }
   else jpg();
   return t;
 }

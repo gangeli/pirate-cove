@@ -44,13 +44,15 @@ export interface Quality {
   /** dynamic resolution: lowest pixel ratio the controller may drop to (= pixelRatio disables it) */
   minPixelRatio: number;
   dynamicRes: boolean;
+  /** small props (barrels, crates, stools...) cast shadows too */
+  propShadows: boolean;
   /** point lights for cannon muzzle flashes (each costs every lit pixel) */
   flashLights: number;
 }
 
 export const QUALITY_DEFAULTS: Quality = {
   shadows: true, shadowSize: 2048, softShadows: false, shadowHz: 30, ao: false, aoScale: 1, aoSamples: 12, aoDepthNormals: true, bloom: true, bloomScale: 0.25,
-  aa: 'fxaa', post: true, pixelRatio: 1, minPixelRatio: 0.7, dynamicRes: true, flashLights: 1,
+  aa: 'fxaa', post: true, propShadows: false, pixelRatio: 1, minPixelRatio: 0.7, dynamicRes: true, flashLights: 1,
 };
 
 export interface GpuInfo {
@@ -179,7 +181,7 @@ export class World {
     this.renderer.shadowMap.enabled = q.shadows;
     this.renderer.shadowMap.type = q.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.sun.castShadow = q.shadows;
-    if (this.sun.shadow.mapSize.x !== q.shadowSize) {
+    if (this.sun.shadow.mapSize.x !== q.shadowSize || !q.shadows) {
       this.sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
       this.sun.shadow.map?.dispose();
       (this.sun.shadow as any).map = null;
@@ -251,7 +253,7 @@ export class World {
     const pr = this.renderer.getPixelRatio();
     const W = Math.floor(size.x * pr), H = Math.floor(size.y * pr);
     // HalfFloat keeps the HDR highlights the bloom picks out; AO reads the main pass's depth texture
-    const rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, samples: 0, depthTexture: q.ao && q.aoDepthNormals ? new THREE.DepthTexture(W, H) : undefined });
+    const rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, samples: 0, depthTexture: q.ao && q.aoDepthNormals ? new THREE.DepthTexture(W, H) : null });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.rig.camera));
     if (q.ao) this.composer.addPass(new FastAO(this.scene, this.rig.camera, W, H, q.aoScale, q.aoSamples, 0.85, q.aoScale < 1 ? 8 : 16, q.aoDepthNormals));
