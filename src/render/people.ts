@@ -200,10 +200,16 @@ export class PeopleView {
   private projView = new THREE.Matrix4();
   private modelList: CrowdModel[] = [];
   private drawnN = 0;
+  private prunedAt = 0;
 
   update(dt: number): void {
     this.t += dt;
     const g = this.game;
+    // forget the looks of the dead and departed (soldiers of every invasion, sold captives...)
+    if (this.t - this.prunedAt > 30) {
+      this.prunedAt = this.t;
+      for (const id of this.looks.keys()) if (!g.people.has(id)) this.looks.delete(id);
+    }
     if (!this.models) return;
     const ms = this.models;
     if (this.modelList.length === 0) for (const m of Object.values(ms)) if (m) this.modelList.push(m);

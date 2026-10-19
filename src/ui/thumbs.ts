@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { World } from '../render/world';
 import { buildPrefab } from '../render/prefabs';
+import { disposeObject } from '../render/dispose';
 import { BUILDING } from '../sim/data/buildings';
 
 /** Renders building prefabs to small images for the construction menu. */
@@ -83,6 +84,7 @@ export function thumb(world: World, id: string): string {
   r.setRenderTarget(prevTarget);
   r.toneMapping = prevTM;
   scene.remove(g);
+  disposeObject(g, { keep: world.scene, renderer: r });
   const cv = document.createElement('canvas');
   cv.width = W;
   cv.height = H;

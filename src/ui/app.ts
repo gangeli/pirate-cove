@@ -85,7 +85,7 @@ export class App {
     const dyn = !/[?&](dynres=0|shot=1)/.test(location.search);
     if (this.quality === 'low') return { shadows: false, ao: false, bloom: false, post: false, aa: 'none', pixelRatio: 1, minPixelRatio: 0.6, dynamicRes: dyn, flashLights: 0 };
     if (this.quality === 'medium') return { shadows: true, shadowSize: 2048, softShadows: false, shadowHz: 30, ao: false, bloom: true, bloomScale: 0.5, aa: 'fxaa', pixelRatio: 1.25, minPixelRatio: 0.75, dynamicRes: dyn, flashLights: 1 };
-    return { shadows: true, shadowSize: 4096, softShadows: true, shadowHz: 1000, ao: true, aoScale: 1, aoSamples: 12, bloom: true, bloomScale: 1, aa: 'smaa', pixelRatio: 2, dynamicRes: false, flashLights: 2 };
+    return { shadows: true, shadowSize: 4096, softShadows: true, shadowHz: 1000, ao: true, aoScale: 1, aoSamples: 12, aoDepthNormals: !/[?&]aonormals=1/.test(location.search), bloom: true, bloomScale: 1, aa: 'smaa', pixelRatio: 2, dynamicRes: false, flashLights: 2 };
   }
 
   /** switch the graphics tier live (settings) */
