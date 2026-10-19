@@ -528,7 +528,7 @@ def blacksmithy(k):
     k.cyl('wood', 0.018, 0.018, 0.12, bx - 0.12, 0.74, bz + 0.9, seg=6)
 
     # --- anvil on its stump, hammer resting on the face; quench tub and slack bucket
-    ax, az = 0.4, 0.22
+    ax, az = 0.42, 1.0
     k.cyl('bark', 0.15, 0.17, 0.34, ax, 0, az, seg=12)
     k.cyl('planks', 0.145, 0.145, 0.012, ax, 0.338, az, seg=12)
     for i in range(4 if not k.lod else 0):
@@ -538,8 +538,9 @@ def blacksmithy(k):
     if not k.lod:
         hammer(k, ax - 0.1, 0.565, az + 0.06, ry=2.2)
         hammer(k, ax + 0.05, 0.36, az + 0.18, ry=-0.4, L=0.4, sledge=True, rx=0.0)
-    tub(k, 0.25, -0.58, 0.2, 0.3)
-    bucket(k, 0.62, -0.62)
+    tub(k, 0.92, 0.92, 0.2, 0.3)
+    bucket(k, 0.15, 1.2)
+    bucket(k, 0.3, -0.6)
 
     # --- tool rack on the back wall: tongs, hammers, a rasp
     k.box('darkwood', 0.95, 0.06, 0.05, 0.62, 1.06, zb + 0.03)
@@ -565,7 +566,7 @@ def blacksmithy(k):
     k.box('oldplanks', 0.6, 0.3, 0.04, 0.85, 0, -0.66)
     k.box('oldplanks', 0.6, 0.18, 0.04, 0.85, 0, -0.06)
     heap(k, 'black', 0.85, -0.37, 0.27, 0.3, seed=2.0, lumps=14, lumpsize=0.035, sq=1.05)
-    bar_stack(k, 0.82, 0.62, 9, 0.5, ry=0.3)
+    bar_stack(k, 0.75, 0.28, 9, 0.5, ry=0.3)
     # --- a rack of new cutlasses at the front for the buyers
     k.push(-0.45, 0, 0.95, 0.0)
     k.box('darkwood', 0.62, 0.05, 0.06, 0, 0.36, 0)

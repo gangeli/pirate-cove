@@ -273,6 +273,9 @@ def parrot_perch(k, x, z, h=0.75, ry=0.0):
 def balustrade(k, x0, x1, z, y, h=0.3, mat='darkwood', step=0.085, post_mat=None, r=0.012):
     """a rail on turned balusters along x"""
     L = x1 - x0
+    if k.lod:
+        k.box(mat, L, h - 0.03, 0.03, (x0 + x1) / 2, y, z)
+        return
     k.box(mat, L, 0.035, 0.05, (x0 + x1) / 2, y + h - 0.035, z)
     k.box(mat, L, 0.025, 0.04, (x0 + x1) / 2, y + 0.02, z)
     n = max(2, round(L / (step * (3 if k.lod else 1))))
@@ -292,6 +295,8 @@ def balustrade_z(k, z0, z1, x, y, h=0.3, mat='darkwood', step=0.085, post_mat=No
 
 def win_curtains(k, w, d, ops, y0=0.0, depth=0.063, mat='red', face_w=None):
     """drapes gathered to the sides inside each window reveal (run after the walls, same frame)"""
+    if k.lod:
+        return
     for o in ops:
         if o.kind != 'window':
             continue
@@ -357,6 +362,71 @@ def palm_tree(k, x, z, h=1.5, lean=0.12, la=0.0, n=8, L=0.7):
     for i in range(4):
         a = i / 4 * math.tau + 0.3
         k.cyl('bark', 0.035, 0.035, 0.07, top.x + math.cos(a) * 0.05, top.y - 0.08, top.z + math.sin(a) * 0.05, seg=6)
+
+
+def plinth_lo(k, w, d, h=0.14, mat='stone'):
+    """a rubble footing like arch.plinth but laid in bigger stones (for long walls, to keep the count sane)"""
+    if k.lod:
+        k.box(mat, w + 0.03, h, d + 0.03, 0, 0, 0, uvscale=1.0)
+        return
+    k.box('stoneDark', w - 0.03, h - 0.01, d - 0.03, 0, 0, 0, uvscale=2.0)
+    for f in FACES:
+        L = w if f in ('front', 'back') else d
+        k.face(f, w, d)
+        rows = max(1, round(h / 0.08))
+        rh = h / rows
+        for r in range(rows):
+            x = -L / 2 + (0.09 if r % 2 else 0)
+            while x < L / 2 - 0.03:
+                sw = min(L / 2 - x, 0.17 + k.r() * 0.17)
+                k.cbox(mat, sw - 0.014, rh - 0.014, 0.05 + k.r() * 0.025, x + sw / 2, r * rh + rh / 2, -0.012,
+                       ry=(k.r() - 0.5) * 0.06, rx=(k.r() - 0.5) * 0.1, rz=(k.r() - 0.5) * 0.06, uvscale=2.0)
+                x += sw
+        k.pop()
+    k.box(mat, w + 0.02, 0.025, d + 0.02, 0, h - 0.02, 0, uvscale=2.0)
+
+
+def _lod_walls(k, w, d, h, mat, ops, timber=False):
+    """the far-LOD stand-in for a walled block: one box with its openings painted on as quads"""
+    k.box(mat, w, h, d, 0, 0, 0, uvscale=0.5, wuv=True)
+    for o in ops:
+        k.face(o.face, w, d)
+        m = {'window': 'window', 'door': 'planksDark', 'double': 'planksDark', 'open': 'black', 'hatch': 'black', 'arch': 'black'}.get(o.kind, 'black')
+        x0, x1, y0, y1 = o.x - o.w / 2, o.x + o.w / 2, o.y, o.y + o.h
+        k.mesh(m, [V(x0, y0, 0.004), V(x1, y0, 0.004), V(x1, y1, 0.004), V(x0, y1, 0.004)], [(0, 1, 2, 3)])
+        if o.kind == 'window' and o.shutters:
+            for sx in (-1, 1):
+                a = o.x + sx * (o.w / 2 + 0.01)
+                b = o.x + sx * (o.w + 0.01)
+                k.mesh('planks', [V(min(a, b), y0, 0.006), V(max(a, b), y0, 0.006), V(max(a, b), y1, 0.006), V(min(a, b), y1, 0.006)], [(0, 1, 2, 3)])
+        k.pop()
+    if timber:
+        k.box('darkwood', w + 0.02, 0.07, d + 0.02, 0, 0, 0)
+        k.box('darkwood', w + 0.02, 0.07, d + 0.02, 0, h - 0.07, 0)
+
+
+def W_plastered(k, w, d, h, mat, ops, **kw):
+    if k.lod:
+        return _lod_walls(k, w, d, h, mat, ops)
+    plastered(k, w, d, h, mat, ops, **kw)
+
+
+def W_framed(k, w, d, h, mat, ops, **kw):
+    if k.lod:
+        return _lod_walls(k, w, d, h, mat, ops, timber=True)
+    framed(k, w, d, h, mat, ops, **kw)
+
+
+def W_clapboard(k, w, d, h, mat, ops, **kw):
+    if k.lod:
+        return _lod_walls(k, w, d, h, 'oldplanks' if mat != 'planks' else 'planks', ops)
+    clapboard(k, w, d, h, mat, ops, **kw)
+
+
+def W_board_batten(k, w, d, h, mat, ops, **kw):
+    if k.lod:
+        return _lod_walls(k, w, d, h, mat, ops)
+    board_batten(k, w, d, h, mat, ops, **kw)
 
 
 def sand_drift(k, x, z, rx, rz, h, ry=0.0):
@@ -841,7 +911,7 @@ def tavern(k):
     k.push(0, 0.14, 0)
     ops1 = [Op('front', -0.35, 'door', h=0.82), Op('front', 0.5, 'window', w=0.5, h=0.46, y=0.33, shutters=False), Op('front', -0.82, 'window', bars=True),
             Op('left', -0.3, 'window'), Op('right', 0.0, 'window'), Op('back', 0.3, 'window'), Op('back', -0.5, 'door', h=0.78)]
-    plastered(k, w, d, h1, 'plaster', ops1)
+    W_plastered(k, w, d, h1, 'plaster', ops1)
     k.face('front', w, d)
     bay_window(k, 0.5, 0.31, 0.62, 0.48, 0.17, curtains='red')
     lantern(k, -0.66, 0.8, 0.02)
@@ -852,7 +922,7 @@ def tavern(k):
     k.box('darkwood', w + 0.16, 0.07, d + 0.2, 0, -0.035, 0)
     ops2 = [Op('front', -0.62, 'window'), Op('front', 0.0, 'window'), Op('front', 0.62, 'window'), Op('left', 0.25, 'window'), Op('right', -0.25, 'window'),
             Op('back', 0.0, 'window')]
-    framed(k, w + 0.1, d + 0.1, h2, 'plasterYellow', ops2)
+    W_framed(k, w + 0.1, d + 0.1, h2, 'plasterYellow', ops2)
     k.face('front', w + 0.1, d + 0.1)
     for xx in (-0.62, 0.0, 0.62):
         window_box(k, xx, 0.4)
@@ -920,7 +990,7 @@ def wench_hut(k):
     plinth(k, w + 0.06, d + 0.06, 0.1)
     k.push(0, 0.1, 0)
     ops = [Op('front', -0.15, 'open', w=0.42, h=0.78, y=0.0), Op('front', 0.36, 'window', w=0.26), Op('left', 0.0, 'window', w=0.26), Op('back', 0.2, 'window', w=0.26)]
-    plastered(k, w, d, h, 'plasterPink', [o for o in ops], quoins=None, base='stoneDark')
+    W_plastered(k, w, d, h, 'plasterPink', [o for o in ops], quoins=None, base='stoneDark')
     win_curtains(k, w, d, ops, 0.0, 0.063, 'red')
     k.face('front', w, d)
     doorway(k, -0.15, 0.42, 0.78, 0.063)
@@ -1156,7 +1226,7 @@ def gambling_den(k):
     k.push(0, 0.1, 0)
     ops = [Op('front', 0.0, 'double', w=0.62, h=0.86), Op('front', -0.85, 'open', w=0.6, h=0.42, y=0.42), Op('front', 0.85, 'open', w=0.6, h=0.42, y=0.42),
            Op('left', 0.0, 'window', shutters=True), Op('right', 0.2, 'window'), Op('back', -0.6, 'window'), Op('back', 0.7, 'door', h=0.8)]
-    clapboard(k, w, d, h, 'oldplanks', ops, trim='darkwood')
+    W_clapboard(k, w, d, h, 'oldplanks', ops, trim='darkwood')
     k.face('front', w, d)
     for xx in (-0.85, 0.85):
         shutter_opening(k, xx, 0.42, 0.6, 0.42, 0.06)
@@ -1226,7 +1296,7 @@ def veranda(k, w, depth, y_floor, y_top, z0, n_posts=5, rail=True, roof='planksD
         k.box('stone', 0.13, 0.08, 0.13, x, 0, zf, uvscale=2.0)
         k.box(post, 0.075, y_floor - 0.08, 0.075, x, 0.08, zf)
         for s in (-1, 1):
-            if -w / 2 < x + s * 0.2 < w / 2:
+            if -w / 2 < x + s * 0.2 < w / 2 and not k.lod:
                 k.beam(post, V(x, y_floor - 0.3, zf), V(x + s * 0.2, y_floor - 0.08, zf), 0.045)
     k.box(post, w + 0.06, 0.09, 0.09, 0, y_floor - 0.1, zf)
     k.push(0, 0, z0 + depth / 2)
@@ -1253,12 +1323,12 @@ def brothel(k):
     and the laundry out back"""
     w, d, h1, h2, zb, p_ = 4.3, 1.9, 1.0, 0.92, -0.68, 0.14
     k.push(0, 0, zb)
-    plinth(k, w + 0.06, d + 0.06, p_)
+    plinth_lo(k, w + 0.06, d + 0.06, p_)
     k.push(0, p_, 0)
     ops1 = [Op('front', 0.0, 'double', w=0.7, h=0.88), Op('front', -0.75, 'window', h=0.5, y=0.28), Op('front', 0.75, 'window', h=0.5, y=0.28),
             Op('front', -1.6, 'window', h=0.5, y=0.28), Op('front', 1.6, 'window', h=0.5, y=0.28), Op('left', -0.4, 'window'), Op('left', 0.45, 'window'),
             Op('right', 0.0, 'window'), Op('back', -1.2, 'window'), Op('back', 0.0, 'door', h=0.82), Op('back', 1.2, 'window')]
-    plastered(k, w, d, h1, 'plasterPink', ops1)
+    W_plastered(k, w, d, h1, 'plasterPink', ops1)
     win_curtains(k, w, d, ops1, 0.0, 0.063, 'red')
     k.box('stone', w + 0.06, 0.08, d + 0.06, 0, h1 - 0.02, 0, uvscale=2.0)  # string course
     k.push(0, h1 + 0.06, 0)
@@ -1266,7 +1336,7 @@ def brothel(k):
             Op('front', -0.6, 'window', h=0.42, y=0.28), Op('front', 0.6, 'window', h=0.42, y=0.28),
             Op('front', -1.8, 'window', h=0.42, y=0.28), Op('front', 1.8, 'window', h=0.42, y=0.28),
             Op('left', 0.0, 'window'), Op('right', -0.45, 'window'), Op('right', 0.45, 'window'), Op('back', -1.0, 'window'), Op('back', 0.0, 'window'), Op('back', 1.0, 'window')]
-    plastered(k, w, d, h2, 'plasterPink', ops2)
+    W_plastered(k, w, d, h2, 'plasterPink', ops2)
     win_curtains(k, w, d, ops2, 0.0, 0.063, 'red')
     k.face('front', w, d)
     for i, xx in enumerate((-1.2, 0.0, 1.2)):
@@ -1408,11 +1478,11 @@ def inn(k):
     # ---- main house across the back
     w, d, h1, h2, zc = 4.5, 1.3, 0.95, 0.85, -1.1
     k.push(0, 0, zc)
-    plinth(k, w + 0.06, d + 0.06, p_)
+    plinth_lo(k, w + 0.06, d + 0.06, p_)
     k.push(0, p_, 0)
     ops1 = [Op('front', 0.0, 'double', w=0.66, h=0.85), Op('front', -0.8, 'window'), Op('front', 0.8, 'window'), Op('back', -1.0, 'window', shutters=False),
             Op('back', 1.0, 'window', shutters=False), Op('left', 0.0, 'window', shutters=False), Op('right', 0.0, 'window', shutters=False), Op('front', -1.9, 'window'), Op('front', 1.9, 'window')]
-    plastered(k, w, d, h1, 'plaster', ops1)
+    W_plastered(k, w, d, h1, 'plaster', ops1)
     k.face('front', w, d)
     lantern(k, -0.48, 0.82, 0.02)
     lantern(k, 0.48, 0.82, 0.02)
@@ -1422,8 +1492,8 @@ def inn(k):
     ops2 = [Op('front', -0.95, 'door', w=0.4, h=0.74), Op('front', -0.4, 'window'), Op('front', 0.4, 'window'), Op('front', 0.95, 'door', w=0.4, h=0.74),
             Op('back', -1.0, 'window', shutters=False), Op('back', 1.0, 'window', shutters=False), Op('left', 0.0, 'window', shutters=False), Op('right', 0.0, 'window', shutters=False),
             Op('front', -1.85, 'window'), Op('front', 1.85, 'window')]
-    framed(k, w, d, h2, 'plaster', ops2)
-    tile_gable(k, w, d, 0.65, over=0.24, y=h2, gable='plaster', tile_len=0.25, tile_w=0.17)
+    W_framed(k, w, d, h2, 'plaster', ops2)
+    tile_gable(k, w, d, 0.65, over=0.24, y=h2, gable='plaster', tile_len=0.25, tile_w=0.19)
     chimney(k, 1.5, -0.25, h2 - 0.1, 1.0, 0.3)
     chimney(k, -1.5, -0.25, h2 - 0.1, 1.0, 0.3)
     k.pop()
@@ -1444,17 +1514,17 @@ def inn(k):
     # ---- lodging wing on the right, gallery facing the yard
     ww, wd, wh1, wh2 = 0.9, 1.8, 0.8, 0.7
     k.push(1.8, 0, 0.32, math.pi / 2)
-    plinth(k, wd + 0.06, ww + 0.06, p_)
+    plinth_lo(k, wd + 0.06, ww + 0.06, p_)
     k.push(0, p_, 0)
-    wops1 = [Op('back', -0.5, 'door', h=0.72), Op('back', 0.1, 'window', shutters=False), Op('back', 0.6, 'window', shutters=False), Op('front', -0.45, 'window'), Op('front', 0.45, 'window'),
+    wops1 = [Op('back', -0.5, 'door', h=0.72), Op('back', 0.1, 'window', shutters=False), Op('back', 0.6, 'window', shutters=False), Op('front', -0.45, 'window', shutters=False), Op('front', 0.45, 'window', shutters=False),
              Op('left', 0.0, 'window', shutters=False)]
-    plastered(k, wd, ww, wh1, 'plaster', wops1, quoins=None)
+    W_plastered(k, wd, ww, wh1, 'plaster', wops1, quoins=None)
     k.box('stone', wd + 0.06, 0.06, ww + 0.06, 0, wh1 - 0.02, 0, uvscale=2.0)
     k.push(0, wh1 + 0.04, 0)
     wops2 = [Op('back', -0.6, 'door', w=0.38, h=0.62), Op('back', 0.0, 'window', h=0.3, y=0.25, shutters=False), Op('back', 0.55, 'door', w=0.38, h=0.62),
              Op('front', -0.45, 'window', h=0.3, y=0.25), Op('front', 0.45, 'window', h=0.3, y=0.25), Op('left', 0.0, 'window', h=0.3, y=0.25, shutters=False)]
-    plastered(k, wd, ww, wh2, 'plaster', wops2, quoins=None)
-    tile_gable(k, wd, ww, 0.42, over=0.18, y=wh2, gable='plaster', tile_len=0.2, tile_w=0.14)
+    W_plastered(k, wd, ww, wh2, 'plaster', wops2, quoins=None)
+    tile_gable(k, wd, ww, 0.42, over=0.18, y=wh2, gable='plaster', tile_len=0.22, tile_w=0.16)
     k.pop()
     k.pop()
     k.pop()
@@ -1469,7 +1539,7 @@ def inn(k):
     k.push(0, 0.06, 0)
     sops = [Op('front', -0.55, 'open', w=0.46, h=0.78, y=0.0), Op('front', 0.0, 'open', w=0.46, h=0.78, y=0.0), Op('front', 0.55, 'open', w=0.46, h=0.78, y=0.0),
             Op('left', 0.0, 'window', w=0.28, h=0.24, y=0.55, shutters=False)]
-    board_batten(k, sd, sw, sh, 'oldplanks', sops)
+    W_board_batten(k, sd, sw, sh, 'oldplanks', sops)
     k.face('front', sd, sw)
     for xx in (-0.55, 0.0, 0.55):
         for s in (-1, 1):

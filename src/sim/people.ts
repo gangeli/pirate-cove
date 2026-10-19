@@ -109,7 +109,7 @@ export function dockBerth(dock: Building): [number, number, number] {
   const F: [number, number][] = [[0, 1], [-1, 0], [0, -1], [1, 0]];
   const [fx, fy] = F[(dock.rot + 2) % 4]; // seaward
   const cx = dock.x + dock.w / 2, cy = dock.y + dock.h / 2;
-  const off = (fx ? dock.w : dock.h) / 2 + 2.2;
+  const off = (fx ? dock.w : dock.h) / 2 + 2.7; // clear of the pier head and fender piles
   // ship lies alongside the end of the pier, parallel to the coast
   const side: [number, number] = [-fy, fx];
   return [cx + fx * off + side[0] * 0.5, cy + fy * off + side[1] * 0.5, Math.atan2(side[1], side[0])];

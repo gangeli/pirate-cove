@@ -2,6 +2,7 @@
 //   npx tsx scripts/tune.ts compare [seeds] [years]        -> skill ladder + exploit policies
 //   npx tsx scripts/tune.ts search [iters] [seeds] [years]  -> random/coordinate search over Policy knobs
 import { spawn } from 'node:child_process';
+import { appendFileSync } from 'node:fs';
 import { DEFAULT_POLICY, LADDER, type Policy } from '../src/sim/bot';
 import { PRESETS } from '../src/sim/presets';
 const mode = process.argv[2] ?? 'compare';
@@ -35,6 +36,8 @@ async function pool<T>(jobs: (() => Promise<T>)[], n = J): Promise<T[]> {
 }
 
 function summarize(name: string, rs: any[]) {
+  // RAW=<file> keeps every game's result (jsonl) for later analysis
+  if (process.env.RAW) for (const r of rs) appendFileSync(process.env.RAW, JSON.stringify({ name, ...r }) + '\n');
   const sc = rs.map((r) => r.score);
   const mean = sc.reduce((a, b) => a + b, 0) / sc.length;
   const sd = Math.sqrt(sc.reduce((a, b) => a + (b - mean) ** 2, 0) / sc.length);
@@ -131,6 +134,7 @@ if (mode === 'calibrate') {
       const sub = rs.reduce((a, r) => a + (r.win === false ? 0 : r.parts?.subtotal ?? 0), 0) / rs.length;
       const lost = rs.filter((r) => r.win === false).length / rs.length;
       raw[pr.id][name] = { sub, lost, score: rs.reduce((a, r) => a + r.score, 0) / rs.length };
+      if (process.env.RAW) for (const r of rs) appendFileSync(process.env.RAW, JSON.stringify({ preset: pr.id, name, ...r }) + '\n');
       console.log(`${pr.id.padEnd(9)} ${name.padEnd(8)} raw ${Math.round(sub).toString().padStart(6)} lost ${(lost * 100).toFixed(0).padStart(3)}% score ${Math.round(raw[pr.id][name].score)} ${[...new Set(rs.filter((r) => r.win === false).map((r) => r.reason.slice(0, 30)))].join(' | ')}`);
     }
   }

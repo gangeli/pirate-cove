@@ -1303,13 +1303,14 @@ def globe(k, x, z, r=0.2, h=0.5):
         a = i / 4 * math.tau + math.pi / 4
         k.beam('darkwood', V(math.cos(a) * 0.2, 0, math.sin(a) * 0.2), V(math.cos(a) * 0.08, h * 0.55, math.sin(a) * 0.08), 0.03, round_=True, seg=6)
     lathe(k, 'darkwood', [(0.09, h * 0.5), (0.05, h * 0.56), (0.04, h * 0.7), (0.025, h * 0.72)], seg=10)
-    sphere(k, 'plasterYellow', r, 0, h + 0.02, 0, seg=18, rings=12)
+    sphere(k, 'plasterBlue', r, 0, h + 0.02, 0, seg=18, rings=12)
     if not k.lod:
         # painted continents as low patches
-        for (a, b, s) in ((0.4, 0.3, 0.09), (2.1, -0.2, 0.11), (3.6, 0.5, 0.08), (4.8, -0.4, 0.07)):
+        for (a, b, s) in ((0.4, 0.5, 0.5), (0.7, 0.0, 0.4), (0.9, -0.5, 0.35), (2.3, 0.6, 0.55), (2.6, 0.1, 0.4), (2.1, -0.35, 0.45),
+                          (3.9, 0.4, 0.4), (4.4, -0.1, 0.3), (5.3, 0.7, 0.35), (5.6, -0.6, 0.25)):
             p = V(math.cos(a) * math.cos(b), math.sin(b), math.sin(a) * math.cos(b))
-            frame_along(k, V(0, h + 0.02, 0) + p * (r - 0.004), p)
-            k.cyl('leaf', s * 0.6, s * 0.5, 0.008, 0, 0, 0, seg=7)
+            frame_along(k, V(0, h + 0.02, 0) + p * (r - 0.012), p)
+            k.cyl('plasterYellow', r * s, r * s * 0.8, 0.016, 0, 0, 0, seg=7, ry=a * 3)
             k.pop()
     k.push(0, h + 0.02, 0, 0.0, 0.0, 0.4)
     k.torus('brass', r + 0.02, 0.008, 0, 0, 0, rx=math.pi / 2, seg=24, rseg=4)
@@ -1741,7 +1742,7 @@ def school_nav(k):
     tall = dict(kind='window', w=0.32, h=0.66, y=0.25)
     plastered(k, w, d, h, 'plasterBlue', [Op('front', 0.0, 'double', h=0.92), Op('front', -0.85, **tall), Op('front', 0.85, **tall),
                                           Op('left', 0.0, **tall), Op('right', 0.0, **tall), Op('back', -0.6, **tall), Op('back', 0.6, **tall)], quoins='plaster')
-    tile_gable(k, w, d, 0.6, over=0.2, y=h, gable='plasterBlue')
+    tile_gable(k, w, d, 0.6, over=0.2, y=h, gable='plasterBlue', tile_len=0.16, tile_w=0.1)
     # cupola on the ridge
     cy = h + 0.5
     k.push(0.6, cy, 0)
@@ -1774,7 +1775,7 @@ def school_nav(k):
                 k.box('stone', 0.39, 0.02, 0.38, -1.95 + i * 0.43 + (j % 2) * 0.1, 0, 0.55 + j * 0.42, ry=(k.r() - 0.5) * 0.04, uvscale=2.0)
     else:
         k.box('stone', 4.3, 0.02, 1.25, 0, 0, 0.97)
-    hanging_sign(k, 0.75, 1.0, -0.75 + d / 2, 'NAVIGATION')
+    hanging_sign(k, 1.27, 1.05, -0.75 + d / 2, 'NAVIGATION')
     globe(k, -1.2, 0.95, 0.24, 0.55)
     armillary(k, 1.25, 0.9)
     telescope(k, 1.85, 0.25, 2.3)

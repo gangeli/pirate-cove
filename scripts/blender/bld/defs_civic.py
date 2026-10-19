@@ -615,14 +615,14 @@ def church(k):
     rubble_wall(k, (gx0, gz0), (gx1 + 0.05, gz0), h=0.28, t=0.13)
     rubble_wall(k, (gx1, gz1), (gx0, gz1), h=0.28, t=0.13, gaps=[(0.0, 0.32)])
     k.box('dirt', gx1 - gx0 - 0.1, 0.006, gz1 - gz0 - 0.1, (gx0 + gx1) / 2, 0, (gz0 + gz1) / 2, uvscale=0.8)
-    plots = [(-2.45, -0.75, 'round'), (-1.95, -0.75, 'wood'), (-2.45, 0.05, 'cross'), (-1.95, 0.05, 'gable'), (-2.45, 0.8, 'wood')]
+    plots = [(-2.45, -0.75, 'round'), (-1.95, -0.75, 'wood'), (-2.45, 0.05, 'cross'), (-1.95, 0.05, 'gable')]
     for (x, z, kind) in plots:
         _grave_plot(k, x, z, kind)
     tuft(k, -2.7, -1.1)
     tuft(k, -1.6, -1.1)
     tuft(k, -2.72, 0.5)
     # calvary in the forecourt: a timber cross on a stepped stone base
-    cx, cz = 0.9, 0.95
+    cx, cz = -2.4, 0.85
     k.box('stone', 0.36, 0.08, 0.36, cx, 0, cz, uvscale=2.0, bevel=0.01)
     k.box('stone', 0.24, 0.08, 0.24, cx, 0.08, cz, uvscale=2.0, bevel=0.01)
     k.box('darkwood', 0.06, 0.95, 0.06, cx, 0.16, cz)
@@ -1882,12 +1882,8 @@ def orderly_shrubs(k):
     blob(k, 'leaf', -0.14, 0.29, -0.12, 0.11, 0.05, 0.11, amp=0.08, freq=9, seed=2.0, rings=6, seg=14)
     # a clipped cone, and a ball in a stone urn
     planter(0.2, 0.2, 0.22, 0.2)
-    lathe(k, 'leaf', [(0.09, 0.2), (0.095, 0.24), (0.07, 0.36), (0.045, 0.46), (0.02, 0.54), (0.003, 0.58)], 0.2, 0, 0.2, seg=14)
-    if not k.lod:
-        for i in range(10):
-            a = TAU * i / 10
-            t = (i % 5) / 5
-            blob(k, 'leaf', 0.2 + math.cos(a) * (0.08 - 0.06 * t), 0.26 + 0.28 * t, 0.2 + math.sin(a) * (0.08 - 0.06 * t), 0.03, 0.03, 0.03, amp=0.2, freq=10, seed=i, rings=4, seg=6)
+    for i, (yy, r, hh) in enumerate(((0.2, 0.095, 0.16), (0.33, 0.075, 0.14), (0.44, 0.055, 0.12), (0.53, 0.035, 0.1))):
+        lathe(k, 'leaf', [(r * 0.7, yy), (r, yy + 0.03), (r * 0.85, yy + hh * 0.6), (r * 0.35, yy + hh), (0.003, yy + hh + 0.01)], 0.2, 0, 0.2, seg=14)
     lathe(k, 'stone', [(0.05, 0.0), (0.06, 0.02), (0.035, 0.05), (0.03, 0.09), (0.08, 0.17), (0.09, 0.2), (0.07, 0.205)], 0.2, 0, -0.2, seg=14, uvscale=2.0)
     blob(k, 'leaf', 0.2, 0.27, -0.2, 0.1, 0.09, 0.1, amp=0.06, freq=9, seed=3.0, rings=8, seg=14)
     lathe(k, 'stone', [(0.04, 0.0), (0.05, 0.02), (0.03, 0.04), (0.028, 0.07), (0.065, 0.13), (0.07, 0.15), (0.055, 0.155)], -0.22, 0, 0.24, seg=12, uvscale=2.0)
@@ -2095,10 +2091,16 @@ def anarchy_decor(k):
         k.cyl('wood', 0.014, 0.008, 0.07, gx, 0, gz, seg=5)
     k.marker('flag', 0, H - 0.04, 0)
     # the plunder
-    blob(k, 'gold', 0.13, 0.0, 0.14, 0.15, 0.08, 0.12, amp=0.3, freq=7, seed=2, rings=6, seg=12, flat=0.0)
-    chest(k, 0.2, 0.05, -0.5, True, 0.85)
-    cask(k, -0.22, 0.12, 0.65)
-    cask(k, -0.15, -0.2, 0.6, lying=True, ry=0.8)
+    blob(k, 'gold', 0.12, 0.0, 0.14, 0.22, 0.13, 0.17, amp=0.3, freq=7, seed=2, rings=7, seg=14, flat=0.0)
+    chest(k, 0.22, -0.02, -0.5, True, 0.95)
+    crate(k, -0.25, 0, -0.22, 0.26, 0.4)
+    cask(k, -0.24, -0.23, 0.6, y=0.26)
+    sack(k, 0.3, -0.27, 0.8, 0.6)
+    k.push(-0.06, 0.1, 0.3, 0.3, 0.0, 0.0)
+    chest(k, 0.0, 0.0, 0.0, False, 0.75)
+    k.pop()
+    cask(k, -0.28, 0.14, 0.65)
+    cask(k, -0.05, -0.35, 0.6, lying=True, ry=0.3)
     k.push(0.05, 0.06, -0.24, 0.35)
     lathe(k, 'iron', [(0.04, -0.22), (0.045, -0.2), (0.05, -0.18), (0.042, 0.0), (0.034, 0.16), (0.04, 0.17), (0.036, 0.19)], 0, 0, 0, seg=10, rz=math.pi / 2)
     k.cyl('black', 0.022, 0.022, 0.004, 0.19, 0, 0, seg=8, rz=-math.pi / 2)
@@ -2110,7 +2112,10 @@ def anarchy_decor(k):
             k.cyl('gold', 0.013, 0.013, 0.004, (k.r() - 0.3) * 0.5, 0.002, 0.15 + k.r() * 0.2, seg=8, rx=k.r() * 0.2)
         k.cyl('gold', 0.04, 0.03, 0.08, -0.05, 0.0, 0.3, seg=10)
         k.cyl('gold', 0.025, 0.025, 0.06, -0.05, 0.08, 0.3, seg=8)
-        skull(k, -0.02, 0.08, 0.16, 1.0, ry=0.4)
+        skull(k, 0.08, 0.12, 0.2, 1.0, ry=0.4)
+        for i in range(4):
+            a = TAU * i / 4 + 0.3
+            jar(k, 0.12 + math.cos(a) * 0.15, 0.03, 0.14 + math.sin(a) * 0.13, 'bottle', 1.0)
     return {'ao': 512}
 
 

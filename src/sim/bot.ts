@@ -2,7 +2,8 @@ import type { Game } from './game';
 import { MONTH } from './time';
 import { BUILDING, JOB_SEX, SKILLED_ONLY, type Job } from './data/buildings';
 import { SHIPS, CAPTAIN_COST, type ShipType } from './data/ships';
-import type { Ship } from './types';
+import type { Person, Ship } from './types';
+import { pirateFactors } from './people';
 import { findSpot, buildRoadBetween, footprint, canPlace } from './placement';
 import { Terrain } from './map';
 import { NATIONS, type Nation } from './data/kings';
@@ -355,6 +356,7 @@ export class Bot {
     if (invasion) for (const n of NATIONS) if (g.nations[n].invasion.stage >= 1 && g.edictAvailability('peace', n).ok && !g.ongoing.has(`peace:${n}`)) g.cmd({ type: 'edict', id: 'peace', nation: n });
     if (threat && this.count('watch_tower') < 3) this.build('watch_tower', this.dockSide());
     if (g.treasury > 2500 && this.count('anarchy_decor') < 4) this.build('anarchy_decor', this.dockSide());
+    if (this.p.plan) this.comforts(ashoreP);
     // construction capacity
     const sites = [...g.buildings.values()].filter((b) => b.built < 1).length;
     if (sites > 4 * this.count('construction_tent')) this.build('construction_tent');
@@ -374,6 +376,34 @@ export class Bot {
         break;
       }
     }
+  }
+
+  /**
+   * Pirates sleep easier under guns and feel freer under the black flag: a planner reads the mood
+   * breakdown and plants cheap decor (lumber only) where the pirates live.
+   */
+  private comforts(ashoreP: Person[]): void {
+    const g = this.g;
+    if (ashoreP.length < 8 || g.lumber() < 40) return;
+    let def = 0, ana = 0;
+    for (const p of ashoreP) {
+      const f = pirateFactors(g, p);
+      def += f.defense / ashoreP.length;
+      ana += f.anarchy / ashoreP.length;
+    }
+    const homes = this.homeSide();
+    if (def < 0.6) {
+      if (!this.count('observatory')) this.build('observatory', homes);
+      else if (this.count('protective_cannon') < 4 + ashoreP.length / 6) this.build('protective_cannon', homes);
+    }
+    if (ana < 0.6 && this.count('anarchy_decor') < 4 + ashoreP.length / 8) this.build('anarchy_decor', homes);
+  }
+
+  /** the middle of the pirates' housing */
+  private homeSide(): [number, number] {
+    let x = 0, y = 0, n = 0;
+    for (const b of this.g.buildings.values()) if (b.def === 'housing_plot') (x += b.x), (y += b.y), n++;
+    return n ? [Math.round(x / n), Math.round(y / n)] : this.dockSide();
   }
 
   /** the old fixed ratios: a venue per so many pirates, whether or not anyone can staff it */
@@ -396,7 +426,7 @@ export class Bot {
    * their rank, and that the island can staff. Seats are budgeted per pirate so the bot does not raise
    * venues nobody visits.
    */
-  private entertainmentByNeed(ashoreP: { needs: Record<string, number>; rank: number; gold: number }[]): void {
+  private entertainmentByNeed(ashoreP: Person[]): void {
     const g = this.g;
     if (this.p.exploit === 'nofun' || !ashoreP.length) return;
     const E = this.p.entertainment;
@@ -676,12 +706,19 @@ export class Bot {
       else if (mission === 'explore') g.cmd({ type: 'shipOrders', ship: s.id, mission: 'explore', region: g.regions.find((r) => r.knowledge === 0 && regionReachable(g, s, r.id).ok)!.id });
       else {
         const best = this.cruiseRegion(s);
-        g.cmd({ type: 'shipOrders', ship: s.id, mission: 'cruise', region: best, orders: s.cutlasses >= Math.min(4, d.cutlasses) || s.cannons < 2 ? 'board' : 'pound', spoils: this.p.spoils === 'auto' ? (g.avgHappiness() < 0.5 ? 'generous' : 'selfish') : this.p.spoils });
+        g.cmd({ type: 'shipOrders', ship: s.id, mission: 'cruise', region: best, orders: s.cutlasses >= Math.min(4, d.cutlasses) || s.cannons < 2 ? 'board' : 'pound', spoils: this.p.spoils === 'auto' ? this.autoSpoils() : this.p.spoils });
       }
       const r = g.cmd({ type: 'setSail', ship: s.id });
       if (r.ok) this.say(`${s.name} sails (${s.mission})`);
       else this.skip(r.reason!.replace(/\(.*\)/, '').slice(0, 40));
     }
+  }
+
+  /** the crew's share comes back through the venues anyway; keep more only when the treasury is in trouble */
+  private autoSpoils(): 'selfish' | 'generous' {
+    const g = this.g;
+    if (!this.p.plan) return g.avgHappiness() < 0.5 ? 'generous' : 'selfish';
+    return g.treasury < 300 && g.avgHappiness() > 0.5 ? 'selfish' : 'generous';
   }
 
   /** a casual player's choice: the odd kidnapping, raids when captives run low, otherwise cruise */

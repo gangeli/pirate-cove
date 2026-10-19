@@ -9,14 +9,20 @@ const king = KINGS.find((k) => k.id === (a.king ?? 'kidd'))!;
 const g = new Game({ seed: a.seed ?? 1, years, ...(a.settings ?? {}) }, king);
 const bot = new Bot(g, { policy: a.policy ?? {} });
 const n = Math.round((years * 12 * MONTH) / 0.1) + 20;
+const cum: Record<string, number> = {};
+let lastM = 0;
 for (let i = 0; i < n && !g.over; i++) {
   g.step();
   bot.step();
   g.events.length = 0;
+  if (g.monthIndex !== lastM) {
+    lastM = g.monthIndex;
+    for (const [k, v] of Object.entries(g.finance.lastIncome)) cum[k] = Math.round((cum[k] ?? 0) + v);
+  }
 }
 const sc = g.over?.score ?? computeScore(g);
 console.log(JSON.stringify({
   seed: a.seed, score: sc.total, parts: sc, win: g.over ? g.over.win : null, reason: g.over?.reason ?? 'unfinished', years: +g.yearsElapsed.toFixed(2),
   hoard: Math.round(g.hoard), treasury: Math.round(g.treasury), pirates: g.pirates().length, captives: g.captives().length, ships: g.ships.size,
-  hap: +g.avgHappiness().toFixed(3), res: +g.avgResignation().toFixed(3), difficulty: g.difficulty, stats: g.stats,
+  hap: +g.avgHappiness().toFixed(3), res: +g.avgResignation().toFixed(3), difficulty: g.difficulty, stats: g.stats, income: cum, fleet: [...g.ships.values()].map((s) => s.type).join(','),
 }));
