@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { M, box, walls, gableRoof, hipRoof, coneRoof, post, awning, fence, palisade, crateStack, barrels, logPile, lumberStack, cannon, flag, sign, pad, mesh, boxGeo } from './kit';
 import { props } from './props';
+import { bldModels } from './bldmodels';
 
 /**
  * Building models. Each prefab is built for rotation 0 with the front facing +z, footprint W (x) by D (z)
@@ -811,6 +812,9 @@ const P: Record<string, Prefab> = {
 };
 
 export function buildPrefab(def: string, W: number, D: number, level = 1): THREE.Group {
+  // modelled buildings first (per level where a building has levels), procedural otherwise
+  const made = bldModels.get(`${def}_${level}`) ?? bldModels.get(def);
+  if (made) return made;
   const f = P[def];
   if (f) return f(W, D, level);
   // fallback: generic cottage scaled to footprint
