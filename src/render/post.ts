@@ -6,11 +6,11 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 /**
  * Cheap post passes.
  *
- * FastAO: three's GTAO (same samples, radius and denoise as the stock GTAOPass setup) that, by default, reads the
- * main pass's own depth buffer and reconstructs normals from it, so unlike the stock pass it never renders the scene a
- * second time; and it multiplies the result straight onto the frame instead of copying the whole frame first and
- * blending onto the copy (one full-screen pass and a buffer swap fewer). The composer's render targets must carry a
- * depth texture. `scale` < 1 computes it at reduced resolution (only used on lower tiers).
+ * FastAO: three's GTAO with the stock setup (12 samples, same radius, 16-tap denoise) that multiplies its result
+ * straight onto the frame, instead of copying the whole frame to the other buffer first and blending onto the copy:
+ * one full-screen pass and a buffer swap fewer, same image. With depthNormals it also skips the separate normal/depth
+ * scene render and reads the main pass's depth texture (normals rebuilt from depth; the composer's targets then need
+ * a depth texture) - cheaper still, but not pixel-identical (foliage a touch darker). `scale` < 1 = reduced resolution.
  */
 export class FastAO extends Pass {
   readonly gtao: GTAOPass;
@@ -18,7 +18,7 @@ export class FastAO extends Pass {
   private blend: THREE.ShaderMaterial;
   private depth: THREE.DepthTexture | null = null;
 
-  constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera, width: number, height: number, readonly scale = 1, samples = 12, intensity = 0.85, pdSamples = 16, readonly depthNormals = true) {
+  constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera, width: number, height: number, readonly scale = 1, samples = 12, intensity = 0.85, pdSamples = 16, readonly depthNormals = false) {
     super();
     this.needsSwap = false;
     const w = Math.max(1, Math.round(width * scale)), h = Math.max(1, Math.round(height * scale));
