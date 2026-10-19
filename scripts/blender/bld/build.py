@@ -21,9 +21,13 @@ for name in names:
     k = Kit(seed=abs(hash(name)) % 10007)
     opts = fn(k) or {}
     k.finish(name.replace('@', '_'), os.path.abspath(OUT), ao_size=opts.get('ao', 1024), ao_samples=32 if fast else opts.get('samples', 96),
-             ao_dist=opts.get('ao_dist', 0.6))
+             ao_dist=opts.get('ao_dist', 0.9))
+    # the far LOD: the same building rebuilt with simplified forms, with its own small weathering map
+    k2 = Kit(seed=abs(hash(name)) % 10007, lod=True)
+    fn(k2)
+    k2.finish(name.replace('@', '_') + '_lod', os.path.abspath(OUT), ao_size=256, ao_samples=16, ao_dist=opts.get('ao_dist', 0.9))
     print(f'{name} done in {time.time() - t0:.1f}s')
 # manifest of every model on disk
 import json
-have = sorted(f[:-4] for f in os.listdir(os.path.abspath(OUT)) if f.endswith('.glb'))
+have = sorted(f[:-4] for f in os.listdir(os.path.abspath(OUT)) if f.endswith('.glb') and not f.endswith('_lod.glb'))
 json.dump(have, open(os.path.join(os.path.abspath(OUT), 'index.json'), 'w'))

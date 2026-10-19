@@ -52,7 +52,10 @@ def wall_segments(L, h, ops):
 
 def plinth(k: Kit, w, d, h=0.16, mat='stone', y0=0.0):
     """a rubble-stone footing: a mortar core with irregular coursed stones proud of every face"""
-    k.box('stoneDark', w - 0.03, h - 0.01, d - 0.03, 0, y0, 0, uvscale=0.8)
+    if k.lod:
+        k.box(mat, w + 0.03, h, d + 0.03, 0, y0, 0, uvscale=1.0)
+        return
+    k.box('stoneDark', w - 0.03, h - 0.01, d - 0.03, 0, y0, 0, uvscale=2.0)
     for f in FACES:
         L = w if f in ('front', 'back') else d
         k.face(f, w, d)
@@ -63,10 +66,10 @@ def plinth(k: Kit, w, d, h=0.16, mat='stone', y0=0.0):
             while x < L / 2 - 0.03:
                 sw = min(L / 2 - x, 0.09 + k.r() * 0.13)
                 k.cbox(mat, sw - 0.012, rh - 0.014, 0.05 + k.r() * 0.025, x + sw / 2, y0 + r * rh + rh / 2, -0.012,
-                       ry=(k.r() - 0.5) * 0.08, rx=(k.r() - 0.5) * 0.12, rz=(k.r() - 0.5) * 0.08, uvscale=0.8)
+                       ry=(k.r() - 0.5) * 0.08, rx=(k.r() - 0.5) * 0.12, rz=(k.r() - 0.5) * 0.08, uvscale=2.0)
                 x += sw
         k.pop()
-    k.box(mat, w + 0.02, 0.025, d + 0.02, 0, y0 + h - 0.02, 0, uvscale=0.8)
+    k.box(mat, w + 0.02, 0.025, d + 0.02, 0, y0 + h - 0.02, 0, uvscale=2.0)
 
 
 def stilts(k: Kit, w, d, h, n=None):
@@ -82,6 +85,9 @@ def stilts(k: Kit, w, d, h, n=None):
 
 def deck(k: Kit, w, d, y, mat='planks', along='x', joists=True):
     """a plank floor at height y"""
+    if k.lod:
+        k.box(mat, w, 0.05, d, 0, y - 0.05, 0, uvscale=1.0, grain=1 if along == 'z' else 0)
+        return
     if joists:
         n = max(2, round((d if along == 'x' else w) / 0.5) + 1)
         for i in range(n):
@@ -111,6 +117,11 @@ def steps(k: Kit, x, z, w, rise, n=None, mat='planks'):
 
 def door(k: Kit, x, w=0.44, h=0.9, y=0.0, depth=0.06, ajar=0.0, mat='planksDark', frame='darkwood', studs=False):
     """a ledged and braced plank door hung on strap hinges, set back in its opening"""
+    if k.lod:
+        k.box(mat, w, h, 0.03, x, y, -depth, uvscale=1.2, grain=1)
+        k.box(frame, w + 0.12, h + 0.06, 0.02, x, y, -depth - 0.03)
+        k.box('stoneDark', w + 0.18, 0.05, 0.16 + depth, x, 0, 0.02)
+        return
     # dark interior
     k.box('black', w, h, 0.02, x, y, -depth - 0.03)
     # jambs and lintel
@@ -136,12 +147,19 @@ def door(k: Kit, x, w=0.44, h=0.9, y=0.0, depth=0.06, ajar=0.0, mat='planksDark'
                 k.cyl('iron', 0.008, 0.006, 0.012, (i + 0.5) * pw, h * yy, 0.035, seg=5, rx=math.pi / 2)
     k.pop()
     # stone threshold
-    k.box('stoneDark', w + 0.18, 0.05, 0.16 + depth, x, 0, 0.02, uvscale=0.8)
+    k.box('stoneDark', w + 0.18, 0.05, 0.16 + depth, x, 0, 0.02, uvscale=2.0)
 
 
 def window(k: Kit, x, y, w=0.3, h=0.34, depth=0.06, shutters=True, bars=False, frame='darkwood', shutter_mat='planks'):
     """a casement window in a reveal: dark glazing (glows at night), frame, mullion and transom, sill,
     and plank shutters thrown open against the wall"""
+    if k.lod:
+        k.box('window', w, h, 0.01, x, y, -depth - 0.01)
+        k.box(frame, w + 0.08, 0.04, 0.08, x, y - 0.04, 0.0)
+        if shutters:
+            for s in (-1, 1):
+                k.box(shutter_mat, w / 2, h, 0.02, x + s * (w * 0.75 + 0.03), y, 0.012, uvscale=1.4, grain=1)
+        return
     k.box('window', w, h, 0.01, x, y, -depth - 0.01)
     # frame in the reveal
     for s in (-1, 1):
@@ -208,10 +226,10 @@ def arch(k: Kit, x, w, h, depth):
     for i in range(n + 1):
         a = math.pi * i / n
         cx, cy = x + math.cos(a) * (r + 0.04), h - r + math.sin(a) * (r + 0.04)
-        k.cbox('stoneDark', 0.08, 0.11, depth + 0.04, cx, cy, -depth / 2, rz=a - math.pi / 2, uvscale=0.8)
+        k.cbox('stoneDark', 0.08, 0.11, depth + 0.04, cx, cy, -depth / 2, rz=a - math.pi / 2, uvscale=2.0)
     for s in (-1, 1):
         for j in range(round((h - r) / 0.16)):
-            k.box('stoneDark', 0.1 if j % 2 else 0.07, 0.15, depth + 0.04, x + s * (r + 0.03), j * 0.16, -depth / 2, uvscale=0.8)
+            k.box('stoneDark', 0.1 if j % 2 else 0.07, 0.15, depth + 0.04, x + s * (r + 0.03), j * 0.16, -depth / 2, uvscale=2.0)
 
 
 # ------------------------------------------------------------------------------------------- walls
@@ -228,7 +246,7 @@ def solid_walls(k: Kit, w, d, h, mat, ops, t=0.08, y0=0.0, uvscale=0.5):
     """walls of a single material built around their openings (render, plaster, stone)"""
     def build(f, L, mine):
         for (x0, x1, a, b) in wall_segments(L, h, mine):
-            k.box(mat, x1 - x0, b - a, t, (x0 + x1) / 2, a, -t / 2, uvscale=uvscale)
+            k.box(mat, x1 - x0, b - a, t, (x0 + x1) / 2, a, -t / 2, uvscale=uvscale, wuv=True, bevel=0.0)
         for o in mine:
             opening(k, o, t * 0.7)
     _faces(k, w, d, t, y0, ops, build)
@@ -242,21 +260,21 @@ def plastered(k: Kit, w, d, h, render, ops, t=0.09, y0=0.0, quoins='stone', base
     for f in FACES:
         L = w if f in ('front', 'back') else d
         k.face(f, w, d).push(0, y0, 0)
-        if quoins:
+        if quoins and not k.lod:
             q = round(h / 0.15)
             for i in range(q):
                 for s in (-1, 1):
                     long_ = (i + (1 if s > 0 else 0)) % 2 == 0
                     qw = 0.2 if long_ else 0.12
-                    k.box(quoins, qw, 0.14, 0.02, s * (L / 2 - qw / 2 + 0.008), i * 0.15 + 0.005, 0.005, uvscale=0.8)
+                    k.box(quoins, qw, 0.14, 0.02, s * (L / 2 - qw / 2 + 0.008), i * 0.15 + 0.005, 0.005, uvscale=2.0)
         if base:
-            k.box(base, L + 0.02, 0.09, 0.02, 0, 0, 0.004, uvscale=0.8)
+            k.box(base, L + 0.02, 0.09, 0.02, 0, 0, 0.004, uvscale=2.0)
         for o in [o for o in ops if o.face == f]:
             if o.kind in ('window', 'door', 'double'):
                 # dressed surround
-                k.box(quoins or 'stone', o.w + 0.16, 0.07, 0.025, o.x, o.y + o.h, 0.01, uvscale=0.8)
+                k.box(quoins or 'stone', o.w + 0.16, 0.07, 0.025, o.x, o.y + o.h, 0.01, uvscale=2.0)
                 for s in (-1, 1):
-                    k.box(quoins or 'stone', 0.06, o.h, 0.02, o.x + s * (o.w / 2 + 0.03), o.y, 0.006, uvscale=0.8)
+                    k.box(quoins or 'stone', 0.06, o.h, 0.02, o.x + s * (o.w / 2 + 0.03), o.y, 0.006, uvscale=2.0)
         k.pop().pop()
 
 
@@ -307,8 +325,8 @@ def clapboard(k: Kit, w, d, h, mat, ops, t=0.07, y0=0.0, trim='darkwood'):
     """weatherboarded walls: overlapping horizontal boards with shadow lines, corner boards and trim"""
     def build(f, L, mine):
         for (x0, x1, a, b) in wall_segments(L, h, mine):
-            k.box('planksDark', x1 - x0, b - a, t - 0.02, (x0 + x1) / 2, a, -t / 2 - 0.01)
-        rows = max(3, round(h / 0.1))
+            k.box('planks' if k.lod and mat == 'planks' else ('oldplanks' if k.lod else 'planksDark'), x1 - x0, b - a, t - 0.02, (x0 + x1) / 2, a, -t / 2 - 0.01, wuv=k.lod, uvscale=1.2)
+        rows = 0 if k.lod else max(3, round(h / 0.1))
         bh = h / rows
         for r in range(rows):
             y = r * bh
@@ -337,7 +355,9 @@ def board_batten(k: Kit, w, d, h, mat, ops, t=0.06, y0=0.0):
     """vertical boards with battens over the joints (sheds, shacks)"""
     def build(f, L, mine):
         for (x0, x1, a, b) in wall_segments(L, h, mine):
-            k.box('planksDark', x1 - x0, b - a, t - 0.025, (x0 + x1) / 2, a, -t / 2 - 0.0125)
+            k.box(mat if k.lod else 'planksDark', x1 - x0, b - a, t - 0.025, (x0 + x1) / 2, a, -t / 2 - 0.0125, grain=1, uvscale=1.2)
+            if k.lod:
+                continue
             n = max(1, round((x1 - x0) / 0.13))
             bw = (x1 - x0) / n
             for i in range(n):
@@ -387,6 +407,8 @@ def logs(k: Kit, w, d, h, ops, y0=0.0, r=0.06):
 
 def _slope_grid(k, mat, x0, x1, top_y, eave_y, z_top, z_eave, res, amp, streak, seed, fringe=0.12):
     """a displaced, streaked thatch surface between a ridge line and an eave line (+ ragged fringe)"""
+    if k.lod:
+        res, amp = res * 3, amp * 0.6
     nx = max(2, round((x1 - x0) / res))
     nz = max(2, round(math.hypot(top_y - eave_y, z_eave - z_top) / res))
     verts, faces = [], []
@@ -452,13 +474,13 @@ def thatch_gable(k: Kit, w, d, rise, over=0.3, y=0.0, mat='thatch', gable='plank
                 b = V(sx * hw, y + rise + (eave_y - y - rise) * t1, s * hd * t1)
                 k.beam(mat, a + V(0, -thick * 0.45, 0), b + V(0, -thick * 0.45, 0), thick * 0.6, round_=True, seg=7)
         # rafter feet
-        nr = max(3, round(w / 0.4))
+        nr = 0 if k.lod else max(3, round(w / 0.4))
         ang = math.atan2(rise, d / 2)
-        for i in range(nr + 1):
+        for i in range(nr + 1 if nr else 0):
             x = -w / 2 + 0.04 + i * (w - 0.08) / nr
             k.beam('darkwood', V(x, y0 - 0.02, s * (d / 2 - 0.05)), V(x, y0 - 0.02 - over * 0.8 * math.tan(ang), s * (d / 2 + over * 0.75)), 0.05)
     # ridge: a lumpy roll bound with withies
-    seg = max(6, round(2 * hw / 0.12))
+    seg = 1 if k.lod else max(6, round(2 * hw / 0.12))
     for i in range(seg):
         x0 = -hw - 0.03 + i * (2 * hw + 0.06) / seg
         x1 = x0 + (2 * hw + 0.06) / seg
@@ -474,7 +496,9 @@ def gables(k: Kit, w, d, rise, y, mat, kind='boards', barge=True):
     for s in (-1, 1):
         # triangle backing
         k.mesh(mat, [V(s * w / 2, y, -d / 2), V(s * w / 2, y, d / 2), V(s * w / 2, y + rise * 0.97, 0)], [(0, 1, 2) if s > 0 else (0, 2, 1)])
-        if kind == 'boards':
+        if k.lod:
+            pass
+        elif kind == 'boards':
             n = round(d / 0.13)
             for i in range(n):
                 z = -d / 2 + (i + 0.5) * d / n
@@ -503,7 +527,7 @@ def gables(k: Kit, w, d, rise, y, mat, kind='boards', barge=True):
             k.beam('darkwood', V(s * (w / 2 + 0.03), y - 0.02, sz * (d / 2 + 0.05)), V(s * (w / 2 + 0.03), y + rise + 0.02, 0), 0.06, 0.035)
 
 
-def tile_gable(k: Kit, w, d, rise, over=0.22, y=0.0, gable='plaster', hip=False, tile_len=0.17, tile_w=0.105):
+def tile_gable(k: Kit, w, d, rise, over=0.22, y=0.0, gable='plaster', hip=False, tile_len=0.13, tile_w=0.08):
     """a Spanish barrel-tile roof laid course by course: pans and caps overlapping, mortared ridge,
     fascia and exposed rafter feet"""
     hd = d / 2 + over
@@ -511,6 +535,18 @@ def tile_gable(k: Kit, w, d, rise, over=0.22, y=0.0, gable='plaster', hip=False,
     ang = math.atan2(rise, d / 2)
     slope = hd / math.cos(ang)
     eave_y = y - over * math.tan(ang)
+    if k.lod:
+        for s in (-1, 1):
+            top, eave = V(0, y + rise + 0.04, 0), V(0, eave_y + 0.04, s * hd)
+            k.mesh('tiles', [V(-hw, top.y, 0), V(hw, top.y, 0), V(hw, eave.y, eave.z), V(-hw, eave.y, eave.z)],
+                   [(0, 3, 2, 1) if s > 0 else (0, 1, 2, 3)], uvscale=1.0)
+            k.mesh('tiles', [V(-hw, top.y - 0.04, 0), V(hw, top.y - 0.04, 0), V(hw, eave.y - 0.06, eave.z), V(-hw, eave.y - 0.06, eave.z)],
+                   [(0, 1, 2, 3) if s > 0 else (0, 3, 2, 1)], uvscale=1.0)
+            k.beam('darkwood', V(-hw, eave_y - 0.03, s * (hd - 0.02)), V(hw, eave_y - 0.03, s * (hd - 0.02)), 0.07, 0.04)
+        k.beam('terracotta', V(-hw, y + rise + 0.05, 0), V(hw, y + rise + 0.05, 0), 0.12, round_=True)
+        if not hip:
+            gables(k, w, d, rise, y, gable, 'plain')
+        return
     for s in (-1, 1):
         # boarded underlay
         top, eave = V(0, y + rise, 0), V(0, eave_y, s * hd)
@@ -568,18 +604,22 @@ def _barrel_tile(k, centre, along, up, length, radius, cap, taper=0.1, seg=6):
     def idx(e, layer, i):
         return e * 2 * ring + layer * ring + i
     for i in range(seg):
-        faces.append((idx(0, 0, i), idx(1, 0, i), idx(1, 0, i + 1), idx(0, 0, i + 1)) if cap else (idx(0, 0, i), idx(0, 0, i + 1), idx(1, 0, i + 1), idx(1, 0, i)))
-        faces.append((idx(0, 1, i), idx(0, 1, i + 1), idx(1, 1, i + 1), idx(1, 1, i)) if cap else (idx(0, 1, i), idx(1, 1, i), idx(1, 1, i + 1), idx(0, 1, i + 1)))
+        # a pan is a mirrored cap, which already flips its faces the right way
+        faces.append((idx(0, 0, i), idx(1, 0, i), idx(1, 0, i + 1), idx(0, 0, i + 1)))
+        faces.append((idx(0, 1, i), idx(0, 1, i + 1), idx(1, 1, i + 1), idx(1, 1, i)))
     for e in range(2):
         for i in range(seg):
             faces.append((idx(e, 0, i), idx(e, 0, i + 1), idx(e, 1, i + 1), idx(e, 1, i)))
-    k.mesh('tiles', verts, faces, uvscale=1.5)
+    k.mesh('terracotta', verts, faces, uvscale=1.5)
 
 
 def shingle_lean(k: Kit, w, depth, hi, lo, z0=0.0, mat='planks', rows=None):
     """a lean-to of overlapping wooden shingles falling toward +z"""
     L = math.hypot(depth, hi - lo)
     ang = math.atan2(hi - lo, depth)
+    if k.lod:
+        k.cbox(mat, w, 0.05, L + 0.06, 0, (hi + lo) / 2, z0 + depth / 2, rx=ang, uvscale=1.2)
+        return
     rows = rows or max(2, round(L / 0.09))
     for r in range(rows):
         t = r / rows
@@ -597,6 +637,8 @@ def shingle_lean(k: Kit, w, depth, hi, lo, z0=0.0, mat='planks', rows=None):
 
 def thatch_cone(k: Kit, r, rise, y=0.0, mat='thatch', res=0.06):
     """a conical thatch for round huts: displaced surface with a fringe and a finial"""
+    if k.lod:
+        res *= 3
     rings = max(4, round(math.hypot(r, rise) / res))
     segs = max(12, round(2 * math.pi * r / res))
     verts, faces = [], []
@@ -631,14 +673,17 @@ def thatch_cone(k: Kit, r, rise, y=0.0, mat='thatch', res=0.06):
 
 def chimney(k: Kit, x, z, base_y, h, s=0.3):
     """a coursed rubble stack with a dressed cap and a sooty flue (marks smoke)"""
-    rows = round(h / 0.09)
+    rows = 1 if k.lod else round(h / 0.09)
     for i in range(rows):
         t = i / rows
         sz = s * (1 - 0.12 * t)
         for (dx, dz, ww, dd) in ((0, 0, sz, sz),):
-            k.box('stone', ww + (k.r() - 0.5) * 0.025, 0.088, dd + (k.r() - 0.5) * 0.025, x + dx, base_y + i * 0.09, z + dz, ry=(k.r() - 0.5) * 0.05, uvscale=0.9)
-    top = base_y + rows * 0.09
-    k.box('stoneDark', s * 1.05, 0.05, s * 1.05, x, top, z, uvscale=0.8)
+            if k.lod:
+                k.box('stone', s, h, s, x, base_y, z, uvscale=2.0)
+            else:
+                k.box('stone', ww + (k.r() - 0.5) * 0.025, 0.088, dd + (k.r() - 0.5) * 0.025, x + dx, base_y + i * 0.09, z + dz, ry=(k.r() - 0.5) * 0.05, uvscale=2.0)
+    top = base_y + (h if k.lod else rows * 0.09)
+    k.box('stoneDark', s * 1.05, 0.05, s * 1.05, x, top, z, uvscale=2.0)
     k.box('black', s * 0.5, 0.012, s * 0.5, x, top + 0.045, z)
     k.marker('smoke', x, top + 0.1, z)
 
@@ -679,6 +724,9 @@ def cask(k: Kit, x, z, s=1.0, y=0.0, ry=0.0, lying=False):
 
 
 def crate(k: Kit, x, y, z, s=0.3, ry=0.0):
+    if k.lod:
+        k.box('oldplanks', s, s, s, x, y, z, ry=ry, uvscale=1.6)
+        return
     k.push(x, y, z, ry)
     k.box('oldplanks', s * 0.92, s * 0.92, s * 0.92, 0, s * 0.04, 0, uvscale=1.6)
     for f in FACES:
@@ -711,12 +759,17 @@ def sack(k: Kit, x, z, s=1.0, ry=0.0):
 
 
 def rope_coil(k: Kit, x, z, r=0.13):
+    if k.lod:
+        return
     for i in range(3):
         k.torus('rope', r - i * 0.028, 0.015, x, 0.015 + i * 0.024, z, seg=16, rseg=4)
 
 
 def lantern(k: Kit, x, y, z=0.0):
     """a ship's lantern on a wrought bracket (glass glows at night)"""
+    if k.lod:
+        k.box('window', 0.07, 0.1, 0.07, x, y - 0.2, z + 0.21)
+        return
     k.box('iron', 0.022, 0.022, 0.22, x, y, z + 0.11)
     k.beam('iron', V(x, y - 0.15, z + 0.01), V(x, y, z + 0.18), 0.014)
     k.box('iron', 0.01, 0.05, 0.01, x, y - 0.05, z + 0.21)
@@ -748,3 +801,29 @@ def fence(k: Kit, x0, z0, x1, z1, h=0.42, mat='oldplanks'):
         k.cyl('bark', 0.035, 0.03, h + k.r() * 0.04, p.x, 0, p.z, seg=7)
     for yy in (h * 0.35, h * 0.8):
         k.beam(mat, a + V(0, yy, 0), b + V(0, yy, 0), 0.04, 0.025)
+
+
+def front_porch(k: Kit, w, depth, h, z0, roof='planksDark'):
+    """a raised plank porch across the front: deck on joists, posts with knee braces, a rail with
+    balusters (open in the middle for the steps) and a shingled lean-to tucked under the eave"""
+    k.push(0, 0, z0 + depth / 2)
+    deck(k, w, depth, 0.1, 'planks', along='x', joists=True)
+    k.pop()
+    n = max(2, round(w / 0.7) + 1)
+    xs = [-w / 2 + 0.05 + i * (w - 0.1) / (n - 1) for i in range(n)]
+    zf = z0 + depth - 0.05
+    for x in xs:
+        k.box('wood', 0.07, h - 0.1, 0.07, x, 0.1, zf)
+        for s in (-1, 1):
+            if -w / 2 < x + s * 0.2 < w / 2:
+                k.beam('wood', V(x, h - 0.28, zf), V(x + s * 0.18, h - 0.08, zf), 0.04)
+    for i in range(n - 1):
+        a, b = xs[i], xs[i + 1]
+        if a < 0 < b:
+            continue  # gap for the steps
+        k.box('wood', b - a, 0.04, 0.05, (a + b) / 2, 0.42, zf)
+        m = max(2, round((b - a) / 0.1))
+        for j in range(1, m):
+            k.box('wood', 0.025, 0.3, 0.025, a + (b - a) * j / m, 0.1, zf)
+    k.box('darkwood', w + 0.06, 0.08, 0.08, 0, h - 0.08, zf)
+    shingle_lean(k, w + 0.16, depth + 0.1, h + 0.16, h - 0.04, z0=z0 - 0.02, mat=roof)

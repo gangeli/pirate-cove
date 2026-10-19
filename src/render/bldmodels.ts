@@ -12,6 +12,9 @@ import { M, sign, flag } from './kit';
  */
 class BuildingModels {
   private src = new Map<string, THREE.Group>();
+  private far = new Map<string, THREE.Group>();
+  /** camera distance (tiles) beyond which the decimated model is drawn */
+  lodDistance = 15;
   loaded = false;
 
   async load(): Promise<void> {
@@ -28,8 +31,13 @@ class BuildingModels {
     loader.setDRACOLoader(draco);
     await Promise.all(names.map(async (name) => {
       try {
-        const gltf = await loader.loadAsync(assetUrl(`buildings/${name}.glb`));
-        this.src.set(name, this.prepare(name, gltf.scene));
+        const [gltf, lod] = await Promise.all([
+          loader.loadAsync(assetUrl(`buildings/${name}.glb`)),
+          loader.loadAsync(assetUrl(`buildings/${name}_lod.glb`)).catch(() => null),
+        ]);
+        const mats = new Map<string, THREE.Material>();
+        this.src.set(name, this.prepare(name, gltf.scene, mats));
+        if (lod) this.far.set(name, this.prepare(name + '_lod', lod.scene, new Map(), true));
       } catch (e) {
         console.warn('building model failed', name, e);
       }
@@ -37,12 +45,11 @@ class BuildingModels {
     this.loaded = true;
   }
 
-  private prepare(name: string, root: THREE.Group): THREE.Group {
+  private prepare(name: string, root: THREE.Group, mats: Map<string, THREE.Material>, bare = false): THREE.Group {
     const k = M() as unknown as Record<string, THREE.Material>;
     const ao = loadTex(`buildings/${name}_ao.jpg`, false, false);
     ao.channel = 1;
     ao.flipY = false;
-    const mats = new Map<string, THREE.Material>();
     const matFor = (n: string): THREE.Material => {
       const base = k[n] ?? k.plaster;
       // glowing windows stay shared so night lighting reaches them all
@@ -53,6 +60,19 @@ class BuildingModels {
         if (!location.search.includes('noao')) (m as THREE.MeshStandardMaterial).aoMap = ao;
         (m as THREE.MeshStandardMaterial).aoMapIntensity = 1;
         (m as THREE.MeshStandardMaterial).side = THREE.FrontSide;
+        // the baked map holds occlusion and weathering: let it darken sunlit surfaces too, not only ambient
+        m.onBeforeCompile = (sh) => {
+          sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>', `#include <aomap_fragment>
+          #ifdef USE_AOMAP
+            reflectedLight.directDiffuse *= mix(1.0, ambientOcclusion, 0.85);
+            reflectedLight.directSpecular *= ambientOcclusion;
+          #endif`);
+        };
+        m.customProgramCacheKey = () => 'bldao';
+        if (location.search.includes('aodebug')) {
+          (m as THREE.MeshStandardMaterial).map = null;
+          (m as THREE.MeshStandardMaterial).color.set(0xffffff);
+        }
         const hide = new URLSearchParams(location.search).get('hide');
         if (hide && hide.split(',').includes(n)) m.visible = false;
         mats.set(n, m);
@@ -71,6 +91,7 @@ class BuildingModels {
     });
     const out = new THREE.Group();
     out.add(root);
+    if (bare) return out;
     const smoke: THREE.Vector3[] = [];
     for (const m of markers) {
       const p = m.getWorldPosition(new THREE.Vector3());
@@ -102,7 +123,17 @@ class BuildingModels {
   get(name: string): THREE.Group | null {
     const s = this.src.get(name);
     if (!s) return null;
-    const g = s.clone(true);
+    const near = s.clone(true);
+    const farSrc = this.far.get(name);
+    const g = new THREE.Group();
+    const force = location.search.match(/[?&]lod=(near|far)/)?.[1];
+    if (farSrc && force !== 'near') {
+      const lod = new THREE.LOD();
+      lod.addLevel(near, 0);
+      lod.addLevel(farSrc.clone(true), force === 'far' ? 0.001 : this.lodDistance);
+      if (force === 'far') near.visible = false;
+      g.add(lod);
+    } else g.add(near);
     const list = s.userData.smokeList as THREE.Vector3[] | undefined;
     if (list?.length) {
       // the buildings view reads one smoke point per object; hang each on its own empty

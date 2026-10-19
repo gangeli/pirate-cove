@@ -37,3 +37,261 @@ def house5(k):
     crate(k, -1.1, 0, 0.35, 0.28, 0.3)
     fence(k, -1.4, 1.3, 1.4, 1.3)
     return {'ao': 1024}
+
+
+@building('housing_plot@1')
+def house1(k):
+    """a claim staked out with rope and a painted board"""
+    for (x, z) in ((-1.1, -1.0), (1.1, -1.0), (1.1, 1.0), (-1.1, 1.0)):
+        k.cyl('bark', 0.035, 0.03, 0.42, x, 0, z, seg=7)
+        k.cyl('wood', 0.03, 0.005, 0.06, x, 0.42, z, seg=7)
+    for (a, b) in (((-1.1, -1.0), (1.1, -1.0)), ((1.1, -1.0), (1.1, 1.0)), ((1.1, 1.0), (-1.1, 1.0)), ((-1.1, 1.0), (-1.1, -1.0))):
+        k.beam('rope', V(a[0], 0.36, a[1]), V(b[0], 0.33, b[1]), 0.014, round_=True, seg=5)
+    k.cyl('bark', 0.03, 0.03, 0.6, 0.0, 0, 1.0, seg=7)
+    k.box('oldplanks', 0.5, 0.22, 0.03, 0.0, 0.32, 1.02, uvscale=1.4)
+    k.marker('sign:FOR RENT', 0.0, 0.53, 1.05)
+    # cleared, scuffed ground and a pile of salvage waiting to be used
+    k.box('dirt', 2.1, 0.012, 1.9, 0, 0, 0)
+    for i in range(5):
+        k.box('oldplanks', 0.9, 0.035, 0.1, -0.5, i * 0.036, -0.4 + i * 0.03, ry=0.1 * i, uvscale=1.4)
+    crate(k, 0.6, 0, -0.4, 0.26, 0.4)
+    return {'ao': 512}
+
+
+@building('housing_plot@2')
+def house2(k):
+    """a sailcloth lean-to rigged on poles with a cookfire"""
+    w, d, h = 1.4, 1.1, 0.8
+    for x in (-w / 2, w / 2):
+        k.cyl('bark', 0.035, 0.03, h + 0.1, x, 0, d / 2, seg=7)
+        k.cyl('bark', 0.03, 0.03, 0.35, x, 0, -d / 2, seg=7)
+    k.beam('bark', V(-w / 2 - 0.1, h, d / 2), V(w / 2 + 0.1, h, d / 2), 0.05, round_=True)
+    # sagging canvas from the ridge pole down to the ground pegs at the back
+    nx, nz = 12, 8
+    verts, faces = [], []
+    for j in range(nz + 1):
+        t = j / nz
+        for i in range(nx + 1):
+            x = -w / 2 - 0.05 + (w + 0.1) * i / nx
+            y = h * (1 - t) + 0.02 - 0.06 * math.sin(math.pi * i / nx) * math.sin(math.pi * t)
+            verts.append(V(x, y, d / 2 - (d + 0.1) * t))
+    for j in range(nz):
+        for i in range(nx):
+            a = j * (nx + 1) + i
+            faces.append((a, a + nx + 1, a + nx + 2, a + 1))
+            faces.append((a, a + 1, a + nx + 2, a + nx + 1))
+    k.mesh('canvas', verts, faces, uvscale=2.0)
+    # side flaps and guy ropes
+    for x in (-w / 2, w / 2):
+        k.beam('rope', V(x, h, d / 2), V(x * 1.5, 0.0, d / 2 + 0.35), 0.01, round_=True, seg=4)
+        k.cyl('wood', 0.015, 0.01, 0.08, x * 1.5, 0, d / 2 + 0.35, seg=5)
+    # bedding, chest and a cookfire ringed with stones
+    k.box('canvasRed', 0.6, 0.05, 0.35, -0.25, 0, -0.1)
+    k.box('canvas', 0.5, 0.06, 0.3, 0.3, 0, -0.15)
+    crate(k, 0.5, 0, 0.25, 0.22, 0.3)
+    for i in range(8):
+        a = i / 8 * math.tau
+        k.cbox('stone', 0.07, 0.05, 0.06, 0.25 + math.cos(a) * 0.16, 0.025, 0.95 + math.sin(a) * 0.16, ry=a, uvscale=2.0)
+    for i in range(4):
+        a = i / 4 * math.tau + 0.4
+        k.beam('bark', V(0.25 + math.cos(a) * 0.12, 0.02, 0.95 + math.sin(a) * 0.12), V(0.25 - math.cos(a) * 0.02, 0.1, 0.95 - math.sin(a) * 0.02), 0.03, round_=True, seg=5)
+    k.marker('smoke', 0.25, 0.15, 0.95)
+    # spit over the fire
+    for s in (-1, 1):
+        k.beam('wood', V(0.25 + s * 0.2, 0, 0.95), V(0.25 + s * 0.17, 0.28, 0.95), 0.02, round_=True, seg=5)
+    k.beam('iron', V(0.03, 0.26, 0.95), V(0.47, 0.26, 0.95), 0.012, round_=True, seg=5)
+    cask(k, -0.75, 0.75, 0.75)
+    return {'ao': 512}
+
+
+@building('housing_plot@3')
+def house3(k):
+    """a hovel of driftwood and ship's timbers under a lean-to of palm thatch"""
+    w, d, h = 1.45, 1.1, 0.72
+    k.push(0, 0, 0)
+    board_batten(k, w, d, h, 'oldplanks', [Op('front', -0.2, 'door', w=0.4, h=0.66), Op('right', 0.0, 'window', w=0.24, h=0.22, y=0.35, shutters=False)])
+    # a lean-to thatch, high at the back
+    hi, lo = h + 0.38, h - 0.02
+    _slope = 0
+    for i in range(1):
+        pass
+    k.push(0, 0, 0)
+    verts = []
+    _thatch_lean(k, w + 0.3, d + 0.4, hi, lo)
+    k.pop()
+    k.pop()
+    # salvage: a ship's hatch cover leaning on the wall, an oar, a barrel stove
+    k.cbox('planksDark', 0.45, 0.6, 0.04, 0.5, 0.3, d / 2 + 0.12, rx=-0.25, uvscale=1.2)
+    k.beam('wood', V(-0.7, 0.0, d / 2 + 0.2), V(-0.65, 0.95, d / 2 + 0.05), 0.03, round_=True)
+    k.cbox('wood', 0.1, 0.18, 0.02, -0.7, 0.1, d / 2 + 0.19, rx=-0.15)
+    cask(k, 0.95, 0.2, 0.9)
+    rope_coil(k, 0.85, 0.75)
+    for i in range(6):
+        a = i / 6 * math.tau
+        k.cbox('stone', 0.07, 0.05, 0.06, -0.1 + math.cos(a) * 0.14, 0.025, 1.05 + math.sin(a) * 0.14, ry=a, uvscale=2.0)
+    k.marker('smoke', -0.1, 0.12, 1.05)
+    return {'ao': 512}
+
+
+def _thatch_lean(k, w, d, hi, lo):
+    """palm thatch on a lean-to falling toward +z"""
+    from arch import _slope_grid
+    _slope_grid(k, 'thatchDark', -w / 2, w / 2, hi, lo, -d / 2, d / 2, 0.06, 0.03, 1.0, seed=7.7, fringe=0.12)
+    for x in (-w / 2 + 0.1, 0.0, w / 2 - 0.1):
+        k.beam('bark', V(x, hi - 0.06, -d / 2 + 0.05), V(x, lo - 0.06, d / 2 - 0.08), 0.045, round_=True)
+    for x in (-w / 2 + 0.12, w / 2 - 0.12):
+        k.cyl('bark', 0.035, 0.03, lo - 0.05, x, 0, d / 2 - 0.1, seg=7)
+
+
+@building('housing_plot@4')
+def house4(k):
+    """a planked shack raised on stilts against damp and crabs, palm thatch, ladder steps"""
+    w, d, h, lift = 1.55, 1.2, 0.78, 0.32
+    stilts(k, w, d, lift)
+    deck(k, w + 0.5, d + 0.1, lift + 0.035, 'planks', along='z')
+    k.push(-0.2, lift, 0)
+    clapboard(k, w - 0.4, d - 0.05, h, 'oldplanks', [Op('front', -0.15, 'door', w=0.38, h=0.68), Op('front', 0.35, 'window', w=0.24, h=0.24, y=0.36), Op('left', 0.0, 'window', w=0.24, h=0.24, y=0.36)])
+    thatch_gable(k, w - 0.4, d - 0.05, 0.6, over=0.26, y=h, mat='thatchDark', gable='oldplanks', gable_kind='wattle', res=0.06)
+    k.pop()
+    steps(k, -0.35, d / 2 + 0.18, 0.4, lift, 3, 'planks')
+    # a side platform with a hammock and drying fish
+    for x in (0.95, 0.95):
+        pass
+    k.cyl('bark', 0.03, 0.03, 0.75, w / 2 + 0.2, lift, -0.45, seg=7)
+    k.cyl('bark', 0.03, 0.03, 0.75, w / 2 + 0.2, lift, 0.45, seg=7)
+    k.beam('rope', V(w / 2 + 0.2, lift + 0.7, -0.45), V(w / 2 + 0.2, lift + 0.7, 0.45), 0.01, round_=True, seg=4)
+    for i in range(4):
+        z = -0.32 + i * 0.2
+        k.cbox('bone', 0.03, 0.14, 0.05, w / 2 + 0.2, lift + 0.6, z)
+    k.mesh('canvasRed', [V(w / 2 - 0.05, lift + 0.5, -0.4), V(w / 2 - 0.05, lift + 0.5, 0.4), V(w / 2 - 0.05, lift + 0.32, 0.25), V(w / 2 - 0.05, lift + 0.32, -0.25)], [(0, 1, 2, 3), (3, 2, 1, 0)])
+    cask(k, -0.85, 0.85, 0.85)
+    crate(k, 0.65, 0, 0.9, 0.24, 0.5)
+    return {'ao': 1024}
+
+
+@building('housing_plot@6')
+def house6(k):
+    """a weatherboarded cottage, painted, with a shingled porch and a chimney"""
+    w, d, h = 2.0, 1.4, 0.98
+    plinth(k, w + 0.06, d + 0.06, 0.12)
+    k.push(0, 0.12, 0)
+    clapboard(k, w, d, h, 'planks', [Op('front', 0.0, 'door', h=0.82), Op('front', -0.6, 'window'), Op('front', 0.6, 'window'), Op('left', 0.0, 'window'), Op('back', -0.4, 'window')], trim='plaster')
+    tile_free = False
+    # wooden shingle roof (as a gable of two lean-tos)
+    rise = 0.62
+    for s in (-1, 1):
+        k.push(0, 0, 0, 0 if s > 0 else math.pi)
+        shingle_lean(k, w + 0.36, d / 2 + 0.24, h + rise, h - 0.15, z0=0.0, mat='planksDark')
+        k.pop()
+    k.beam('darkwood', V(-w / 2 - 0.2, h + rise + 0.02, 0), V(w / 2 + 0.2, h + rise + 0.02, 0), 0.08, 0.06)
+    gables(k, w, d, rise, h, 'planks', 'boards', barge=True)
+    chimney(k, -w / 2 + 0.35, -0.2, -0.12, h + rise + 0.4, 0.26)
+    front_porch(k, w * 0.8, 0.5, h - 0.05, d / 2)
+    k.pop()
+    steps(k, 0, d / 2 + 0.64, 0.5, 0.22, 2, 'planks')
+    cask(k, 0.9, 1.05, 0.8)
+    k.box('planks', 0.5, 0.04, 0.13, -0.5, 0.36, d / 2 + 0.3)
+    return {'ao': 1024}
+
+
+@building('housing_plot@7')
+def house7(k):
+    """a lime-rendered stone house under Spanish barrel tiles, with a walled yard"""
+    w, d, h = 2.1, 1.55, 1.05
+    plinth(k, w + 0.06, d + 0.06, 0.12)
+    k.push(0, 0.12, 0)
+    plastered(k, w, d, h, 'plaster', [Op('front', 0.0, 'door', h=0.86), Op('front', -0.62, 'window', bars=True), Op('front', 0.62, 'window'), Op('left', 0.1, 'window'), Op('right', -0.2, 'window'), Op('back', 0.3, 'window')])
+    tile_gable(k, w, d, 0.55, over=0.2, y=h, gable='plaster')
+    chimney(k, w / 2 - 0.3, -d / 2 + 0.28, h - 0.1, 0.9, 0.26)
+    k.pop()
+    steps(k, 0, d / 2 + 0.1, 0.55, 0.12, 1, 'stone')
+    # low rubble yard wall with a gateway
+    for (a, b) in (((-1.35, 1.25), (-0.4, 1.25)), ((0.4, 1.25), (1.35, 1.25)), ((-1.35, 1.25), (-1.35, -0.2)), ((1.35, 1.25), (1.35, -0.2))):
+        L = math.hypot(b[0] - a[0], b[1] - a[1])
+        n = max(1, round(L / 0.16))
+        for i in range(n):
+            t = (i + 0.5) / n
+            x, z = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+            for r in range(3):
+                k.cbox('stone', 0.15, 0.09, 0.14, x + (k.r() - 0.5) * 0.02, 0.05 + r * 0.09, z + (k.r() - 0.5) * 0.02, ry=math.atan2(b[1] - a[1], b[0] - a[0]) + (k.r() - 0.5) * 0.1, uvscale=2.0)
+    for x in (-0.4, 0.4):
+        k.box('stone', 0.18, 0.42, 0.18, x, 0, 1.25, uvscale=2.0)
+    cask(k, 1.0, 0.95, 0.85)
+    sack(k, -1.0, 0.95)
+    sack(k, -0.85, 1.0, 0.9, 0.5)
+    return {'ao': 1024}
+
+
+@building('housing_plot@8')
+def house8(k):
+    """a two-storey timber-framed house, render infill, tiled roof and a street balcony"""
+    w, d, h1, h2 = 2.2, 1.6, 0.95, 0.85
+    plinth(k, w + 0.06, d + 0.06, 0.14)
+    k.push(0, 0.14, 0)
+    plastered(k, w, d, h1, 'plasterPink', [Op('front', -0.45, 'door', h=0.84), Op('front', 0.5, 'window'), Op('left', 0.0, 'window'), Op('back', 0.0, 'window')], quoins='stone')
+    k.push(0, h1, 0)
+    framed(k, w + 0.08, d + 0.08, h2, 'plasterPink', [Op('front', -0.55, 'door', h=0.72), Op('front', 0.5, 'window'), Op('left', 0.2, 'window'), Op('right', -0.1, 'window'), Op('back', -0.4, 'window'), Op('back', 0.4, 'window')])
+    k.box('darkwood', w + 0.14, 0.07, d + 0.14, 0, -0.04, 0)  # jetty beam
+    tile_gable(k, w + 0.08, d + 0.08, 0.6, over=0.22, y=h2, gable='plasterPink')
+    # balcony on brackets
+    k.push(0, 0, d / 2 + 0.04)
+    deck(k, w * 0.75, 0.38, 0.02, 'planks', joists=False)
+    for x in (-w * 0.33, 0.0, w * 0.33):
+        k.beam('darkwood', V(x, -0.3, 0.0), V(x, -0.01, 0.34), 0.05)
+    for i in range(13):
+        x = -w * 0.375 + i * w * 0.75 / 12
+        k.cyl('darkwood', 0.012, 0.012, 0.3, x, 0.0, 0.36, seg=5)
+    k.box('darkwood', w * 0.75, 0.04, 0.05, 0, 0.3, 0.36)
+    for s in (-1, 1):
+        k.box('darkwood', 0.04, 0.32, 0.36, s * w * 0.375, 0.0, 0.18)
+    k.pop()
+    chimney(k, w / 2 - 0.25, -d / 2 + 0.3, h2 - 0.1, 0.85, 0.26)
+    k.pop()
+    k.pop()
+    lantern(k, -0.05, 0.14 + 0.82, d / 2 + 0.01)
+    cask(k, 1.0, d / 2 + 0.3, 0.85)
+    crate(k, 0.75, 0, d / 2 + 0.45, 0.26, 0.2)
+    return {'ao': 1024}
+
+
+@building('housing_plot@9')
+def house9(k):
+    """a planter's mansion: two rendered storeys, hipped tile roof, a deep columned veranda"""
+    w, d, h1, h2 = 2.4, 1.7, 1.0, 0.9
+    plinth(k, w + 0.06, d + 0.06, 0.2)
+    k.push(0, 0.2, 0)
+    plastered(k, w, d, h1, 'plaster', [Op('front', 0.0, 'double', h=0.88), Op('front', -0.75, 'window', h=0.5, y=0.25), Op('front', 0.75, 'window', h=0.5, y=0.25), Op('left', 0.0, 'window'), Op('right', 0.0, 'window'), Op('back', -0.5, 'window'), Op('back', 0.5, 'window')])
+    k.box('stone', w + 0.06, 0.08, d + 0.06, 0, h1 - 0.02, 0, uvscale=2.0)  # string course
+    k.push(0, h1 + 0.06, 0)
+    plastered(k, w, d, h2, 'plaster', [Op('front', 0.0, 'window', h=0.5, y=0.2), Op('front', -0.75, 'window', h=0.5, y=0.2), Op('front', 0.75, 'window', h=0.5, y=0.2), Op('left', 0.0, 'window'), Op('right', 0.0, 'window'), Op('back', 0.0, 'window')])
+    tile_gable(k, w, d, 0.62, over=0.25, y=h2, hip=False, gable='plaster')
+    chimney(k, -w / 2 + 0.3, -0.25, h2 - 0.1, 0.95, 0.28)
+    chimney(k, w / 2 - 0.3, -0.25, h2 - 0.1, 0.95, 0.28)
+    k.pop()
+    # veranda: stone floor, columns, a balustraded gallery above with its own lean-to
+    vz = d / 2
+    k.box('stone', w + 0.2, 0.06, 0.6, 0, -0.06, vz + 0.3, uvscale=2.0)
+    for i in range(5):
+        x = -w / 2 + 0.05 + i * (w - 0.1) / 4
+        k.cyl('plaster', 0.06, 0.05, h1 - 0.08, x, 0, vz + 0.52, seg=12)
+        k.box('stone', 0.15, 0.06, 0.15, x, 0, vz + 0.52, uvscale=2.0)
+        k.box('stone', 0.15, 0.06, 0.15, x, h1 - 0.1, vz + 0.52, uvscale=2.0)
+    k.push(0, h1 + 0.02, vz)
+    deck(k, w + 0.2, 0.6, 0.0, 'planks', joists=False)
+    k.box('darkwood', w + 0.2, 0.05, 0.05, 0, 0.3, 0.55)
+    for i in range(33):
+        x = -w / 2 - 0.08 + i * (w + 0.16) / 32
+        k.cyl('plaster', 0.016, 0.014, 0.3, x, 0, 0.55, seg=6)
+    for i in range(5):
+        x = -w / 2 + 0.05 + i * (w - 0.1) / 4
+        k.cyl('darkwood', 0.035, 0.035, h2 - 0.05, x, 0, 0.52, seg=8)
+    shingle_lean(k, w + 0.3, 0.7, h2 + 0.02, h2 - 0.22, z0=-0.05, mat='planksDark')
+    k.pop()
+    k.pop()
+    steps(k, 0, d / 2 + 0.72, 0.8, 0.2, 2, 'stone')
+    # garden: clipped shrubs in tubs and a flagpole
+    for x in (-1.0, 1.0):
+        cask(k, x, d / 2 + 0.9, 0.9)
+    k.cyl('wood', 0.03, 0.02, 2.6, 1.35, 0, d / 2 + 0.6, seg=7)
+    k.marker('flag', 1.35, 2.6, d / 2 + 0.6)
+    return {'ao': 1024}
