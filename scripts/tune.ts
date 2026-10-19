@@ -48,7 +48,8 @@ function summarize(name: string, rs: any[]) {
   return { mean, sd, lost };
 }
 
-const SEEDS = (n: number) => Array.from({ length: n }, (_, i) => 101 + i * 7);
+// SEED0=<n> starts the seed sequence elsewhere, for more independent games
+const SEEDS = (n: number) => Array.from({ length: n }, (_, i) => +(process.env.SEED0 ?? 101) + i * 7);
 
 if (mode === 'compare') {
   const seeds = SEEDS(+(process.argv[3] ?? 6)), years = +(process.argv[4] ?? 10);
@@ -139,10 +140,10 @@ if (mode === 'calibrate') {
       console.log(`${pr.id.padEnd(9)} ${name.padEnd(8)} raw ${Math.round(sub).toString().padStart(6)} lost ${(lost * 100).toFixed(0).padStart(3)}% score ${Math.round(raw[pr.id][name].score)} ${[...new Set(rs.filter((r) => r.win === false).map((r) => r.reason.slice(0, 30)))].join(' | ')}`);
     }
   }
-  const base = raw.brethren?.default.sub;
+  const base = raw.brethren?.default?.sub;
   if (base) for (const pr of PRESETS) {
     if (!raw[pr.id]) continue;
     const cur = difficultyOf({ ...pr.settings, seed: 1, region: 6 } as any);
-    console.log(`${pr.name.padEnd(22)} current ${Math.round(cur * 100)}%  calibrated ${Math.round((base / Math.max(1, raw[pr.id].default.sub)) * 100)}%`);
+    if (raw[pr.id].default) console.log(`${pr.name.padEnd(22)} current ${Math.round(cur * 100)}%  calibrated ${Math.round((base / Math.max(1, raw[pr.id].default.sub)) * 100)}%`);
   }
 }

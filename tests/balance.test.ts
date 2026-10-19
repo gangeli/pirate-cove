@@ -124,3 +124,31 @@ describe('recovery', () => {
   });
 });
 
+describe('placement', () => {
+  it('a building may not wall off a pocket of the island', () => {
+    const g = new Game({ seed: 15 }, KIDD);
+    g.cmd({ type: 'cheat', code: 'freebuild' });
+    const m = g.map, n = m.size;
+    const pal = g.findBuilding('palace')!;
+    const free = (x: number, y: number) => m.inBounds(x, y) && !m.occupied[m.idx(x, y)] && !m.path[m.idx(x, y)] && g.pf.cost(m.idx(x, y)) !== Infinity;
+    let spot: [number, number] | null = null;
+    for (let r = 4; r < 50 && !spot; r++)
+      for (let dy = -r; dy <= r && !spot; dy++)
+        for (let dx = -r; dx <= r && !spot; dx++) {
+          const x = pal.door[0] + dx, y = pal.door[1] + dy;
+          const ok = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]].every(([i, j]) => free(x + i, y + j));
+          if (ok && g.pf.find(pal.door[0], pal.door[1], x, y)) spot = [x, y];
+        }
+    expect(spot).toBeTruthy();
+    const [x, y] = spot!;
+    const put = (i: number, j: number) => g.cmd({ type: 'build', def: 'orderly_shrubs', x: x + i, y: y + j, rot: 0 });
+    expect(put(1, 0).ok).toBe(true);
+    expect(put(-1, 0).ok).toBe(true);
+    expect(put(0, 1).ok).toBe(true);
+    const last = put(0, -1);
+    expect(last.ok).toBe(false);
+    expect(last.reason).toMatch(/wall off/);
+    void n;
+  });
+});
+

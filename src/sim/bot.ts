@@ -320,11 +320,6 @@ export class Bot {
     return this.build(def, near, pred);
   }
 
-  /** the island wants more hands than it has */
-  private labourShort(): boolean {
-    const { free } = this.labour();
-    return free < 4;
-  }
 
   // ------------------------------------------------------------------------------------------- economy
 
@@ -334,7 +329,9 @@ export class Bot {
     const ashoreP = g.pirates().filter((p) => p.task.kind !== 'atsea');
     const ashore = ashoreP.length;
     // pirates should pay for their fun, but not more than they have
-    const wealth = ashore ? ashoreP.reduce((a, p) => a + p.gold, 0) / ashore : 0;
+    // (a planner reads the typical purse, not the average one a few rich captains inflate)
+    const purses = ashoreP.map((p) => p.gold).sort((a, b) => a - b);
+    const wealth = !ashore ? 0 : this.p.plan ? purses[ashore >> 1] : purses.reduce((a, b) => a + b, 0) / ashore;
     const level = this.p.exploit === 'gouge' ? 2 : Math.max(0, Math.min(2, (wealth > 120 ? 2 : wealth > 35 ? 1 : 0) + this.p.priceBias));
     for (const b of g.buildings.values()) if (BUILDING[b.def].service && b.price !== level) g.cmd({ type: 'setPrice', id: b.id, price: level });
     // hoard
@@ -433,6 +430,17 @@ export class Bot {
     if (sites > 4 * this.count('construction_tent')) this.build('construction_tent');
     // festival when the mood sours and we're rich
     if (g.avgHappiness() < this.p.festivalAt && g.treasury > 2500 && g.edictAvailability('festival').ok) g.cmd({ type: 'edict', id: 'festival' });
+    // mutiny in the air: a planner heads off a coup with a party and free grog while it builds more fun
+    if (this.p.plan && ashore >= 6) {
+      const red = ashoreP.filter((p) => p.happiness < 0.3).length / ashore;
+      if (red > 0.35 || g.unrest.coupMonths > 0) {
+        for (const id of ['festival', 'free_rum', 'free_beer']) if (g.edictAvailability(id).ok && g.treasury > g.edictAvailability(id).cost + 200) {
+          g.cmd({ type: 'edict', id });
+          this.say(`${id} to calm the crews`);
+          break;
+        }
+      }
+    }
     // ransom wealthy captives with good ransoms
     for (const p of g.people.values()) if (p.kind === 'wealthy' && (p.ransom > 450 || (this.p.plan && g.treasury < 500))) g.cmd({ type: 'edict', id: 'ransom', target: p.id });
     if (this.p.plan) this.ransomSurplus();
@@ -939,7 +947,7 @@ export class Bot {
   private savingFor(): number {
     const g = this.g;
     const warships = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons > 8).length;
-    if (warships === 0 && (g.findBuilding('boatyard') || g.findBuilding('shipyard'))) return SHIPS.sloop.gold + g.edictAvailability('recruit_captain').cost;
+    if (warships === 0 && (g.findBuilding('boatyard') || g.findBuilding('shipyard'))) return SHIPS.sloop.gold + this.feeFor('sloop');
     return this.p.reserve;
   }
 

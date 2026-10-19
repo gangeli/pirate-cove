@@ -15,6 +15,12 @@ export interface ScoreBreakdown {
   medal: 'gold' | 'silver' | 'bronze';
 }
 
+/**
+ * Medal cut-offs for the final score (difficulty applied). Calibrated from bot games (scripts/tune.ts):
+ * silver is what a competent reign typically earns, gold what the best reigns earn.
+ */
+export const MEDALS = { gold: 25000, silver: 15000 } as const;
+
 const SHIP_VALUE = { snow: 300, schooner: 450, sloop: 700, brigantine: 1000, frigate: 1800, galleon: 2200 } as const;
 
 /**
@@ -48,6 +54,6 @@ export function computeScore(g: Game): ScoreBreakdown {
   return {
     ...Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, Math.round(v)])) as any,
     bonusKey, subtotal: Math.round(subtotal), difficulty: g.difficulty, total,
-    medal: total >= 25000 ? 'gold' : total >= 15000 ? 'silver' : 'bronze',
+    medal: total >= MEDALS.gold ? 'gold' : total >= MEDALS.silver ? 'silver' : 'bronze',
   };
 }

@@ -805,8 +805,11 @@ function act(g: Game, p: Person, dt: number): void {
     if (d > 0.9) {
       const sp = (t.kind === 'chase' ? 2.2 : 1.6) * dt;
       const nx = p.x + (dx / d) * sp, ny = p.y + (dy / d) * sp;
-      if (g.map.isWalkable(Math.floor(nx), Math.floor(ny))) (p.x = nx), (p.y = ny);
-      else (p.x += (dx / d) * sp * 0.5), (p.y += (dy / d) * sp * 0.5);
+      // fighters close in over open ground: never into a wall or a building's footprint
+      const open = (x: number, y: number) => g.map.inBounds(Math.floor(x), Math.floor(y)) && g.pf.cost(Math.floor(y) * g.map.size + Math.floor(x)) !== Infinity;
+      if (open(nx, ny)) (p.x = nx), (p.y = ny);
+      else if (open(nx, p.y)) p.x = nx; // slide along the wall
+      else if (open(p.x, ny)) p.y = ny;
       return;
     }
     // in melee range

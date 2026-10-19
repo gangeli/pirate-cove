@@ -186,6 +186,47 @@ export function autoRoadPath(g: Game, sx: number, sy: number, maxLen: number, av
   return null;
 }
 
+/**
+ * Would this placement cut part of the island off from the palace? Placing may only take its own tiles
+ * out of the walkable area that can reach the palace door, never seal off a pocket behind it (people
+ * caught inside one could never get out to eat, drink or work).
+ */
+export function wouldWallOff(g: Game, def: BuildingDef, pl: Placement): boolean {
+  const open = def.water === 'dock' || (def.gather?.from === 'fertility' && !!def.gather.crop);
+  if (open || def.id === 'road') return false;
+  const palace = g.findBuilding('palace');
+  if (!palace) return false;
+  const n = g.map.size, pf = g.pf;
+  const start = palace.door[1] * n + palace.door[0];
+  const reach = (skip: (k: number) => boolean): number => {
+    if (pf.cost(start) === Infinity) return 0;
+    const seen = new Uint8Array(n * n);
+    const q = [start];
+    seen[start] = 1;
+    let c = 0;
+    while (q.length) {
+      const k = q.pop()!;
+      c++;
+      const x = k % n;
+      for (const nk of [x + 1 < n ? k + 1 : -1, x > 0 ? k - 1 : -1, k + n, k - n]) {
+        if (nk < 0 || nk >= n * n || seen[nk] || skip(nk) || pf.cost(nk) === Infinity) continue;
+        seen[nk] = 1;
+        q.push(nk);
+      }
+    }
+    return c;
+  };
+  const inside = (k: number) => {
+    const x = k % n, y = (k / n) | 0;
+    return x >= pl.x && x < pl.x + pl.w && y >= pl.y && y < pl.y + pl.h;
+  };
+  let own = 0;
+  for (let j = pl.y; j < pl.y + pl.h; j++) for (let i = pl.x; i < pl.x + pl.w; i++) if (pf.cost(j * n + i) !== Infinity) own++;
+  const before = reach(() => false);
+  const after = reach(inside);
+  return before - after > own;
+}
+
 export function placeBuilding(g: Game, def: BuildingDef, pl: Placement, instant = false): Building {
   const m = g.map;
   const id = g.nextId++;
@@ -209,6 +250,14 @@ export function placeBuilding(g: Game, def: BuildingDef, pl: Placement, instant 
   g.buildings.set(id, b);
   markBlocked(g, b);
   g.pf.invalidate();
+  // anyone standing where the walls go up steps aside
+  for (const p of g.people.values()) {
+    if (p.task.kind === 'atsea' || p.task.kind === 'dead') continue;
+    const px = Math.floor(p.x), py = Math.floor(p.y);
+    if (px < pl.x || px >= pl.x + pl.w || py < pl.y || py >= pl.y + pl.h || !g.pf.blocked[m.idx(px, py)]) continue;
+    const w = g.pf.nearestWalkable(px, py, 8);
+    if (w) (p.x = w[0] + 0.5), (p.y = w[1] + 0.5), (p.path = null);
+  }
   if (b.built >= 1) onBuilt(g, b);
   g.events.push({ type: 'terrain', x: pl.x - 1, y: pl.y - 1, w: pl.w + 2, h: pl.h + 2 });
   if (pl.autoRoad) g.events.push({ type: 'roads' });

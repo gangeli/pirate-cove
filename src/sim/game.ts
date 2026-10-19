@@ -7,7 +7,7 @@ import { BUILDING, type BuildingDef, type Job } from './data/buildings';
 import type { Good } from './data/goods';
 import { NATIONS, type Nation, KINGS, type KingDef } from './data/kings';
 import type { Building, KingState, Message, NationState, Person, Region, Settings, Ship } from './types';
-import { canPlace, placeBuilding, removeBuilding, placeRoad, removeRoad, setupStartingIsland, type Placement } from './placement';
+import { canPlace, placeBuilding, removeBuilding, placeRoad, removeRoad, setupStartingIsland, wouldWallOff, type Placement } from './placement';
 import { updatePeople, createPerson, killPerson, rebellionMonthly } from './people';
 import { updateEconomy, monthlyEconomy, lumberTotal, consumeLumber, goodTotal } from './economy';
 import { updateShips, makeRegions, launchShip, commissionShip, assignCrews } from './sea';
@@ -338,6 +338,7 @@ export class Game {
         const cost = this.costOf(def);
         if (cost.gold > 0 && this.treasury < cost.gold && !this.cheats.freebuild) return { ok: false, reason: 'Not enough gold.' };
         if (this.lumber() < cost.lumber && !this.cheats.freebuild) return { ok: false, reason: 'Not enough lumber.' };
+        if (wouldWallOff(this, def, pl as Placement)) return { ok: false, reason: 'That would wall off part of the island.' };
         if (cost.gold) this.spend(cost.gold, 'construction');
         consumeLumber(this, cost.lumber);
         const b = placeBuilding(this, def, pl as Placement);
