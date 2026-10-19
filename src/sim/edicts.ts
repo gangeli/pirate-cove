@@ -6,6 +6,7 @@ import { createPerson, createCaptain, killPerson, releaseAll } from './people';
 import { assignCrews, patronOf } from './sea';
 import { relationLevel } from './diplomacy';
 import { BUILDING, type Job } from './data/buildings';
+import { CAPTAIN_COST } from './data/ships';
 
 export interface Availability {
   ok: boolean;
@@ -14,8 +15,10 @@ export interface Availability {
   active: boolean;
 }
 
+/** priced for the grandest ship waiting for a captain (she is the one the new hire takes) */
 function recruitCost(g: Game): number {
-  let c = 1200;
+  const waiting = [...g.ships.values()].filter((s) => !s.captain && s.status !== 'atsea' && s.status !== 'lost');
+  let c = waiting.length ? Math.max(...waiting.map((s) => CAPTAIN_COST[s.type])) : EDICT.recruit_captain.cost;
   if (g.has('always_pirate')) c *= 1.5;
   if (g.has('once_captain')) c *= 0.5;
   if (g.has('once_mutineer')) c *= 1.25;

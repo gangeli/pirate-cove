@@ -27,6 +27,8 @@ export const SHIPS: Record<ShipType, ShipDef> = {
   frigate: { id: 'frigate', name: 'Frigate', gold: 1000, lumber: 125, tons: 360, men: 13, officers: 4, speed: 22, rations: 40, cutlasses: 17, muskets: 17, cannons: 26, yard: 'shipyard', work: 450, model: 'large1' },
   galleon: { id: 'galleon', name: 'Galleon', gold: 1000, lumber: 150, tons: 450, men: 15, officers: 5, speed: 19, rations: 75, cutlasses: 20, muskets: 20, cannons: 40, yard: 'shipyard', work: 520, model: 'large2' },
 };
+/** what a captain fit to command each class asks to sign on: a snow's skipper comes cheap, a galleon's does not */
+export const CAPTAIN_COST: Record<ShipType, number> = { snow: 400, schooner: 500, sloop: 700, brigantine: 900, frigate: 1200, galleon: 1500 };
 export const SHIP_LIST: ShipType[] = ['snow', 'schooner', 'sloop', 'brigantine', 'frigate', 'galleon'];
 
 export type Mission = 'cruise' | 'raid' | 'kidnap' | 'explore' | 'foster_war';

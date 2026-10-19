@@ -608,7 +608,7 @@ def furrows(k, W, D):
             for c in range(4):
                 a = i * 5 + c
                 faces.append((a, a + 1, a + 6, a + 5))
-        k.mesh('soil', verts, faces, uvscale=1.2)
+        k.mesh('dirt', verts, faces, uvscale=1.2)
     k.box('soil', W - 0.2, 0.01, D - 0.2, 0, 0, 0, uvscale=1.0)
 
 
@@ -691,3 +691,104 @@ def farm(k, kind):
 
 for _kind, _def in (('corn', 'corn_farm'), ('banana', 'banana_farm'), ('papaya', 'papaya_farm'), ('sugar', 'sugar_farm'), ('tobacco', 'tobacco_farm')):
     building(_def)(lambda k, _kind=_kind: farm(k, _kind))
+
+
+# ------------------------------------------------------------------------------------------- crop plants
+# single plants, instanced across the fields by the game (with per-plant colour variation)
+
+def leaf(k, base, yaw, length, width, lift=0.9, droop=1.2, mat='leaf', n=7, twist=0.0):
+    """an arching, tapered leaf blade with a folded midrib, rising at `lift` rad and drooping by `droop`"""
+    if k.lod:
+        n = 3
+    verts, faces = [], []
+    dirh = Vector((math.cos(yaw), 0, math.sin(yaw)))
+    side = Vector((-math.sin(yaw), 0, math.cos(yaw)))
+    p = Vector(base)
+    for i in range(n + 1):
+        t = i / n
+        ang = lift - droop * t * t
+        if i:
+            p = p + (dirh * math.cos(ang) + Vector((0, math.sin(ang), 0))) * (length / n)
+        w = width * math.sin(math.pi * min(1.0, t * 1.1 + 0.08)) * (1 - 0.3 * t)
+        fold = Vector((0, 0.25 * w, 0))
+        s = side * math.cos(twist * t) + Vector((0, math.sin(twist * t), 0))
+        verts += [p - s * w + fold * 0.0, p + fold * 0.6, p + s * w + fold * 0.0]
+    for i in range(n):
+        a = i * 3
+        faces += [(a, a + 3, a + 4, a + 1), (a + 1, a + 4, a + 5, a + 2), (a, a + 1, a + 4, a + 3), (a + 1, a + 2, a + 5, a + 4)]
+    k.mesh(mat, verts, faces, uvscale=2.0)
+
+
+@building('plant_corn')
+def plant_corn(k):
+    k.cyl('crop', 0.014, 0.008, 0.7, 0, 0, 0, seg=6)
+    for i in range(8):
+        y = 0.1 + i * 0.075
+        leaf(k, (0, y, 0), i * 2.4, 0.32 - i * 0.015, 0.03, lift=0.9, droop=1.6)
+    for i in range(6):
+        a = i * 1.05
+        k.beam('weave', V(0, 0.7, 0), V(math.cos(a) * 0.05, 0.8, math.sin(a) * 0.05), 0.006, round_=True, seg=4)
+    for (y, a) in ((0.38, 0.5), (0.3, 3.4)):
+        k.push(0, y, 0, a, 0.5)
+        k.cyl('weave', 0.022, 0.012, 0.12, 0.02, 0, 0, seg=7)
+        k.pop()
+    return {'ao': 256, 'ground': False}
+
+
+@building('plant_sugarcane')
+def plant_sugarcane(k):
+    for j, (x, z, h) in enumerate(((0, 0, 0.95), (0.05, 0.03, 0.85), (-0.04, 0.04, 0.8), (0.02, -0.05, 0.9))):
+        segs = 6
+        for s in range(segs):
+            k.cyl('crop' if s % 2 else 'bamboo', 0.014, 0.013, h / segs - 0.004, x, s * h / segs, z, seg=6)
+        for i in range(4):
+            leaf(k, (x, h * (0.6 + i * 0.1), z), j * 1.3 + i * 2.2, 0.38, 0.018, lift=1.1, droop=2.2)
+    return {'ao': 256, 'ground': False}
+
+
+@building('plant_tobacco')
+def plant_tobacco(k):
+    k.cyl('crop', 0.012, 0.008, 0.55, 0, 0, 0, seg=6)
+    for i in range(9):
+        y = 0.04 + i * 0.055
+        leaf(k, (0, y, 0), i * 2.39, 0.24 - i * 0.017, 0.075 - i * 0.005, lift=0.5, droop=1.0)
+    for i in range(7):
+        a = i * 0.9
+        k.cyl('canvasPurple' if i % 2 else 'red', 0.012, 0.004, 0.04, math.cos(a) * 0.035, 0.55, math.sin(a) * 0.035, seg=5)
+    return {'ao': 256, 'ground': False}
+
+
+@building('plant_banana')
+def plant_banana(k):
+    k.cyl('bark', 0.05, 0.035, 0.65, 0, 0, 0, seg=9)
+    for i in range(7):
+        leaf(k, (0, 0.6 + (i % 3) * 0.03, 0), i * 0.9, 0.55, 0.11, lift=1.0, droop=2.0, twist=0.4)
+    # a hanging bunch of green bananas on its stalk
+    k.beam('crop', V(0, 0.6, 0), V(0.1, 0.45, 0.02), 0.018, round_=True, seg=5)
+    for r in range(4):
+        for i in range(6):
+            a = i / 6 * math.tau + r
+            k.push(0.1 + math.cos(a) * 0.035, 0.42 - r * 0.045, 0.02 + math.sin(a) * 0.035, -a, 0.0, 0.5)
+            k.cyl('leaf', 0.009, 0.006, 0.07, 0, 0, 0, seg=5)
+            k.pop()
+    k.cyl('canvasPurple', 0.02, 0.005, 0.06, 0.1, 0.18, 0.02, seg=6)  # the purple bell
+    return {'ao': 256, 'ground': False}
+
+
+@building('plant_papaya')
+def plant_papaya(k):
+    segs = 8
+    for s in range(segs):
+        k.cyl('bark', 0.035 - s * 0.002, 0.034 - s * 0.002, 0.11, 0, s * 0.11, 0, seg=8)
+    for i in range(9):
+        a = i * 2.4
+        tip = V(math.cos(a) * 0.32, 0.88 + 0.06 * math.sin(i), math.sin(a) * 0.32)
+        k.beam('crop', V(0, 0.86, 0), tip, 0.008, round_=True, seg=4)
+        for j in range(5):
+            leaf(k, tuple(tip), a + (j - 2) * 0.45, 0.13, 0.04, lift=0.2, droop=0.9, n=4)
+    for i in range(7):
+        a = i * 0.9
+        k.push(math.cos(a) * 0.045, 0.72 - (i % 3) * 0.05, math.sin(a) * 0.045)
+        k.cyl('plasterYellow' if i % 3 == 0 else 'leaf', 0.025, 0.02, 0.07, 0, 0, 0, seg=7)
+        k.pop()
+    return {'ao': 256, 'ground': False}

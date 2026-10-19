@@ -306,19 +306,57 @@ def potted_palm(k, x, z, s=1.0, pot='terracotta'):
     """a clay pot with a little fan palm"""
     lathe(k, pot, [(0.07 * s, 0), (0.1 * s, 0.03 * s), (0.11 * s, 0.14 * s), (0.125 * s, 0.16 * s), (0.12 * s, 0.18 * s), (0.0, 0.17 * s)], x, 0, z, seg=10)
     k.cyl('soil', 0.105 * s, 0.105 * s, 0.01, x, 0.165 * s, z, seg=10)
-    n = 5 if k.lod else 9
+    n = 5 if k.lod else 8
     for i in range(n):
         a = i / n * math.tau + x
-        L = (0.28 + 0.1 * ((i * 7) % 3) / 2) * s
-        tip = V(x + math.cos(a) * L * 0.8, (0.2 + 0.32) * s, z + math.sin(a) * L * 0.8)
-        base = V(x, 0.17 * s, z)
-        k.beam('wood', base, tip, 0.008, round_=True, seg=4) if not k.lod else None
-        # a fan of leaf at the tip, drooping
-        dirv = (tip - base).normalized()
-        sidev = Vector((0, 1, 0)).cross(dirv).normalized()
-        ctr = tip + dirv * 0.06 * s + V(0, -0.04 * s, 0)
-        k.mesh('leaf', [tip - dirv * 0.08 * s, ctr + sidev * 0.13 * s, ctr + dirv * 0.16 * s + V(0, -0.09 * s, 0), ctr - sidev * 0.13 * s],
-               [(0, 1, 2, 3), (3, 2, 1, 0)], uvscale=2.0)
+        frond(k, V(x, 0.17 * s, z), a, (0.3 + 0.06 * (i % 3)) * s, lift=1.1, droop=1.6, wd=0.1 * s)
+
+
+def frond(k, base, a, L, lift=0.35, droop=0.9, wd=0.22, mat='leaf'):
+    """a palm frond: an arching rib with narrow leaflets combed down either side"""
+    dirh = Vector((math.cos(a), 0, math.sin(a)))
+    side = Vector((-math.sin(a), 0, math.cos(a)))
+    n = 4 if k.lod else 9
+    pts = []
+    for i in range(n + 1):
+        t = i / n
+        pts.append(base + dirh * (L * t) + Vector((0, L * (lift * t - droop * t * t * 0.5), 0)))
+    verts, faces = [], []
+    for i in range(n):
+        t = (i + 0.5) / n
+        p0, p1 = pts[i], pts[i + 1]
+        lw = wd * math.sin(math.pi * (0.15 + 0.85 * t)) * (1.0 - 0.3 * t)
+        for sd in (-1, 1):
+            tip = (p0 + p1) / 2 + side * (sd * lw) + dirh * (L / n * 0.8) + Vector((0, -lw * 0.55, 0))
+            b = len(verts)
+            verts += [p0, p1, tip]
+            faces.append((b, b + 1, b + 2))
+    quads2(k, mat, verts, faces, uvscale=2.0)
+    if not k.lod and L > 0.4:
+        for p, q in zip(pts[::3], pts[3::3]):
+            k.beam('wood', p, q, 0.014, round_=True, seg=4)
+
+
+def palm_tree(k, x, z, h=1.5, lean=0.12, la=0.0, n=8, L=0.7):
+    """a coconut palm: a gently curved ringed trunk, a crown of drooping fronds and a cluster of nuts"""
+    segs = 4 if k.lod else 9
+    pts = []
+    for i in range(segs + 1):
+        t = i / segs
+        off = lean * h * t * t
+        pts.append(V(x + math.cos(la) * off, h * t, z + math.sin(la) * off))
+    for i, (p, q) in enumerate(zip(pts, pts[1:])):
+        r = 0.065 - 0.02 * i / segs
+        k.beam('bark', p, q + (q - p) * 0.05, r * 2, round_=True, seg=8)
+        if not k.lod and i > 0:
+            k.torus('bark', r + 0.004, 0.012, p.x, p.y, p.z, seg=10, rseg=3)
+    top = pts[-1]
+    for i in range(n):
+        a = i / n * math.tau + x * 1.7
+        frond(k, top + V(0, 0.02, 0), a, L * (0.85 + 0.3 * ((i * 5) % 3) / 2), lift=0.3 + 0.2 * (i % 2), droop=1.0)
+    for i in range(4):
+        a = i / 4 * math.tau + 0.3
+        k.cyl('bark', 0.035, 0.035, 0.07, top.x + math.cos(a) * 0.05, top.y - 0.08, top.z + math.sin(a) * 0.05, seg=6)
 
 
 def sand_drift(k, x, z, rx, rz, h, ry=0.0):
@@ -1167,11 +1205,329 @@ def gambling_den(k):
     for (xx, zz, s_) in ((1.58, zf + 0.3, 0.85), (1.6, zf - 0.05, 0.85), (1.6, zf + 0.62, 0.8)):
         barrel(k, xx, zz, s_)
     # round the back: a rain butt under the eave, crates and empties
-    barrel(k, 1.0, zb - d / 2 - 0.2, 1.0)
-    crate(k, -0.6, 0, zb - d / 2 - 0.17, 0.26, 0.2)
-    crate(k, -0.9, 0, zb - d / 2 - 0.16, 0.24, -0.3)
-    crate(k, -0.75, 0.26, zb - d / 2 - 0.17, 0.22, 0.5)
+    barrel(k, -1.25, zb - d / 2 - 0.2, 1.0)
+    crate(k, 1.05, 0, zb - d / 2 - 0.17, 0.26, 0.2)
+    crate(k, 1.35, 0, zb - d / 2 - 0.16, 0.24, -0.3)
+    crate(k, 1.2, 0.26, zb - d / 2 - 0.17, 0.22, 0.5)
     for i in range(4):
-        bottle(k, 0.3 + i * 0.07, 0.0, zb - d / 2 - 0.12 - (i % 2) * 0.05)
+        bottle(k, 0.0 + i * 0.07, 0.0, zb - d / 2 - 0.12 - (i % 2) * 0.05)
     hanging_sign(k, w / 2 - 0.12, 1.0, zf + 0.04, 'DICE')
+    return {'ao': 1024}
+
+
+# ------------------------------------------------------------------------------------------- brothel & salon
+
+def veranda(k, w, depth, y_floor, y_top, z0, n_posts=5, rail=True, roof='planksDark', post='darkwood', upper=True, lean_hi=None, step=0.085):
+    """a two-level gallery across a front wall at z0: posts from the ground, a balcony deck at y_floor with a
+    turned balustrade, upper posts carrying a shingled lean-to tucked under the main eave"""
+    zf = z0 + depth - 0.05
+    xs = [-w / 2 + 0.06 + i * (w - 0.12) / (n_posts - 1) for i in range(n_posts)]
+    for x in xs:
+        k.box('stone', 0.13, 0.08, 0.13, x, 0, zf, uvscale=2.0)
+        k.box(post, 0.075, y_floor - 0.08, 0.075, x, 0.08, zf)
+        for s in (-1, 1):
+            if -w / 2 < x + s * 0.2 < w / 2:
+                k.beam(post, V(x, y_floor - 0.3, zf), V(x + s * 0.2, y_floor - 0.08, zf), 0.045)
+    k.box(post, w + 0.06, 0.09, 0.09, 0, y_floor - 0.1, zf)
+    k.push(0, 0, z0 + depth / 2)
+    deck(k, w, depth, y_floor, 'planks', along='x', joists=False)
+    k.pop()
+    k.box(post, w, 0.05, 0.04, 0, y_floor - 0.08, z0 + depth - 0.02)
+    if rail:
+        balustrade(k, -w / 2 + 0.06, w / 2 - 0.06, zf, y_floor, 0.32, post, step)
+        for s in (-1, 1):
+            balustrade_z(k, z0 + 0.02, zf, s * (w / 2 - 0.04), y_floor, 0.32, post, step)
+    if upper:
+        for x in xs:
+            k.box(post, 0.06, y_top - y_floor, 0.06, x, y_floor, zf)
+        k.box(post, w + 0.06, 0.08, 0.08, 0, y_top - 0.08, zf)
+        hi = lean_hi if lean_hi is not None else y_top + 0.18
+        shingle_lean(k, w + 0.12, depth + 0.12, hi, y_top - 0.02, z0=z0 - 0.02, mat=roof, rows=max(2, round(math.hypot(depth, hi - y_top) / 0.12)))
+    return xs, zf
+
+
+@building('brothel')
+def brothel(k):
+    """Brothel & Salon: a grand pink-washed two-storey house under Spanish tiles, a full-width gallery with
+    French doors hung with red drapes, strings of lanterns, hammocks on the veranda, a parrot, potted palms,
+    and the laundry out back"""
+    w, d, h1, h2, zb, p_ = 4.3, 1.9, 1.0, 0.92, -0.68, 0.14
+    k.push(0, 0, zb)
+    plinth(k, w + 0.06, d + 0.06, p_)
+    k.push(0, p_, 0)
+    ops1 = [Op('front', 0.0, 'double', w=0.7, h=0.88), Op('front', -0.75, 'window', h=0.5, y=0.28), Op('front', 0.75, 'window', h=0.5, y=0.28),
+            Op('front', -1.6, 'window', h=0.5, y=0.28), Op('front', 1.6, 'window', h=0.5, y=0.28), Op('left', -0.4, 'window'), Op('left', 0.45, 'window'),
+            Op('right', 0.0, 'window'), Op('back', -1.2, 'window'), Op('back', 0.0, 'door', h=0.82), Op('back', 1.2, 'window')]
+    plastered(k, w, d, h1, 'plasterPink', ops1)
+    win_curtains(k, w, d, ops1, 0.0, 0.063, 'red')
+    k.box('stone', w + 0.06, 0.08, d + 0.06, 0, h1 - 0.02, 0, uvscale=2.0)  # string course
+    k.push(0, h1 + 0.06, 0)
+    ops2 = [Op('front', -1.2, 'open', w=0.42, h=0.8, y=0.0), Op('front', 0.0, 'open', w=0.42, h=0.8, y=0.0), Op('front', 1.2, 'open', w=0.42, h=0.8, y=0.0),
+            Op('front', -0.6, 'window', h=0.42, y=0.28), Op('front', 0.6, 'window', h=0.42, y=0.28),
+            Op('front', -1.8, 'window', h=0.42, y=0.28), Op('front', 1.8, 'window', h=0.42, y=0.28),
+            Op('left', 0.0, 'window'), Op('right', -0.45, 'window'), Op('right', 0.45, 'window'), Op('back', -1.0, 'window'), Op('back', 0.0, 'window'), Op('back', 1.0, 'window')]
+    plastered(k, w, d, h2, 'plasterPink', ops2)
+    win_curtains(k, w, d, ops2, 0.0, 0.063, 'red')
+    k.face('front', w, d)
+    for i, xx in enumerate((-1.2, 0.0, 1.2)):
+        doorway(k, xx, 0.42, 0.8, 0.063, drape_mat='red' if i != 1 else 'canvasPurple')
+    k.pop()
+    # rooms glimpsed through the French doors: a lamp-lit wall and a bed
+    k.box('plasterYellow', w - 0.3, h2 - 0.05, 0.02, 0, 0.0, d / 2 - 0.55)
+    k.box('darkwood', 0.6, 0.2, 0.3, -1.2, 0.0, d / 2 - 0.4)
+    k.box('red', 0.58, 0.05, 0.28, -1.2, 0.2, d / 2 - 0.4)
+    tile_gable(k, w, d, 0.82, over=0.24, y=h2, gable='plasterPink', tile_len=0.24, tile_w=0.16)
+    chimney(k, -w / 2 + 0.45, -d / 2 + 0.35, h2 - 0.1, 1.05, 0.3)
+    k.pop()
+    k.pop()
+    k.pop()
+    zf = zb + d / 2
+    # gallery
+    y_floor = p_ + h1 + 0.06
+    y_top = y_floor + h2 - 0.06
+    xs, zr = veranda(k, w + 0.1, 0.62, y_floor, y_top - 0.12, zf, n_posts=6, lean_hi=y_top - 0.06)
+    k.box('stone', w + 0.2, 0.06, 0.66, 0, 0, zf + 0.33, uvscale=2.0)
+    steps(k, 0, zf + 0.75, 0.9, 0.12, 1, 'stone')
+    # lanterns: a string along the rail, red-shaded lanterns hung under the gallery
+    string_lights(k, (xs[0], y_floor + 0.5, zr + 0.03), (xs[-1], y_floor + 0.5, zr + 0.03), n=9, sag=0.06)
+    for x in (xs[1], xs[-2], xs[2], xs[-3]):
+        k.box('iron', 0.012, 0.012, 0.18, x, y_floor - 0.14, zr - 0.1)
+        small_lantern(k, x, y_floor - 0.14, zr - 0.18, 1.2)
+        lathe(k, 'red', [(0.0, 0.03), (0.03, 0.03), (0.06, 0.0), (0.065, -0.012)], x, y_floor - 0.2, zr - 0.18, seg=10, cap=False)
+    # drapes swagged between the gallery posts above the rail
+    for a, b in zip(xs, xs[1:]):
+        if k.lod:
+            break
+        sv, sf = [], []
+        n = 8
+        for i in range(n + 1):
+            t = i / n
+            x = a + (b - a) * t
+            y = y_top - 0.16 - 0.12 * math.sin(math.pi * t)
+            sv += [V(x, y_top - 0.15, zr + 0.045), V(x, y, zr + 0.05 + 0.02 * math.sin(math.pi * t))]
+        for i in range(n):
+            q = 2 * i
+            sf.append((q, q + 1, q + 3, q + 2))
+        quads2(k, 'red', sv, sf)
+    # veranda furniture: a hammock at the left end, chairs and a little table, palms by the steps
+    hammock(k, (xs[0], 0.62, zr), (xs[1], 0.62, zr), w=0.2, sag=0.2, mat='canvasRed')
+    for xx in (-0.75, 0.75):
+        potted_palm(k, xx * 0.72, zf + 0.8, 1.05)
+    k.cyl('darkwood', 0.14, 0.14, 0.03, 1.25, 0.36, zf + 0.35, seg=14)
+    k.cyl('darkwood', 0.02, 0.02, 0.36, 1.25, 0.06, zf + 0.35, seg=6)
+    for s in (-1, 1):
+        k.push(1.25 + s * 0.3, 0.06, zf + 0.35, -s * math.pi / 2)
+        k.box('darkwood', 0.26, 0.04, 0.24, 0, 0.2, 0)
+        k.box('red', 0.24, 0.03, 0.22, 0, 0.24, 0)
+        k.box('darkwood', 0.26, 0.3, 0.035, 0, 0.24, -0.11)
+        for (ax, az) in ((-0.11, -0.1), (0.11, -0.1), (-0.11, 0.1), (0.11, 0.1)):
+            k.box('darkwood', 0.03, 0.2, 0.03, ax, 0, az)
+        k.pop()
+    bottle(k, 1.22, 0.39, zf + 0.35, 'brass')
+    tankard(k, 1.3, 0.39, zf + 0.3, 'brass')
+    parrot_perch(k, -1.25, zf + 0.3, 0.68)
+    bench(k, -0.7 - 0.35, zf + 0.12, 0.5, y=0.06)
+    hanging_sign(k, xs[-1] + 0.0, y_floor - 0.12, zr + 0.02, 'SALON')
+    # the side yard: a hammock between two palm trunks
+    palm_tree(k, 2.55, -1.5, 1.7, 0.1, 0.4)
+    palm_tree(k, 2.55, -0.2, 1.45, 0.15, -0.6)
+    hammock(k, (2.55, 0.62, -1.45), (2.55, 0.62, -0.25), w=0.2, sag=0.2, mat='canvas')
+    # laundry out back
+    for xx in (-1.6, 1.0):
+        k.cyl('bark', 0.022, 0.02, 0.85, xx, 0, zb - d / 2 - 0.2, seg=6)
+    k.beam('rope', V(-1.6, 0.82, zb - d / 2 - 0.2), V(1.0, 0.81, zb - d / 2 - 0.2), 0.007, round_=True, seg=4)
+    for i, m in enumerate(('canvas', 'red', 'canvas', 'canvasRed', 'canvas', 'red', 'canvas')):
+        k.cbox(m, 0.22 + 0.05 * (i % 2), 0.24 - 0.04 * (i % 3), 0.01, -1.4 + i * 0.34, 0.68 + 0.02 * (i % 3), zb - d / 2 - 0.2, rz=0.03 * (i - 3))
+    wash_tub(k, 1.5, zb - d / 2 - 0.15, 0.18)
+    return {'ao': 1024}
+
+
+# ------------------------------------------------------------------------------------------- the inn
+
+def well(k, x, z, r=0.26):
+    """a coursed stone well head with a timber windlass, rope and bucket"""
+    n = 7 if k.lod else 14
+    for row in range(1 if k.lod else 4):
+        for i in range(n):
+            a = (i + 0.5 * (row % 2)) / n * math.tau
+            if k.lod:
+                k.cyl('stone', r + 0.05, r + 0.05, 0.42, x, 0, z, seg=10)
+                break
+            k.cbox('stone', 2 * math.pi * r / n - 0.01, 0.095, 0.1, x + math.cos(a) * r, 0.05 + row * 0.1, z + math.sin(a) * r, ry=-a + math.pi / 2, uvscale=2.0)
+    k.cyl('stoneDark', r + 0.06, r + 0.06, 0.04, x, 0.4, z, seg=16)
+    k.cyl('water', r - 0.04, r - 0.04, 0.01, x, 0.25, z, seg=12)
+    if not k.lod:
+        k.cyl('black', r - 0.05, r - 0.05, 0.005, x, 0.3, z, seg=12)
+    for s in (-1, 1):
+        k.box('darkwood', 0.06, 0.6, 0.06, x + s * (r + 0.02), 0.42, z)
+    k.cyl('wood', 0.04, 0.04, 2 * r + 0.15, x - r - 0.08, 0.86, z, seg=8, rz=-math.pi / 2)
+    k.cyl('rope', 0.05, 0.05, 0.14, x - 0.07, 0.86, z, seg=8, rz=-math.pi / 2)
+    k.beam('iron', V(x + r + 0.07, 0.86, z), V(x + r + 0.07, 0.76, z + 0.1), 0.015)
+    k.beam('rope', V(x, 0.82, z), V(x, 0.6, z), 0.008, round_=True, seg=4)
+    lathe(k, 'planksDark', [(0.05, 0), (0.065, 0.1), (0.0, 0.09)], x, 0.5, z, seg=8, cap=False)
+    # a little pent roof over the windlass
+    for s in (-1, 1):
+        k.cbox('planksDark', 2 * r + 0.25, 0.025, 0.24, x, 1.08, z + s * 0.1, rx=s * 0.55, uvscale=1.3)
+
+
+def hay(k, x, z, rx_, rz_, h):
+    """a loose heap of hay"""
+    from arch import _slope_grid
+    seg = 6 if k.lod else 12
+    rings = 3 if k.lod else 5
+    verts, faces = [], []
+    for j in range(rings + 1):
+        t = j / rings
+        for i in range(seg):
+            a = 2 * math.pi * i / seg
+            n = 1 + 0.15 * noise.noise(V(math.cos(a) * 2 + x, t * 3, math.sin(a) * 2 + z))
+            verts.append(V(x + math.cos(a) * rx_ * math.cos(t * math.pi / 2) * n, h * math.sin(t * math.pi / 2), z + math.sin(a) * rz_ * math.cos(t * math.pi / 2) * n))
+    for j in range(rings):
+        for i in range(seg):
+            a = j * seg + i
+            b = j * seg + (i + 1) % seg
+            faces.append((a, b, b + seg, a + seg))
+    k.mesh('thatch', verts, faces, uvscale=1.2)
+
+
+def bale(k, x, y, z, ry=0.0):
+    k.box('thatch', 0.34, 0.16, 0.2, x, y, z, ry=ry, uvscale=1.4)
+    if not k.lod:
+        k.push(x, y, z, ry)
+        for xx in (-0.08, 0.08):
+            k.box('rope', 0.012, 0.165, 0.205, xx, -0.002, 0)
+        k.pop()
+
+
+@building('inn')
+def inn(k):
+    """The Inn: a coaching inn round a galleried courtyard - a two-storey main house (rendered below, timber-
+    framed above) under tiles, a lodging wing with its own gallery, a thatched stable with open stalls, a well,
+    tables and casks in the yard, and a gateway onto the street hung with the sign"""
+    p_ = 0.12
+    # ---- main house across the back
+    w, d, h1, h2, zc = 4.5, 1.3, 0.95, 0.85, -1.1
+    k.push(0, 0, zc)
+    plinth(k, w + 0.06, d + 0.06, p_)
+    k.push(0, p_, 0)
+    ops1 = [Op('front', 0.0, 'double', w=0.66, h=0.85), Op('front', -0.8, 'window'), Op('front', 0.8, 'window'), Op('back', -1.0, 'window', shutters=False),
+            Op('back', 1.0, 'window', shutters=False), Op('left', 0.0, 'window', shutters=False), Op('right', 0.0, 'window', shutters=False), Op('front', -1.9, 'window'), Op('front', 1.9, 'window')]
+    plastered(k, w, d, h1, 'plaster', ops1)
+    k.face('front', w, d)
+    lantern(k, -0.48, 0.82, 0.02)
+    lantern(k, 0.48, 0.82, 0.02)
+    k.pop()
+    k.push(0, h1, 0)
+    k.box('darkwood', w + 0.1, 0.06, d + 0.1, 0, -0.03, 0)
+    ops2 = [Op('front', -0.95, 'door', w=0.4, h=0.74), Op('front', -0.4, 'window'), Op('front', 0.4, 'window'), Op('front', 0.95, 'door', w=0.4, h=0.74),
+            Op('back', -1.0, 'window', shutters=False), Op('back', 1.0, 'window', shutters=False), Op('left', 0.0, 'window', shutters=False), Op('right', 0.0, 'window', shutters=False),
+            Op('front', -1.85, 'window'), Op('front', 1.85, 'window')]
+    framed(k, w, d, h2, 'plaster', ops2)
+    tile_gable(k, w, d, 0.65, over=0.24, y=h2, gable='plaster', tile_len=0.25, tile_w=0.17)
+    chimney(k, 1.5, -0.25, h2 - 0.1, 1.0, 0.3)
+    chimney(k, -1.5, -0.25, h2 - 0.1, 1.0, 0.3)
+    k.pop()
+    k.pop()
+    k.pop()
+    zf = zc + d / 2
+    # gallery along the courtyard front of the main house
+    yf = p_ + h1 + 0.04
+    xs, zr = veranda(k, 2.6, 0.48, yf, p_ + h1 + h2 - 0.14, zf, n_posts=5, lean_hi=p_ + h1 + h2 - 0.06, step=0.12)
+    string_lights(k, (xs[0], yf + 0.5, zr + 0.03), (xs[-1], yf + 0.5, zr + 0.03), n=6, sag=0.05)
+    # stair up to the gallery at its left end
+    for i in range(9):
+        k.box('planks', 0.3, 0.035, 0.12, -1.18, 0.1 * (i + 1), zr + 0.12 + (8 - i) * 0.105 - 0.0, uvscale=1.3)
+    for s in (-1, 1):
+        k.beam('darkwood', V(-1.18 + s * 0.16, 0.0, zr + 0.98), V(-1.18 + s * 0.16, yf, zr + 0.06), 0.04, 0.1)
+    k.beam('darkwood', V(-1.02, 0.4, zr + 0.98), V(-1.02, yf + 0.33, zr + 0.06), 0.03)
+    k.box('darkwood', 0.04, 0.4, 0.04, -1.02, 0.0, zr + 0.98)
+    # ---- lodging wing on the right, gallery facing the yard
+    ww, wd, wh1, wh2 = 0.9, 1.8, 0.8, 0.7
+    k.push(1.8, 0, 0.32, math.pi / 2)
+    plinth(k, wd + 0.06, ww + 0.06, p_)
+    k.push(0, p_, 0)
+    wops1 = [Op('back', -0.5, 'door', h=0.72), Op('back', 0.1, 'window', shutters=False), Op('back', 0.6, 'window', shutters=False), Op('front', -0.45, 'window'), Op('front', 0.45, 'window'),
+             Op('left', 0.0, 'window', shutters=False)]
+    plastered(k, wd, ww, wh1, 'plaster', wops1, quoins=None)
+    k.box('stone', wd + 0.06, 0.06, ww + 0.06, 0, wh1 - 0.02, 0, uvscale=2.0)
+    k.push(0, wh1 + 0.04, 0)
+    wops2 = [Op('back', -0.6, 'door', w=0.38, h=0.62), Op('back', 0.0, 'window', h=0.3, y=0.25, shutters=False), Op('back', 0.55, 'door', w=0.38, h=0.62),
+             Op('front', -0.45, 'window', h=0.3, y=0.25), Op('front', 0.45, 'window', h=0.3, y=0.25), Op('left', 0.0, 'window', h=0.3, y=0.25, shutters=False)]
+    plastered(k, wd, ww, wh2, 'plaster', wops2, quoins=None)
+    tile_gable(k, wd, ww, 0.42, over=0.18, y=wh2, gable='plaster', tile_len=0.2, tile_w=0.14)
+    k.pop()
+    k.pop()
+    k.pop()
+    k.push(1.35, 0, 0.62, -math.pi / 2)
+    wy = p_ + wh1 + 0.04
+    veranda(k, 1.05, 0.42, wy, p_ + wh1 + wh2 - 0.1, 0.0, n_posts=3, lean_hi=p_ + wh1 + wh2 - 0.04, step=0.12)
+    k.pop()
+    # ---- the stable on the left: open stalls with half doors, hay, a manger
+    sw, sd, sh = 0.9, 1.75, 1.1
+    k.push(-1.8, 0, 0.32, math.pi / 2)
+    k.box('stoneDark', sd + 0.04, 0.06, sw + 0.04, 0, 0, 0, uvscale=2.0)
+    k.push(0, 0.06, 0)
+    sops = [Op('front', -0.55, 'open', w=0.46, h=0.78, y=0.0), Op('front', 0.0, 'open', w=0.46, h=0.78, y=0.0), Op('front', 0.55, 'open', w=0.46, h=0.78, y=0.0),
+            Op('left', 0.0, 'window', w=0.28, h=0.24, y=0.55, shutters=False)]
+    board_batten(k, sd, sw, sh, 'oldplanks', sops)
+    k.face('front', sd, sw)
+    for xx in (-0.55, 0.0, 0.55):
+        for s in (-1, 1):
+            k.box('darkwood', 0.05, 0.8, 0.07, xx + s * 0.25, 0.0, -0.02)
+        k.box('darkwood', 0.56, 0.06, 0.08, xx, 0.78, -0.02)
+        # the half door swung open
+        k.push(xx - 0.23, 0.02, 0.01, -1.2)
+        for i in range(4):
+            k.box('planks', 0.105, 0.42, 0.025, 0.06 + i * 0.112, 0.0, 0.0, uvscale=1.3, grain=1)
+        k.beam('planks', V(0.05, 0.05, 0.02), V(0.4, 0.37, 0.02), 0.05, 0.02)
+        k.pop()
+    k.pop()
+    # inside: stall partitions, manger and hay
+    for xx in (-0.28, 0.28):
+        k.box('planksDark', 0.03, 0.55, sw - 0.2, xx, 0.0, 0.0)
+    k.box('planksDark', sd - 0.15, 0.25, 0.14, 0, 0.35, -sw / 2 + 0.14)
+    for xx in (-0.55, 0.0, 0.55):
+        hay(k, xx, -0.18, 0.18, 0.14, 0.12)
+    k.box('thatch', sd - 0.2, 0.06, 0.12, 0, 0.6, -sw / 2 + 0.14)
+    thatch_gable(k, sd, sw, 0.6, over=0.26, y=sh, mat='thatchDark', gable='oldplanks', res=0.06)
+    k.pop()
+    k.pop()
+    # stable yard: bales, a trough, a saddle on the rail
+    for (xx, yy, zz, r) in ((-1.15, 0.0, 1.0, 0.1), (-1.15, 0.0, 0.78, -0.05), (-1.15, 0.16, 0.9, 0.3)):
+        bale(k, xx, yy, zz, math.pi / 2 + r)
+    k.box('planksDark', 0.16, 0.18, 0.6, -1.17, 0, -0.05, uvscale=1.3)
+    k.box('water', 0.12, 0.01, 0.55, -1.17, 0.16, -0.05)
+    k.box('darkwood', 0.04, 0.04, 0.6, -1.15, 0.5, 0.42)
+    for zz in (0.14, 0.7):
+        k.box('darkwood', 0.04, 0.5, 0.04, -1.15, 0, zz)
+    k.cbox('red', 0.2, 0.06, 0.28, -1.15, 0.54, 0.42)
+    k.cbox('darkwood', 0.22, 0.03, 0.3, -1.15, 0.58, 0.42)
+    # ---- the yard: well, a table, casks
+    well(k, 0.35, 0.55)
+    trestle(k, -0.4, 0.42, 0.8, 0.3)
+    bench(k, -0.4, 0.17, 0.75)
+    bench(k, -0.4, 0.67, 0.75)
+    for xx in (-0.65, -0.45, -0.2):
+        tankard(k, xx, 0.4, 0.42 + (k.r() - 0.5) * 0.1)
+    for (xx, zz) in ((1.15, 1.0), (1.15, 1.25), (0.92, 1.12)):
+        barrel(k, xx, zz, 0.85)
+    barrel(k, 1.1, 0.0, 0.8, 0.0, 0.0, lying=True)
+    # ---- the street front: rendered walls to a gateway, the sign, lanterns
+    gz = 1.5
+    for (a, b) in (((-1.35, 1.17), (-1.35, gz)), ((-1.35, gz), (-0.72, gz)), ((0.72, gz), (1.35, gz)), ((1.35, 1.17), (1.35, gz))):
+        L = math.hypot(b[0] - a[0], b[1] - a[1])
+        cx, cz = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+        ry = -math.atan2(b[1] - a[1], b[0] - a[0])
+        k.box('plaster', L + 0.12, 0.6, 0.12, cx, 0.0, cz, ry=ry, wuv=True)
+        k.box('stone', L + 0.16, 0.05, 0.16, cx, 0.6, cz, ry=ry, uvscale=2.0)
+        k.box('stoneDark', L + 0.14, 0.08, 0.14, cx, 0.0, cz, ry=ry, uvscale=2.0)
+    for s in (-1, 1):
+        k.box('stone', 0.22, 0.98, 0.22, s * 0.72, 0, gz, uvscale=2.0)
+        k.box('stone', 0.28, 0.05, 0.28, s * 0.72, 0.98, gz, uvscale=2.0)
+        k.box('stoneDark', 0.26, 0.1, 0.26, s * 0.72, 0.0, gz, uvscale=2.0)
+        lathe(k, 'stone', [(0.12, 0), (0.0, 0.12)], s * 0.72, 1.03, gz, seg=4)
+        k.push(s * 0.72, 0, gz + 0.12)
+        lantern(k, 0, 0.82, 0.0) if s > 0 else None
+        k.pop()
+    hanging_sign(k, -0.72, 0.95, gz + 0.12, 'THE_INN')
     return {'ao': 1024}

@@ -30,7 +30,8 @@ export function computeScore(g: Game): ScoreBreakdown {
   const headcount = recent.length ? (recent.reduce((a, h) => a + h.pirates, 0) + pir.length) / (recent.length + 1) : pir.length;
   const seaworthy = [...g.ships.values()].filter((s) => s.captain && g.people.has(s.captain) && s.crew.length >= Math.ceil(SHIPS[s.type].men / 2));
   const parts = {
-    hoard: g.hoard * 1.0,
+    // debts are settled out of the hoard at the final reckoning, so spending on credit gains nothing
+    hoard: g.hoard + Math.min(0, g.treasury),
     // only contentment above the baseline of a neglected island counts
     happiness: Math.max(0, Math.min(1, (hap - 0.3) / 0.6)) * 8000,
     fleet: seaworthy.reduce((a, s) => a + SHIP_VALUE[s.type], 0),

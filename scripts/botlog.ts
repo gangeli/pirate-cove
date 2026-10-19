@@ -29,7 +29,7 @@ for (let i = 0; i < steps && !g.over; i++) {
     const idle = caps.filter((c) => !c.job).length;
     const unstaffed = [...g.buildings.values()].filter((b) => b.built >= 1 && BUILDING[b.def].workers.length && !b.workers.length).map((b) => b.def);
     const fin = (o: Record<string, number>) => Object.entries(o).filter(([, v]) => Math.abs(v) > 0.5).map(([k, v]) => `${k}:${Math.round(v)}`).join(',');
-    console.log(`y${g.yearsElapsed.toFixed(1)} treas ${Math.round(g.treasury)} hoard ${Math.round(g.hoard)} pir ${g.pirates().length} hap ${g.avgHappiness().toFixed(2)} cap ${caps.length} idle ${idle} skilled ${caps.filter((c) => c.skilled).map((c) => c.profession).join(',')} ships ${[...g.ships.values()].map((s) => s.type).join(',')}`);
+    console.log(`y${g.yearsElapsed.toFixed(1)} treas ${Math.round(g.treasury)} hoard ${Math.round(g.hoard)} pir ${g.pirates().length} hap ${g.avgHappiness().toFixed(2)} cap ${caps.length} idle ${idle} skilled ${caps.filter((c) => c.skilled).map((c) => c.profession).join(',')} ships ${[...g.ships.values()].map((s) => `${s.type}/${s.status}/${s.mission}/r${Math.floor(s.rations)}c${s.cannons}${s.captain ? "" : "/nocap"}`).join(' ')} rations ${Math.round(g.goodTotal('ration'))}`);
     console.log(`   cum in {${fin(tot)}} out {${fin(totOut)}}`);
     const jobs: Record<string, number> = {};
     for (const c of caps) if (c.job) { const b = g.buildings.get(c.job); if (b) jobs[b.def] = (jobs[b.def] ?? 0) + 1; }

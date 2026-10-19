@@ -130,9 +130,9 @@ export function assignCrews(g: Game): void {
     s.officers = crew.slice(0, d.officers).map((p) => p.id);
     for (const p of crew) p.officer = s.officers.includes(p.id);
   }
-  // captains without ships get one
+  // captains without ships get one, the grandest first
   for (const cap of g.pirates().filter((p) => p.captain && !p.ship)) {
-    const s = [...g.ships.values()].find((x) => !x.captain && x.status !== 'atsea' && x.status !== 'lost');
+    const s = [...g.ships.values()].filter((x) => !x.captain && x.status !== 'atsea' && x.status !== 'lost').sort((a, b) => SHIPS[b.type].tons - SHIPS[a.type].tons)[0];
     if (!s) break;
     s.captain = cap.id;
     cap.ship = s.id;
@@ -175,9 +175,13 @@ function updateYards(g: Game, dt: number): void {
         .sort((a, b) => Math.hypot(a.x - y.x, a.y - y.y) - Math.hypot(b.x - y.x, b.y - y.y))[0];
       if (!dock) continue; // wait for a free dock
       const s = createShip(g, y.building_ship.type, dock);
+      // a small hull leaves the boatyard with a few swivel guns and boarding axes; a man-of-war's great
+      // guns must come from the foundry or the black market
+      const d = SHIPS[s.type];
+      const light = d.yard === 'boatyard';
       s.rations = 0;
-      s.cutlasses = 0;
-      s.cannons = 0;
+      s.cutlasses = light ? Math.floor(d.cutlasses * 0.5) : 0;
+      s.cannons = light ? Math.floor(d.cannons * 0.5) : 0;
       y.building_ship = undefined;
       g.msg('ship', 'Ship Launched!', `The ${SHIPS[s.type].name} ${s.name} slides down the slipway and ties up at the dock. She needs a captain!`, 'ship_launched', { x: dock.x, y: dock.y });
       assignCrews(g);

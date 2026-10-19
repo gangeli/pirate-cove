@@ -243,7 +243,8 @@ def coffin(k, x, y, z, ry=0.0, lid_off=0.0, s=1.0):
 def parrot(k, x, y, z, ry=0.0, kind='scarlet', s=1.0, pitch=0.0):
     """a perched parrot (feet at the origin, facing +z): body, head with a hooked beak, folded wings, long tail"""
     body, wing, tail, face = {'scarlet': ('red', 'plasterBlue', 'red', 'bone'), 'blue': ('plasterBlue', 'plasterBlue', 'plasterBlue', 'bone'),
-                              'gold': ('plasterYellow', 'plasterBlue', 'plasterBlue', 'bone'), 'green': ('leaf', 'leaf', 'leaf', 'leaf')}[kind]
+                              'gold': ('plasterYellow', 'plasterBlue', 'plasterBlue', 'bone'), 'green': ('leaf', 'leaf', 'leaf', 'leaf'),
+                              'crow': ('black', 'black', 'black', 'black')}[kind]
     if kind == 'gold':
         wing = 'plasterBlue'
     k.push(x, y, z, ry, pitch)
@@ -1722,14 +1723,28 @@ def smugglers_cove(k):
     outcrop(k, -0.65, -0.55, 1.1, 0.42, 0.7, seed=6.0, y0=1.05, cap='dirt')
     outcrop(k, 0.55, -1.05, 0.7, 0.9, 0.4, seed=9.0, ry=0.3)
     outcrop(k, -1.5, -0.1, 0.32, 1.05, 0.45, seed=4.0)
-    # the creek: water held between rocks and a shingle beach
-    wx0, wx1, wz0, wz1 = 0.05, 1.82, -0.55, 1.32
-    k.box('sand', 1.95, 0.008, 2.0, 0.85, 0, 0.35, uvscale=0.8)
-    k.box('water', wx1 - wx0 - 0.1, 0.006, wz1 - wz0, (wx0 + wx1) / 2 + 0.05, 0.012, (wz0 + wz1) / 2)
-    for i in range(14 if not k.lod else 6):
-        t = i / (13 if not k.lod else 5)
-        zz = wz0 + (wz1 - wz0) * t
-        outcrop(k, wx0 + 0.02 + 0.04 * math.sin(i * 2.1), zz, 0.09 + 0.04 * abs(math.sin(i)), 0.06 + 0.03 * abs(math.cos(i * 1.3)), 0.08, seed=i * 1.7, cap=None, amp=0.3)
+    # the creek: an irregular pool of seawater with a shingle margin and rocks along its shore
+    ccx, ccz, crx, crz = 0.98, 0.5, 0.82, 0.78
+    def shore(scale, y, mat, seed):
+        n = 12 if k.lod else 40
+        vs = [V(ccx, y, ccz)]
+        for i in range(n):
+            a = TAU * i / n
+            r = scale * (1 + 0.16 * noise.noise(Vector((math.cos(a) * 1.5, math.sin(a) * 1.5, seed))))
+            px, pz = ccx + math.cos(a) * crx * r, ccz + math.sin(a) * crz * r
+            vs.append(V(min(1.82, max(-1.82, px)), y, min(1.32, max(-1.32, pz))))
+        k.mesh(mat, vs, [(0, (i + 1) % n + 1, i + 1) for i in range(n)], uvscale=0.8)
+        return vs[1:]
+    shore(1.25, 0.006, 'sand', 1.0)
+    rim = shore(1.0, 0.016, 'water', 1.0)
+    for i, pnt in enumerate(rim):
+        a = TAU * i / len(rim)
+        if math.sin(a) > 0.55 and math.cos(a) > -0.3:
+            continue  # the creek runs out to the sea at the front
+        if k.lod and i % 3:
+            continue
+        if i % 2 == 0 or k.lod:
+            outcrop(k, pnt.x + math.cos(a) * 0.05, pnt.z + math.sin(a) * 0.05, 0.07 + 0.04 * abs(math.sin(i * 1.3)), 0.05 + 0.03 * abs(math.cos(i * 1.7)), 0.07, seed=i * 1.7, cap=None, amp=0.3)
     # the shack under the overhang
     sx0, sz0 = -0.65, -0.45
     k.push(sx0, 0, sz0)
@@ -1773,19 +1788,375 @@ def smugglers_cove(k):
     for zz in (0.75, 1.25):
         k.cyl('bark', 0.025, 0.022, 0.7, nx - 0.55, 0, zz, seg=6)
     k.beam('bark', V(nx - 0.55, 0.68, 0.72), V(nx - 0.55, 0.68, 1.28), 0.03, round_=True)
-    nv, nf = [], []
-    rows, cols = (2, 3) if k.lod else (6, 10)
-    for j in range(rows + 1):
-        for i in range(cols + 1):
-            t, u = j / rows, i / cols
-            nv.append(V(nx - 0.55 + 0.02 * math.sin(u * 9), 0.66 - 0.55 * t - 0.06 * math.sin(math.pi * u), 0.75 + 0.5 * u))
-    for j in range(rows):
-        for i in range(cols):
-            a = j * (cols + 1) + i
-            nf += [(a, a + 1, a + cols + 2, a + cols + 1), (a, a + cols + 1, a + cols + 2, a + 1)]
-    k.mesh('rope', nv, nf, uvscale=3.0)
-    if not k.lod:
-        for i in range(5):
-            k.cyl('wood', 0.02, 0.02, 0.03, nx - 0.55, 0.12, 0.8 + i * 0.1, seg=6, rz=math.pi / 2)
+    if k.lod:
+        k.mesh('rope', [V(nx - 0.55, 0.66, 0.75), V(nx - 0.55, 0.66, 1.25), V(nx - 0.55, 0.1, 1.25), V(nx - 0.55, 0.1, 0.75)], [(0, 1, 2, 3), (3, 2, 1, 0)])
+    else:
+        for i in range(12):
+            u = i / 11
+            zz = 0.75 + 0.5 * u
+            k.beam('rope', V(nx - 0.55, 0.66, zz), V(nx - 0.55 + 0.02 * math.sin(i), 0.1 + 0.03 * math.sin(i * 2.1), zz + 0.02 * math.cos(i)), 0.006, round_=True, seg=3)
+        for j in range(8):
+            yy = 0.62 - j * 0.07
+            pts = [V(nx - 0.55, yy - 0.05 * math.sin(math.pi * q / 6), 0.75 + 0.5 * q / 6) for q in range(7)]
+            for p0, p1 in zip(pts, pts[1:]):
+                k.beam('rope', p0, p1, 0.005, round_=True, seg=3)
+        for i in range(4):
+            k.cyl('weave', 0.025, 0.025, 0.03, nx - 0.55, 0.2 + i * 0.08, 0.76 + i * 0.13, seg=7, rz=math.pi / 2)
     palm(k, 1.55, -0.95, 1.5, lean=(-0.15, 0.25), seed=2.0)
+    if not k.lod:
+        for i in range(10):
+            x0 = -1.45 + i * 0.16
+            L = 0.15 + 0.3 * abs(math.sin(i * 2.7))
+            for j in range(int(L / 0.05)):
+                a = i * 2.3 + j * 1.7
+                leaf_blade(k, V(x0 + 0.01 * math.sin(j + i), 1.12 - j * 0.05, 0.08 + 0.01 * math.cos(i)), V(math.cos(a), -0.4, 0.8), 0.06, 0.035, 0.3, seg=3)
+            k.beam('leaf', V(x0, 1.12, 0.07), V(x0, 1.12 - L, 0.09), 0.006, round_=True, seg=3)
+        for (x, z, sc) in ((-1.2, -0.7, 0.16), (0.1, -0.5, 0.14), (-0.5, -0.9, 0.2)):
+            blob(k, 'leaf', x, 1.5, z, sc, sc * 0.6, sc, amp=0.35, freq=4, seed=x * 3, rings=6, seg=10)
     return {'ao': 1024}
+
+
+# ------------------------------------------------------------------------------------------- decor
+
+def bone(k, a, b, r=0.012):
+    """a long bone: shaft with knuckled ends"""
+    a, b = Vector(a), Vector(b)
+    limb(k, 'bone', a, b, r, r * 0.9, seg=6)
+    if not k.lod:
+        for p in (a, b):
+            d = (b - a).normalized()
+            side = d.cross(Vector((0, 1, 0)))
+            side = side.normalized() if side.length > 1e-3 else Vector((1, 0, 0))
+            for sx in (-1, 1):
+                q = p + side * r * 0.8 * sx
+                blob(k, 'bone', q.x, q.y, q.z, r * 1.2, r * 1.2, r * 1.2, amp=0.0, rings=4, seg=6)
+
+
+def ribcage(k, x, y, z, s=1.0, ry=0.0, rx=0.0):
+    """spine and ribs, open at the front"""
+    k.push(x, y, z, ry, rx)
+    limb(k, 'bone', V(0, 0, -0.04 * s), V(0, 0.26 * s, -0.04 * s), 0.011 * s, 0.009 * s, seg=6)
+    if not k.lod:
+        for i in range(6):
+            yy = 0.06 * s + i * 0.032 * s
+            rr = (0.06 + 0.02 * math.sin(math.pi * (i + 1) / 7)) * s
+            pts = [V(math.sin(a) * rr, yy - 0.02 * s * math.cos(a), -0.04 * s + (1 - math.cos(a)) * rr * 0.75) for a in [math.pi * (q - 4) / 5 for q in range(9)]]
+            for p0, p1 in zip(pts, pts[1:]):
+                if abs(p0.x) < 0.012 * s and abs(p1.x) < 0.012 * s and p0.z > 0:
+                    continue
+                k.beam('bone', p0, p1, 0.008 * s, round_=True, seg=4)
+    else:
+        lathe(k, 'bone', [(0.05 * s, 0.05 * s), (0.07 * s, 0.13 * s), (0.05 * s, 0.24 * s)], 0, 0, 0, seg=6)
+    k.pop()
+
+
+@building('orderly_shrubs')
+def orderly_shrubs(k):
+    """a formal parterre: clipped box topiary in white Versailles planters on a gravelled square with a stone edge"""
+    k.box('sand', 0.72, 0.012, 0.72, 0, 0, 0, uvscale=1.0)
+    for (a, b) in (((-0.37, -0.37), (0.37, -0.37)), ((0.37, -0.37), (0.37, 0.37)), ((0.37, 0.37), (-0.37, 0.37)), ((-0.37, 0.37), (-0.37, -0.37))):
+        A, B = V(a[0], 0, a[1]), V(b[0], 0, b[1])
+        n = 1 if k.lod else 6
+        for i in range(n):
+            P = A + (B - A) * ((i + 0.5) / n)
+            k.cbox('stone', (B - A).length / n - 0.008, 0.045, 0.06, P.x, 0.02, P.z, ry=math.atan2(-(B - A).z, (B - A).x), uvscale=2.0)
+
+    def planter(x, z, w, h):
+        k.box('plaster', w - 0.02, h, w - 0.02, x, 0, z, uvscale=1.5)
+        for sx in (-1, 1):
+            for sz in (-1, 1):
+                k.box('darkwood', 0.035, h + 0.03, 0.035, x + sx * (w / 2 - 0.01), 0, z + sz * (w / 2 - 0.01))
+                if not k.lod:
+                    lathe(k, 'darkwood', [(0.012, 0.0), (0.02, 0.012), (0.004, 0.03)], x + sx * (w / 2 - 0.01), h + 0.03, z + sz * (w / 2 - 0.01), seg=6)
+        if not k.lod:
+            for f in range(4):
+                k.push(x, 0, z, f * math.pi / 2)
+                k.box('darkwood', w - 0.04, 0.025, 0.012, 0, h - 0.04, w / 2 - 0.008)
+                k.box('darkwood', w - 0.04, 0.025, 0.012, 0, 0.03, w / 2 - 0.008)
+                k.pop()
+        k.box('soil', w - 0.05, 0.01, w - 0.05, x, h - 0.005, z)
+    # a standard: a clipped ball on a clean stem, with a ring of box at its foot
+    planter(-0.14, -0.12, 0.3, 0.24)
+    k.cyl('bark', 0.016, 0.012, 0.42, -0.14, 0.24, -0.12, seg=6)
+    blob(k, 'leaf', -0.14, 0.7, -0.12, 0.15, 0.14, 0.15, amp=0.06, freq=9, seed=1.0, rings=10, seg=16)
+    blob(k, 'leaf', -0.14, 0.29, -0.12, 0.11, 0.05, 0.11, amp=0.08, freq=9, seed=2.0, rings=6, seg=14)
+    # a clipped cone, and a ball in a stone urn
+    planter(0.2, 0.2, 0.22, 0.2)
+    lathe(k, 'leaf', [(0.09, 0.2), (0.095, 0.24), (0.07, 0.36), (0.045, 0.46), (0.02, 0.54), (0.003, 0.58)], 0.2, 0, 0.2, seg=14)
+    if not k.lod:
+        for i in range(10):
+            a = TAU * i / 10
+            t = (i % 5) / 5
+            blob(k, 'leaf', 0.2 + math.cos(a) * (0.08 - 0.06 * t), 0.26 + 0.28 * t, 0.2 + math.sin(a) * (0.08 - 0.06 * t), 0.03, 0.03, 0.03, amp=0.2, freq=10, seed=i, rings=4, seg=6)
+    lathe(k, 'stone', [(0.05, 0.0), (0.06, 0.02), (0.035, 0.05), (0.03, 0.09), (0.08, 0.17), (0.09, 0.2), (0.07, 0.205)], 0.2, 0, -0.2, seg=14, uvscale=2.0)
+    blob(k, 'leaf', 0.2, 0.27, -0.2, 0.1, 0.09, 0.1, amp=0.06, freq=9, seed=3.0, rings=8, seg=14)
+    lathe(k, 'stone', [(0.04, 0.0), (0.05, 0.02), (0.03, 0.04), (0.028, 0.07), (0.065, 0.13), (0.07, 0.15), (0.055, 0.155)], -0.22, 0, 0.24, seg=12, uvscale=2.0)
+    for i in range(3):
+        a = TAU * i / 3
+        blob(k, 'red' if i != 1 else 'plasterYellow', -0.22 + math.cos(a) * 0.03, 0.19, 0.24 + math.sin(a) * 0.03, 0.035, 0.03, 0.035, amp=0.3, freq=12, seed=i + 5, rings=4, seg=7)
+    blob(k, 'leaf', -0.22, 0.17, 0.24, 0.06, 0.035, 0.06, amp=0.3, freq=8, seed=7, rings=5, seg=9)
+    return {'ao': 512}
+
+
+def _figure(k, mat='brass'):
+    """the captain-governor in bronze: boots, long coat, tricorn, left fist on hip, right arm raising a sword"""
+    for sx in (-1, 1):
+        limb(k, mat, V(sx * 0.05, 0.0, 0.0), V(sx * 0.045, 0.33, 0.0), 0.042, 0.048, seg=8)
+        k.cyl(mat, 0.045, 0.042, 0.07, sx * 0.048, 0.2, 0.0, seg=8)
+        k.cbox(mat, 0.05, 0.03, 0.09, sx * 0.05, 0.015, 0.025)
+    lathe(k, mat, [(0.12, 0.16), (0.115, 0.22), (0.1, 0.32), (0.09, 0.42)], 0, 0, -0.03, seg=14, caps=(True, False))
+    for sx in (-1, 1):
+        k.cbox(mat, 0.025, 0.2, 0.02, sx * 0.03, 0.42, 0.065, rz=sx * 0.12, rx=-0.05)
+    blob(k, mat, 0, 0.5, 0, 0.1, 0.13, 0.075, amp=0.03, rings=7, seg=12)
+    k.cyl(mat, 0.1, 0.1, 0.03, 0, 0.42, 0.0, seg=12)
+    k.cyl(mat, 0.03, 0.028, 0.05, 0, 0.62, 0, seg=8)
+    blob(k, mat, 0, 0.705, 0.005, 0.048, 0.06, 0.055, amp=0.03, rings=7, seg=10)
+    k.cbox(mat, 0.015, 0.03, 0.02, 0, 0.7, 0.055, rx=0.3)
+    tricorn(k, 0, 0.745, 0.0, 1.15, 0.0, mat, trim=False)
+    # left arm akimbo
+    sh = V(-0.1, 0.6, 0.0)
+    el = V(-0.19, 0.49, -0.02)
+    hd = V(-0.1, 0.43, 0.05)
+    limb(k, mat, sh, el, 0.032, 0.028, seg=8)
+    limb(k, mat, el, hd, 0.028, 0.03, seg=8)
+    blob(k, mat, hd.x, hd.y, hd.z, 0.028, 0.025, 0.025, amp=0.0, rings=4, seg=7)
+    # right arm raised, sword aloft
+    sh = V(0.1, 0.6, 0.0)
+    el = V(0.21, 0.64, 0.07)
+    hd = V(0.29, 0.75, 0.13)
+    limb(k, mat, sh, el, 0.032, 0.028, seg=8)
+    limb(k, mat, el, hd, 0.028, 0.034, seg=8)
+    blob(k, mat, hd.x, hd.y, hd.z, 0.026, 0.026, 0.026, amp=0.0, rings=4, seg=7)
+    for p in (V(-0.1, 0.6, 0.0), V(0.1, 0.6, 0.0)):
+        blob(k, mat, p.x, p.y, p.z, 0.045, 0.04, 0.045, amp=0.0, rings=5, seg=8)
+    d = Vector((0.15, 1.0, 0.35)).normalized()
+    side = d.cross(Vector((0, 0, 1))).normalized()
+    tip = hd + d * 0.38
+    a0, a1 = hd + d * 0.03 + side * 0.012, hd + d * 0.03 - side * 0.012
+    k.mesh(mat, [a0, a1, tip, a0 + Vector((0, 0, 0.004)), a1 + Vector((0, 0, 0.004)), tip + Vector((0, 0, 0.004))], [(0, 1, 2), (5, 4, 3), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)])
+    limb(k, mat, hd - side * 0.04 + d * 0.03, hd + side * 0.04 + d * 0.03, 0.008, 0.008, seg=5)
+    # sword scabbard and sash
+    limb(k, mat, V(-0.08, 0.42, -0.04), V(-0.16, 0.1, -0.1), 0.014, 0.012, seg=6)
+
+
+@building('orderly_decor')
+def orderly_decor(k):
+    """Statue of the King: the captain cast in bronze, sword raised, on a coral-stone pedestal with a cornice and a
+    brass plaque, inside a ring of bollards and chain"""
+    k.box('stone', 0.64, 0.07, 0.64, 0, 0, 0, uvscale=2.0, bevel=0.012)
+    k.box('stone', 0.52, 0.07, 0.52, 0, 0.07, 0, uvscale=2.0, bevel=0.012)
+    k.box('stone', 0.4, 0.05, 0.4, 0, 0.14, 0, uvscale=2.0, bevel=0.01)
+    k.box('stone', 0.34, 0.38, 0.34, 0, 0.19, 0, uvscale=2.0, bevel=0.012)
+    if not k.lod:
+        for f in range(4):
+            k.push(0, 0, 0, f * math.pi / 2)
+            k.box('stone', 0.24, 0.26, 0.012, 0, 0.25, 0.172, uvscale=2.0, bevel=0.004)
+            k.box('stone', 0.3, 0.025, 0.02, 0, 0.21, 0.172, uvscale=2.0)
+            k.pop()
+        k.box('brass', 0.18, 0.09, 0.01, 0, 0.33, 0.177)
+    k.box('stone', 0.42, 0.04, 0.42, 0, 0.57, 0, uvscale=2.0, bevel=0.01)
+    k.box('stone', 0.38, 0.03, 0.38, 0, 0.61, 0, uvscale=2.0, bevel=0.008)
+    k.push(0, 0.64, 0.02, 0.15)
+    _figure(k)
+    k.pop()
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            lathe(k, 'iron', [(0.03, 0.0), (0.028, 0.15), (0.034, 0.17), (0.02, 0.2), (0.002, 0.21)], sx * 0.38, 0, sz * 0.38, seg=8)
+    if not k.lod:
+        for (a, b) in (((-1, -1), (1, -1)), ((1, -1), (1, 1)), ((1, 1), (-1, 1)), ((-1, 1), (-1, -1))):
+            pts = [V((a[0] + (b[0] - a[0]) * t) * 0.38, 0.15 - 0.06 * math.sin(math.pi * t), (a[1] + (b[1] - a[1]) * t) * 0.38) for t in [q / 6 for q in range(7)]]
+            for p0, p1 in zip(pts, pts[1:]):
+                k.beam('iron', p0, p1, 0.01, round_=True, seg=4)
+    return {'ao': 512}
+
+
+@building('scary_decor')
+def scary_decor(k):
+    """skulls on pikes: three sharpened stakes driven into a cairn, heads spitted on them, bones at the foot,
+    a rag of a red coat and a crow on the tallest"""
+    for i in range(1 if k.lod else 12):
+        a = TAU * i / 12
+        r = 0.12 + 0.05 * (i % 3)
+        if k.lod:
+            blob(k, 'stone', 0, 0, 0, 0.2, 0.08, 0.2, amp=0.2, seed=1, rings=4, seg=8, flat=0.0)
+        else:
+            blob(k, 'stone', math.cos(a) * r, 0.0, math.sin(a) * r, 0.06, 0.05, 0.05, amp=0.25, freq=4, seed=i, rings=4, seg=7, ry=a)
+    blob(k, 'dirt', 0, 0, 0, 0.36, 0.015, 0.34, amp=0.25, freq=3, seed=4, rings=4, seg=14, flat=0.0)
+    stakes = [((-0.06, -0.04), 1.32, (0.05, -0.04), 'crow'), ((0.14, 0.08), 1.18, (-0.08, 0.06), None), ((-0.14, 0.14), 0.95, (0.1, 0.12), 'rag')]
+    for (p, h, (rx, rz), extra) in stakes:
+        k.push(p[0], 0, p[1], 0, rx, rz)
+        k.cyl('bark', 0.024, 0.02, h - 0.12, 0, -0.05, 0, seg=7)
+        k.cyl('wood', 0.02, 0.002, 0.14, 0, h - 0.17, 0, seg=7)
+        skull(k, 0, h - 0.2, -0.005, 1.15, ry=(p[0] * 9) % 1.0 - 0.5, rx=0.1)
+        if not k.lod:
+            k.beam('rope', V(0, h - 0.28, 0.02), V(0.0, h - 0.33, 0.02), 0.03, round_=True, seg=6)
+        if extra == 'crow':
+            parrot(k, 0.0, h - 0.06, 0.0, 1.2, 'crow', 1.0, pitch=0.3)
+        elif extra == 'rag':
+            k.mesh('canvasRed', [V(0.02, h - 0.4, 0.0), V(0.02, h - 0.34, 0.0), V(0.16, h - 0.5, 0.05), V(0.12, h - 0.62, 0.08)], [(0, 1, 2, 3)])
+        k.pop()
+    bone(k, V(0.18, 0.02, -0.18), V(0.0, 0.015, -0.3), 0.013)
+    bone(k, V(-0.25, 0.02, -0.05), V(-0.2, 0.06, -0.3), 0.012)
+    bone(k, V(0.25, 0.02, 0.25), V(0.05, 0.02, 0.32), 0.011)
+    skull(k, 0.24, 0.0, -0.05, 1.0, ry=-1.0, rz=0.3)
+    ribcage(k, -0.2, 0.0, 0.26, 0.9, ry=0.8, rx=1.4)
+    if not k.lod:
+        cutlass(k, 0.08, 0.008, 0.3, 0.6, -math.pi / 2, 0.0)
+        for (x, z) in ((-0.3, -0.25), (0.3, 0.12), (0.0, 0.3)):
+            tuft(k, x, z, 1.2, 'thatchDark')
+    return {'ao': 512}
+
+
+@building('very_scary_decor')
+def very_scary_decor(k):
+    """a gibbet: a stout post braced to its arm, a chain, and a strap-iron cage swinging with what is left of its
+    resident, legs dangling through the bottom; a crow keeps watch from the arm"""
+    px, ax = -0.26, 0.2
+    H = 1.95
+    for i in range(1 if k.lod else 9):
+        a = TAU * i / 9
+        if k.lod:
+            blob(k, 'stone', px, 0, 0, 0.16, 0.07, 0.16, amp=0.2, seed=1, rings=4, seg=8, flat=0.0)
+        else:
+            blob(k, 'stone', px + math.cos(a) * 0.11, 0.0, math.sin(a) * 0.11, 0.06, 0.05, 0.05, amp=0.25, freq=4, seed=i, rings=4, seg=7, ry=a)
+    k.box('darkwood', 0.1, H, 0.1, px, 0, 0)
+    k.box('darkwood', 0.12, 0.06, 0.12, px, H, 0)
+    k.box('darkwood', ax - px + 0.16, 0.09, 0.09, (ax + px) / 2 + 0.05, H - 0.12, 0)
+    k.beam('darkwood', V(px + 0.04, H - 0.55, 0), V(px + 0.36, H - 0.12, 0), 0.06, 0.05)
+    if not k.lod:
+        for y in (H - 0.12, H - 0.5):
+            k.cyl('iron', 0.008, 0.008, 0.12, px, y, -0.06, seg=4, rx=math.pi / 2)
+    # chain
+    top = V(ax, H - 0.13, 0)
+    cy = 0.72
+    ch = 0.62
+    for i in range(1 if k.lod else 9):
+        y = top.y - 0.03 - i * 0.04
+        if k.lod:
+            k.beam('iron', top, V(ax, cy + ch + 0.13, 0), 0.015)
+        else:
+            k.torus('iron', 0.016, 0.004, ax, y, 0, rx=math.pi / 2 if i % 2 else 0.0, seg=6, rseg=3)
+    # the cage: hoops and straps, drawn in about the head, open beneath
+    k.push(ax, cy, 0, 0.3, 0.0, 0.04)
+    r = 0.14
+    for yy in (0.0, 0.22, 0.44):
+        k.torus('iron', r, 0.012 if not k.lod else 0.02, 0, yy, 0, seg=14, rseg=4)
+    ns = 4 if k.lod else 8
+    for i in range(ns):
+        a = TAU * i / ns
+        k.box('iron', 0.02, ch - 0.15, 0.008, math.cos(a) * r, 0.0, math.sin(a) * r, ry=-a + math.pi / 2)
+        k.beam('iron', V(math.cos(a) * r, ch - 0.15, math.sin(a) * r), V(math.cos(a) * 0.09, ch - 0.02, math.sin(a) * 0.09), 0.018, 0.008)
+        k.beam('iron', V(math.cos(a) * 0.09, ch - 0.02, math.sin(a) * 0.09), V(math.cos(a) * 0.015, ch + 0.1, math.sin(a) * 0.015), 0.016, 0.008)
+    k.torus('iron', 0.09, 0.01, 0, ch - 0.02, 0, seg=12, rseg=3)
+    k.torus('iron', 0.02, 0.006, 0, ch + 0.115, 0, rx=math.pi / 2, seg=8, rseg=3)
+    # the remains, slumped
+    skull(k, 0.01, ch - 0.13, 0.0, 1.1, ry=0.3, rx=0.45, rz=0.15)
+    ribcage(k, 0.0, 0.22, -0.01, 1.05, rx=0.15)
+    blob(k, 'bone', 0, 0.2, 0.0, 0.07, 0.04, 0.045, amp=0.2, freq=5, seed=4, rings=5, seg=8)
+    for sx in (-1, 1):
+        bone(k, V(sx * 0.07, 0.44, -0.02), V(sx * 0.1, 0.27, 0.02), 0.009)
+        bone(k, V(sx * 0.1, 0.27, 0.02), V(sx * 0.07, 0.12, 0.06), 0.008)
+        bone(k, V(sx * 0.045, 0.19, 0.0), V(sx * 0.06, -0.12, 0.03), 0.012)
+        bone(k, V(sx * 0.06, -0.12, 0.03), V(sx * 0.05, -0.34, 0.0 + sx * 0.02), 0.01)
+        if not k.lod:
+            k.cbox('bone', 0.03, 0.012, 0.06, sx * 0.05, -0.35, 0.02)
+    if not k.lod:
+        k.mesh('canvas', [V(-0.1, 0.42, 0.06), V(0.1, 0.43, 0.06), V(0.08, 0.12, 0.09), V(0.02, 0.2, 0.1), V(-0.09, 0.08, 0.08)], [(0, 4, 3, 2, 1)])
+    k.pop()
+    parrot(k, (px + ax) / 2 + 0.05, H - 0.03, 0.0, -1.3, 'crow', 1.0, pitch=0.3)
+    if not k.lod:
+        for (x, z) in ((-0.3, 0.25), (0.25, -0.28), (0.3, 0.3)):
+            tuft(k, x, z, 1.3, 'thatchDark')
+        bone(k, V(0.12, 0.012, 0.2), V(0.3, 0.012, 0.08), 0.011)
+    return {'ao': 512}
+
+
+@building('anarchy_decor')
+def anarchy_decor(k):
+    """the Jolly Roger: a salvaged topmast stepped in a cairn, guyed out to pegs, the black flag at the truck,
+    and the plunder heaped about its foot - a chest of coin, casks, a cannon barrel, blades driven into the pile"""
+    H = 2.5
+    for i in range(1 if k.lod else 10):
+        a = TAU * i / 10
+        if k.lod:
+            blob(k, 'stone', 0, 0, 0, 0.16, 0.08, 0.16, amp=0.2, seed=1, rings=4, seg=8, flat=0.0)
+        else:
+            blob(k, 'stone', math.cos(a) * 0.1, 0.0, math.sin(a) * 0.1, 0.055, 0.06, 0.05, amp=0.25, freq=4, seed=i, rings=4, seg=7, ry=a)
+    k.cyl('wood', 0.04, 0.026, H, 0, 0, 0, seg=10)
+    k.box('darkwood', 0.24, 0.035, 0.07, 0, H * 0.78, 0)
+    lathe(k, 'darkwood', [(0.04, H), (0.045, H + 0.02), (0.035, H + 0.05), (0.002, H + 0.06)], 0, 0, 0, seg=8)
+    if not k.lod:
+        for i in range(3):
+            k.torus('iron', 0.036 - i * 0.002, 0.006, 0, 0.5 + i * 0.6, 0, seg=10, rseg=3)
+        k.cyl('brass', 0.008, 0.008, 0.06, 0.035, H - 0.08, 0, seg=5, rz=math.pi / 2)
+        k.beam('rope', V(0.0, H, 0.03), V(0.03, 0.4, 0.04), 0.006, round_=True, seg=3)
+    for i, (gx, gz) in enumerate(((-0.4, -0.35), (0.4, -0.3), (0.0, 0.42))):
+        k.beam('rope', V(gx * 0.08, H * 0.78, gz * 0.08), V(gx, 0.0, gz), 0.008, round_=True, seg=3)
+        k.cyl('wood', 0.014, 0.008, 0.07, gx, 0, gz, seg=5)
+    k.marker('flag', 0, H - 0.04, 0)
+    # the plunder
+    blob(k, 'gold', 0.13, 0.0, 0.14, 0.15, 0.08, 0.12, amp=0.3, freq=7, seed=2, rings=6, seg=12, flat=0.0)
+    chest(k, 0.2, 0.05, -0.5, True, 0.85)
+    cask(k, -0.22, 0.12, 0.65)
+    cask(k, -0.15, -0.2, 0.6, lying=True, ry=0.8)
+    k.push(0.05, 0.06, -0.24, 0.35)
+    lathe(k, 'iron', [(0.04, -0.22), (0.045, -0.2), (0.05, -0.18), (0.042, 0.0), (0.034, 0.16), (0.04, 0.17), (0.036, 0.19)], 0, 0, 0, seg=10, rz=math.pi / 2)
+    k.cyl('black', 0.022, 0.022, 0.004, 0.19, 0, 0, seg=8, rz=-math.pi / 2)
+    k.pop()
+    if not k.lod:
+        cutlass(k, 0.1, 0.05, 0.2, 0.3, 0.25, 0.3)
+        cutlass(k, 0.24, 0.02, 0.05, -0.8, -0.3, -0.2)
+        for i in range(10):
+            k.cyl('gold', 0.013, 0.013, 0.004, (k.r() - 0.3) * 0.5, 0.002, 0.15 + k.r() * 0.2, seg=8, rx=k.r() * 0.2)
+        k.cyl('gold', 0.04, 0.03, 0.08, -0.05, 0.0, 0.3, seg=10)
+        k.cyl('gold', 0.025, 0.025, 0.06, -0.05, 0.08, 0.3, seg=8)
+        skull(k, -0.02, 0.08, 0.16, 1.0, ry=0.4)
+    return {'ao': 512}
+
+
+def _banana(k, x, z, h=0.8, seed=0.0):
+    """a banana plant: a fibrous pseudostem and broad, ragged, arching leaves, one browned and hanging"""
+    limb(k, 'bark', V(x, 0, z), V(x + 0.02, h, z), 0.045, 0.035, seg=8)
+    n = 4 if k.lod else 7
+    for i in range(n):
+        a = TAU * i / n + seed
+        el = 0.6 + 0.4 * ((i * 5) % 3) / 2
+        mat = 'thatchDark' if i == 2 else 'leaf'
+        droop = 1.4 if i == 2 else 0.55
+        leaf_blade(k, V(x + 0.02, h - 0.02 * (i % 3), z), V(math.cos(a), el, math.sin(a)), 0.55 + 0.1 * math.sin(i), 0.17, droop, mat=mat, seg=7)
+
+
+@building('anarchy_shrubs')
+def anarchy_shrubs(k):
+    """the jungle taking back its own: a banana plant, a young palm, elephant ears and ferns, flowering hibiscus,
+    rank grass, and a broken crate half swallowed by creepers"""
+    blob(k, 'soil', 0, 0, 0, 0.42, 0.04, 0.4, amp=0.3, freq=3, seed=1, rings=4, seg=14, flat=0.0)
+    _banana(k, -0.12, -0.14, 0.75, 0.3)
+    palm(k, 0.2, -0.22, 0.95, lean=(0.15, -0.05), seed=1.3, fronds=7)
+    # elephant ears
+    for i in range(5 if not k.lod else 2):
+        a = TAU * i / 5 + 0.5
+        leaf_blade(k, V(0.18, 0.02, 0.16), V(math.cos(a), 1.2, math.sin(a)), 0.32, 0.2, 0.9, seg=6)
+    # ferns
+    for (fx, fz) in ((-0.25, 0.2), (0.32, 0.05)):
+        for i in range(8 if not k.lod else 3):
+            a = TAU * i / 8 + fx
+            _frond(k, V(fx, 0.02, fz), V(math.cos(a), 0.9, math.sin(a)), 0.28, 0.8)
+    # hibiscus
+    blob(k, 'leaf', -0.02, 0.28, 0.24, 0.17, 0.16, 0.14, amp=0.35, freq=6, seed=4, rings=7, seg=12)
+    for i in range(7 if not k.lod else 3):
+        a = TAU * i / 7
+        blob(k, 'red', -0.02 + math.cos(a) * 0.15, 0.3 + 0.08 * math.sin(i * 2.1), 0.24 + math.sin(a) * 0.13, 0.03, 0.022, 0.03, amp=0.3, freq=12, seed=i, rings=4, seg=7)
+    # broken crate swallowed by creepers
+    k.push(-0.3, 0, -0.32, 0.5, 0.0, 0.15)
+    k.box('oldplanks', 0.2, 0.14, 0.2, 0, 0, 0, uvscale=1.6)
+    k.cbox('oldplanks', 0.22, 0.02, 0.06, 0.03, 0.16, 0.05, rz=0.4)
+    k.pop()
+    if not k.lod:
+        for i in range(8):
+            a = i * 2.1
+            leaf_blade(k, V(-0.3 + 0.08 * math.cos(a), 0.1 + 0.02 * i % 0.08, -0.32 + 0.08 * math.sin(a)), V(math.cos(a), 0.2, math.sin(a)), 0.08, 0.05, 0.3, seg=3)
+        for (x, z) in ((0.35, 0.33), (-0.35, -0.02), (0.05, -0.38), (-0.38, 0.38), (0.38, -0.35)):
+            tuft(k, x, z, 2.0)
+            tuft(k, x + 0.03, z - 0.03, 1.6, 'thatch')
+    return {'ao': 512}

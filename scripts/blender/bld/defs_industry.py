@@ -130,6 +130,25 @@ def heap(k, mat, x, z, r, h, seed=0.0, rz=None, y=0.0, uvscale=1.2, lumps=0, lum
                  seed=seed + i * 1.37, sub=1, rough=0.3, ry=k.r() * 3)
 
 
+def bush(k, x, y, z, s=1.0, n=20):
+    """a tuft of scrub: narrow drooping blades fanning out from a root"""
+    if k.lod:
+        rock(k, 'leaf', x, y, z, 0.12 * s, 0.07 * s, 0.12 * s, seed=x, sub=1)
+        return
+    for i in range(n):
+        a = TAU * i / n + k.r() * 0.5
+        L = (0.14 + k.r() * 0.14) * s
+        up = 0.6 + k.r() * 0.9
+        dx, dz = math.cos(a), math.sin(a)
+        w = 0.011 * s
+        base = V(x, y, z)
+        mid = base + V(dx * L * 0.5, L * up * 0.7, dz * L * 0.5)
+        tip = base + V(dx * L, L * up * 0.5, dz * L)
+        px, pz = -dz * w, dx * w
+        vs = [base + V(px, 0, pz), base - V(px, 0, pz), mid - V(px, 0, pz), tip, mid + V(px, 0, pz)]
+        k.mesh('leaf', vs, [(0, 1, 2, 3, 4), (4, 3, 2, 1, 0)])
+
+
 def yard(k, w, d, mat='dirt', y=0.006, wob=0.12, seed=1.0):
     """a trodden working yard with a soft, irregular edge"""
     n = 12 if k.lod else 40
@@ -1258,6 +1277,8 @@ def ration_factory(k):
     heap(k, 'plaster', 1.35, 0.35, 0.36, 0.28, seed=4.0)
     k.beam('wood', V(1.3, 0.2, 0.4), V(1.15, 0.7, 0.62), 0.025, round_=True)
     k.cbox('iron', 0.12, 0.01, 0.14, 1.32, 0.17, 0.38, rx=0.6)
+    for (x, z, ry) in ((-1.6, 0.35, 0.4), (-1.55, 0.6, 1.6), (-1.62, 0.12, 2.5)):
+        sack(k, x, z, 0.85, ry)
     sign_board(k, -1.65, 0.75, 0.95, 'RATIONS')
     return {'ao': 1024}
 
@@ -1324,7 +1345,7 @@ def carpenter(k):
         post(k, x, zb + 0.04, 1.05, 0.09)
     # an old topsail stretched over spars for a roof
     for x in (x0 + 0.08, 0.72, x1 - 0.06):
-        k.beam('bark', V(x, 1.06, zb), V(x, 0.92, zf + 0.06), 0.05, round_=True)
+        k.beam('bark', V(x, 1.02, zb), V(x, 0.86, zf + 0.06), 0.05, round_=True)
     awning(k, x0 - 0.02, x1 + 0.04, zb - 0.02, zf + 0.1, 1.1, 0.9, 'canvas', posts=False, drop=0.05)
     for x in (x0 + 0.08, 0.72, x1 - 0.06):
         post(k, x, zf - 0.04, 0.92, 0.09)
@@ -1525,7 +1546,7 @@ def ore_cart(k, x, z, ry=0.0, gauge=0.22):
         for yy in (0.12, 0.33):
             t = (yy - 0.1) / 0.26
             frustum(k, 'iron', 0, yy, 0, 0.3 + 0.06 * t + 0.012, 0.42 + 0.08 * t + 0.012, 0.3 + 0.06 * t + 0.014, 0.42 + 0.08 * t + 0.014, 0.025, bottom=False)
-    heap(k, 'red', 0, 0, 0.17, 0.1, seed=5.0, y=0.33, rz=0.23, lumps=7, lumpsize=0.045, lumpmat='red')
+    heap(k, 'soil', 0, 0, 0.17, 0.1, seed=5.0, y=0.33, rz=0.23, lumps=9, lumpsize=0.045, lumpmat='terracotta')
     k.pop()
 
 
@@ -1543,20 +1564,20 @@ def iron_mine(k):
     """an iron mine: a timbered adit driven into a rust-streaked rock face, rails running out to a tub of
     ore, a winding shaft with its windlass and kibble, an ore pile and a spoil heap, picks and shovels"""
     yard(k, 3.6, 2.7, seed=21.0, mat='dirt')
-    # the rock face
-    rock(k, 'stoneDark', -1.0, 0.15, -0.9, 0.78, 1.05, 0.5, seed=1.0, floor=0.0, rough=0.16, ry=0.1, sub=4)
-    rock(k, 'stoneDark', 0.35, 0.1, -0.95, 0.95, 1.22, 0.48, seed=2.0, floor=0.0, rough=0.16, sub=4)
-    rock(k, 'stoneDark', 1.3, 0.0, -0.85, 0.45, 0.75, 0.45, seed=3.0, floor=0.0, rough=0.2)
-    rock(k, 'stone', -1.5, 0.0, -0.55, 0.3, 0.45, 0.32, seed=4.0, floor=0.0, rough=0.25)
-    rock(k, 'stoneDark', -0.3, 0.95, -1.05, 0.6, 0.5, 0.35, seed=5.0, rough=0.2)
-    rock(k, 'stone', 0.8, 0.0, -0.45, 0.25, 0.22, 0.2, seed=6.0, floor=0.0)
+    # the hillside: an earthen bank with grey rock breaking through, a cutting for the adit
+    heap(k, 'dirt', 0.0, -0.92, 1.78, 1.3, seed=31.0, rz=0.58, uvscale=0.8)
+    crag = [(-0.88, 0.0, -0.5, 0.3, 0.62, 0.28, 0.3), (0.26, 0.0, -0.52, 0.32, 0.7, 0.28, -0.2), (-0.32, 0.86, -0.62, 0.5, 0.24, 0.26, 1.1),
+            (0.95, 0.25, -0.8, 0.4, 0.45, 0.3, 0.5), (-1.3, 0.15, -0.75, 0.35, 0.4, 0.3, 0.8), (0.3, 0.9, -1.0, 0.42, 0.42, 0.3, 0.6),
+            (-0.75, 1.0, -1.05, 0.3, 0.3, 0.25, 2.0), (1.45, 0.0, -0.55, 0.22, 0.25, 0.2, 1.0), (-1.55, 0.0, -0.35, 0.18, 0.2, 0.18, 0.3)]
+    for i, (x, y, z, sx, sy, sz, ry) in enumerate(crag):
+        rock(k, 'stoneDark' if i % 4 == 3 else 'stone', x, y, z, sx, sy, sz, seed=i * 3.3 + 0.7, sub=3, rough=0.28, ry=ry, floor=0.0 if y < 0.01 else None, uvscale=1.2)
     if not k.lod:
-        # rusty ore showing in the face, and scrub clinging on top
-        for i in range(14):
-            a = k.r()
-            rock(k, 'red', -1.3 + a * 2.6, 0.2 + k.r() * 0.8, -0.55 - k.r() * 0.15, 0.06, 0.04, 0.03, seed=i * 2.1, sub=1, rough=0.3)
-        for (x, y, z, s) in ((-1.1, 1.12, -0.95, 0.16), (0.2, 1.35, -1.0, 0.2), (0.55, 1.28, -1.1, 0.14), (1.35, 0.78, -0.85, 0.13), (-0.55, 1.35, -1.1, 0.12)):
-            rock(k, 'leaf', x, y, z, s * 1.3, s * 0.7, s, seed=x * 7, sub=1, rough=0.35)
+        # rusty ore showing in the face
+        for i in range(16):
+            rock(k, 'terracotta' if i % 3 else 'red', -1.2 + k.r() * 2.4, 0.15 + k.r() * 0.7, -0.5 - k.r() * 0.15, 0.07, 0.035, 0.03, seed=i * 2.1, sub=1, rough=0.3, ry=k.r())
+        for (x, y, z, sc) in ((-1.1, 0.85, -0.95, 1.0), (0.0, 1.28, -1.0, 1.2), (0.85, 0.95, -1.05, 0.9), (1.35, 0.5, -0.9, 0.8), (-0.55, 1.2, -1.15, 0.8),
+                              (-1.5, 0.3, -0.85, 0.7), (0.65, 0.6, -0.62, 0.6), (-0.1, 1.05, -0.75, 0.6)):
+            bush(k, x, y, z, sc)
     # the adit: a timber set of round props and a cap, lagging above, the dark heading behind
     ax, az = -0.32, -0.36
     k.box('black', 0.56, 0.82, 0.8, ax, 0.0, az - 0.42)
@@ -1574,8 +1595,8 @@ def iron_mine(k):
     rails(k, ax, az - 0.5, 1.25)
     ore_cart(k, ax, 0.55)
     # ore pile and spoil heap
-    heap(k, 'red', -1.25, 0.7, 0.45, 0.32, seed=7.0, lumps=26, lumpsize=0.06, lumpmat='red')
-    heap(k, 'stoneDark', 1.3, 0.85, 0.5, 0.3, seed=9.0, lumps=22, lumpsize=0.06, lumpmat='stone')
+    heap(k, 'soil', -1.25, 0.7, 0.45, 0.32, seed=7.0, lumps=30, lumpsize=0.06, lumpmat='terracotta')
+    heap(k, 'dirt', 1.3, 0.85, 0.5, 0.3, seed=9.0, lumps=26, lumpsize=0.06, lumpmat='stone')
     # the winding shaft: a timber collar, windlass on A-frames, rope down to a kibble
     k.push(0.82, 0, 0.15)
     for (zz, ww, dd) in ((-0.27, 0.62, 0.1), (0.27, 0.62, 0.1)):
@@ -1597,7 +1618,7 @@ def iron_mine(k):
         k.beam('iron', V(sx * 0.42, 0.68, 0), V(sx * 0.42, 0.68 + 0.18 * sx, 0.06), 0.022)
         k.beam('wood', V(sx * 0.42, 0.68 + 0.18 * sx, 0.06), V(sx * 0.5, 0.68 + 0.18 * sx, 0.06), 0.028, round_=True, seg=5)
     k.beam('rope', V(0.0, 0.61, 0.05), V(0.0, 0.32, 0.05), 0.014, round_=True, seg=4)
-    tub(k, 0.0, 0.05, 0.1, 0.16, fill='red', y=0.12, hoops=2)
+    tub(k, 0.0, 0.05, 0.1, 0.16, fill='terracotta', y=0.12, hoops=2)
     k.beam('iron', V(-0.1, 0.28, 0.05), V(0.0, 0.33, 0.05), 0.008)
     k.beam('iron', V(0.1, 0.28, 0.05), V(0.0, 0.33, 0.05), 0.008)
     k.pop()
@@ -1636,7 +1657,10 @@ def battered_stack(k, cx, cz, b0, b1, h, ops=(), rh=0.15, mat='stone'):
             while x < size / 2 - 0.03:
                 sw = min(size / 2 - x, 0.2 + k.r() * 0.16)
                 if not any(x + sw > -o[1] / 2 and x < o[1] / 2 for o in mine):
-                    k.cbox(mat if k.r() > 0.15 else 'coral', sw - 0.016, rh - 0.016 - k.r() * 0.02, 0.13, x + sw / 2, y + rh / 2, -0.05,
+                    q = k.r()
+                    m = 'stoneDark' if q < 0.08 + 0.45 * t * t else (mat if q > 0.75 else 'coral')
+                    hh = rh - 0.016 - k.r() * 0.035
+                    k.cbox(m, sw - 0.016, hh, 0.13, x + sw / 2, y + rh / 2 + (k.r() - 0.5) * (rh - 0.016 - hh), -0.05,
                            rx=-lean + (k.r() - 0.5) * 0.04, rz=(k.r() - 0.5) * 0.05, uvscale=2.0)
                 x += sw
             k.pop()
@@ -1738,7 +1762,7 @@ def blast_furnace(k):
     k.pop()
     # casting floor: sand bed with a runner, sows and pigs
     cz0 = zf + 0.25
-    k.box('sand', 1.5, 0.03, 1.1, fx, 0, cz0 + 0.55, uvscale=1.0)
+    k.box('soil', 1.5, 0.03, 1.1, fx, 0, cz0 + 0.55, uvscale=1.0)
     k.box('black', 0.07, 0.002, 1.0, fx, 0.03, cz0 + 0.55)
     if not k.lod:
         for j in range(4):
@@ -1750,7 +1774,7 @@ def blast_furnace(k):
         k.box('fire', 0.05, 0.004, 0.25, fx, 0.032, cz0 + 0.15)
     # charcoal and ore
     heap(k, 'black', -1.75, 0.95, 0.5, 0.42, seed=12.0, lumps=20, lumpsize=0.04)
-    heap(k, 'red', -1.8, -0.35, 0.45, 0.36, seed=13.0, lumps=20, lumpsize=0.05)
+    heap(k, 'soil', -1.8, -0.35, 0.45, 0.36, seed=13.0, lumps=26, lumpsize=0.05, lumpmat='terracotta')
     bar_stack(k, 1.55, 1.1, 12, 0.5, ry=0.2)
     k.beam('iron', V(0.35, 0.0, 0.45), V(0.25, 1.05, 0.15), 0.025, round_=True)  # tapping bar
     shovel(k, -1.3, 0.3, ry=0.8, lean=0.3)
@@ -1827,10 +1851,10 @@ def cannon_foundry(k):
     k.box('darkwood', 1.9, 0.14, 0.14, px, gy + 0.08, pz)
     k.box('darkwood', 0.2, 0.1, 0.22, px + 0.05, gy - 0.02, pz)   # the crab
     k.cbox('darkwood', 0.07, 0.18, 0.06, px + 0.05, gy - 0.18, pz)
-    k.beam('iron', V(px + 0.05, gy - 0.28, pz), V(px + 0.05, 1.25, pz), 0.02, round_=True, seg=4)
-    cannon_barrel(k, px + 0.05, 0.3, pz, s=0.95, rz=0.0)
+    k.beam('iron', V(px + 0.05, gy - 0.28, pz), V(px + 0.05, 1.62, pz), 0.02, round_=True, seg=4)
+    cannon_barrel(k, px + 0.05, 0.62, pz, s=0.95, rz=0.0)
     for s in (-1, 1):
-        k.beam('iron', V(px + 0.05, 1.25, pz), V(px + 0.05 + s * 0.09, 1.05, pz), 0.012, round_=True, seg=4)
+        k.beam('iron', V(px + 0.05, 1.62, pz), V(px + 0.05 + s * 0.09, 1.42, pz), 0.012, round_=True, seg=4)
     # winch on the near frame
     k.cyl('wood', 0.06, 0.06, 0.36, px + 0.82, 0.75, pz - 0.18, seg=10, rx=math.pi / 2)
     k.beam('iron', V(px + 0.86, 0.75, pz + 0.2), V(px + 0.86, 0.88, pz + 0.26), 0.02)
@@ -1849,7 +1873,7 @@ def cannon_foundry(k):
     k.push(2.35, 0, 1.45)
     for j, m in enumerate((3, 2)):
         for i in range(m):
-            log(k, (i - (m - 1) / 2) * 0.27, 0.13 + j * 0.23, 0, 1.2, 0.13, ry=math.pi / 2)
+            log(k, (i - (m - 1) / 2) * 0.2, 0.095 + j * 0.17, 0, 0.9, 0.095, ry=math.pi / 2)
     k.pop()
     heap(k, 'black', -0.1, -0.15, 0.45, 0.3, seed=14.0, lumps=12, lumpsize=0.04)
     return {'ao': 1024}

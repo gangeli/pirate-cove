@@ -1,7 +1,7 @@
 import type { Game } from './game';
 import { MONTH } from './time';
 import { BUILDING, JOB_SEX, SKILLED_ONLY, type Job } from './data/buildings';
-import { SHIPS, type ShipType } from './data/ships';
+import { SHIPS, CAPTAIN_COST, type ShipType } from './data/ships';
 import type { Ship } from './types';
 import { findSpot, buildRoadBetween, footprint, canPlace } from './placement';
 import { Terrain } from './map';
@@ -74,6 +74,12 @@ const VENUES: Record<'feast' | 'drink' | 'company' | 'gamble', string[]> = {
   gamble: ['animal_pit', 'gambling_den', 'casino'],
 };
 
+/** investments that pay for themselves: a planner spends the reserve on them */
+const INVEST = new Set(['smugglers_cove', 'cave']);
+
+/** buildings never held back to save timber for a hull */
+const ESSENTIAL = new Set(['timber_camp', 'sawmill', 'chuck_tent', 'corn_farm', 'bunkhouse', 'dock', 'boatyard', 'cave', 'housing_plot', 'construction_tent']);
+
 /** craftsmen worth kidnapping, in the order a good player wants them */
 const KIDNAP_ORDER: Job[] = ['trader', 'server', 'cook', 'engineer', 'farmer', 'distiller', 'wench', 'tobacconist', 'gunsmith', 'surgeon'];
 
@@ -116,9 +122,15 @@ export class Bot {
     const d = BUILDING[def];
     const cost = g.costOf(d);
     // keep a reserve for captains and emergencies once the essentials are up
-    const reserve = g.yearsElapsed > 0.5 && cost.gold > 0 ? this.p.reserve : 0;
+    let reserve = g.yearsElapsed > 0.5 && cost.gold > 0 && !(this.p.plan && INVEST.has(def)) ? this.p.reserve : 0;
+    // a planner never leaves a new hull idle for want of a captain's fee
+    if (this.p.plan && cost.gold > 0) reserve = Math.max(reserve, this.captainFee());
     if ((cost.gold > 0 && g.treasury - reserve < cost.gold) || g.lumber() < cost.lumber) return false;
     if (g.missingReqs(d).length) return false;
+    if (!ESSENTIAL.has(def) && g.lumber() - cost.lumber < this.lumberHold()) {
+      this.skip('lumber hold');
+      return false;
+    }
     const [cx, cy] = near ?? this.centre();
     for (let attempt = 0; attempt < 3; attempt++) {
       const pl = findSpot(g, d, cx, cy, 34, (p) => !pred || pred(p.x, p.y));
@@ -324,7 +336,7 @@ export class Bot {
     // captains
     const capless = [...g.ships.values()].some((s) => !s.captain && s.status !== 'atsea');
     const noneSail = ![...g.ships.values()].some((s) => s.captain);
-    if (capless && g.treasury > g.edictAvailability('recruit_captain').cost + (noneSail ? 0 : 300) && g.edictAvailability('recruit_captain').ok) {
+    if (capless && g.treasury > g.edictAvailability('recruit_captain').cost + (noneSail ? 0 : this.p.plan ? 100 : 300) && g.edictAvailability('recruit_captain').ok) {
       g.cmd({ type: 'edict', id: 'recruit_captain' });
       this.say('recruited a captain');
     }
@@ -469,20 +481,21 @@ export class Bot {
     // no fleet at all: build whatever we can afford, even a humble snow
     const yard = boatyard ?? shipyard;
     if (yard && !yard.building_ship && ships === 0 && docks > queued) {
-      const t: ShipType = g.treasury > 900 + 1200 ? 'sloop' : g.treasury > 300 + 1200 ? 'schooner' : 'snow';
+      const afford = (t: ShipType) => g.treasury > SHIPS[t].gold + this.feeFor(t) + 100 && g.lumber() >= SHIPS[t].lumber;
+      const t: ShipType = afford('sloop') ? 'sloop' : afford('schooner') ? 'schooner' : 'snow';
       if (g.cmd({ type: 'commission', yard: yard.id, ship: t }).ok) this.say(`commissioned a ${SHIPS[t].name} to rebuild the fleet`);
     }
     // more ships only when there are hands to crew them and gold for a captain
-    const recruit = g.edictAvailability('recruit_captain').cost;
     const roomForCrew = !this.p.plan || crewPool >= 6;
     // a good player's first priority: a real warship to bring in plunder, the snow being an errand boy
     const warships = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons > 8).length;
-    if (this.p.plan && boatyard && !boatyard.building_ship && !warships && !queued && docks > ships && g.treasury > SHIPS.sloop.gold + recruit + 150 && g.lumber() >= SHIPS.sloop.lumber) {
+    if (this.p.plan && boatyard && !boatyard.building_ship && !warships && !queued && docks > ships && g.treasury > SHIPS.sloop.gold + this.feeFor('sloop') + 250 && g.lumber() >= SHIPS.sloop.lumber) {
       if (g.cmd({ type: 'commission', yard: boatyard.id, ship: 'sloop' }).ok) this.say('commissioned a Sloop');
     }
     if (docks > ships + queued && captainless === 0 && g.treasury > this.p.shipAt && roomForCrew) {
-      if (shipyard && !shipyard.building_ship && g.treasury > 500 + recruit) {
-        const want: ShipType = g.treasury > this.p.bigShipAt + recruit ? (g.lumber() >= 150 && crewPool >= 15 ? 'galleon' : 'frigate') : 'brigantine';
+      if (shipyard && !shipyard.building_ship && g.treasury > 500 + this.feeFor('brigantine')) {
+        const big: ShipType = g.lumber() >= 150 && crewPool >= 15 ? 'galleon' : 'frigate';
+        const want: ShipType = g.treasury > this.p.bigShipAt + this.feeFor(big) ? big : 'brigantine';
         if (SHIPS[want].lumber <= g.lumber() && g.cmd({ type: 'commission', yard: shipyard.id, ship: want }).ok) this.say(`commissioned a ${SHIPS[want].name}`);
       } else if (boatyard && !boatyard.building_ship && (!shipyard || ships < 2)) {
         const want: ShipType = g.treasury > 900 ? 'sloop' : g.treasury > 300 ? 'schooner' : 'snow';
@@ -490,6 +503,23 @@ export class Bot {
       }
     }
     if (g.yearsElapsed > (this.p.plan ? 1.5 : 3) && !this.count('shipyard') && g.treasury > this.p.shipAt) this.buildShore('shipyard');
+    if (!this.p.plan) return;
+    // the yard with a hull on the slip gets the shipwrights
+    for (const y of [shipyard, boatyard]) if (y) {
+      const pr = y.building_ship ? 5 : 2;
+      if (y.priority !== pr) g.cmd({ type: 'setPriority', id: y.id, priority: pr });
+    }
+    // sea stores for the whole fleet
+    const stores = [...g.ships.values()].reduce((a, x) => a + SHIPS[x.type].rations, 0);
+    if (this.count('ration_factory') < 1 + Math.floor(stores / 35)) this.staffed('ration_factory');
+    // a black market arms warships the foundry can't, at a price
+    if (this.hasWarship() && !this.count('black_market') && g.treasury > 2500) this.staffed('black_market', this.dockSide());
+    if (g.findBuilding('black_market')) for (const x of g.ships.values()) {
+      const d = SHIPS[x.type];
+      if (d.cannons > 8 && x.captain && (x.status === 'docked' || x.status === 'boarding') && x.cannons < d.cannons * 0.6 && g.treasury > 3000 + this.p.reserve) {
+        if (g.cmd({ type: 'buyBlackMarket', ship: x.id }).ok) this.say(`armed the ${x.name} at the black market`);
+      }
+    }
   }
 
   /** the last months: treasury is worth nothing at the final reckoning, so dump it into hulls and captains */
@@ -547,17 +577,32 @@ export class Bot {
     if (g.lumber() < d.lumber) return false;
     const [cx, cy] = this.centre();
     const sites = [...g.map.dockSites].sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy));
-    for (const s of sites.slice(0, 60)) {
-      for (let rot = 0; rot < 4; rot++) {
-        const [w, h] = footprint(d, rot);
-        for (const [ox, oy] of [[0, 0], [-1, 0], [0, -1], [-2, -1], [-1, -2]]) {
-          const p = canPlace(g, d, s.x - Math.floor(w / 2) + ox, s.y - Math.floor(h / 2) + oy, rot);
-          if (p.ok && g.cmd({ type: 'build', def: 'dock', x: p.x, y: p.y, rot }).ok) {
-            this.say('built Dock');
-            return true;
+    const tryAt = (s: { x: number; y: number; dir: number }) => {
+      const sv = [[0, -1], [1, 0], [0, 1], [-1, 0]][s.dir];
+      for (let r = 0; r < 4; r++)
+        for (let dy = -r; dy <= r; dy++)
+          for (let dx = -r; dx <= r; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            for (let rot = 0; rot < 4; rot++) {
+              const [w, h] = footprint(d, rot);
+              const p = canPlace(g, d, s.x + dx - Math.floor(w / 2) + sv[0] * 2, s.y + dy - Math.floor(h / 2) + sv[1] * 2, rot);
+              if (p.ok && g.cmd({ type: 'build', def: 'dock', x: p.x, y: p.y, rot }).ok) {
+                this.say('built Dock');
+                return true;
+              }
+            }
           }
-        }
-      }
+      return false;
+    };
+    for (const s of sites.slice(0, 40)) if (tryAt(s)) return true;
+    // no berth within reach of a road: run a road down to the nearest open beach and try there
+    for (const s of sites.slice(0, 40)) {
+      if (g.map.occupied[g.map.idx(s.x, s.y)]) continue;
+      const beach = g.pf.nearestWalkable(s.x, s.y, 5);
+      if (!beach) continue;
+      buildRoadBetween(g, cx, cy, beach[0], beach[1]);
+      g.events.push({ type: 'roads' });
+      return tryAt(s);
     }
     return false;
   }
@@ -579,7 +624,7 @@ export class Bot {
       shipwright: true,
       server: pir > 14,
       cook: pir > 18,
-      trader: this.p.trade && (this.count('brewery') > 0 || g.yearsElapsed > 1),
+      trader: this.p.trade,
       engineer: g.yearsElapsed > 1 || this.count('iron_mine') > 0,
       farmer: this.p.trade && g.hasProfession('trader'),
       distiller: this.p.trade && g.hasProfession('farmer'),
@@ -588,6 +633,14 @@ export class Bot {
       gunsmith: g.hasProfession('engineer') && g.yearsElapsed > 2,
       surgeon: g.yearsElapsed > 3,
     };
+    // first, hands for skilled-only posts that stand empty in buildings we already have (a shipyard
+    // with no shipwright builds nothing)
+    const have: Partial<Record<Job, number>> = {};
+    for (const p of g.people.values()) if (p.kind === 'captive' && p.skilled && p.task.kind !== 'dead') have[p.profession as Job] = (have[p.profession as Job] ?? 0) + 1;
+    for (const j of enRoute) if (j) have[j] = (have[j] ?? 0) + 1;
+    const posts: Partial<Record<Job, number>> = {};
+    for (const b of g.buildings.values()) for (const sl of BUILDING[b.def].workers) if (SKILLED_ONLY.includes(sl.job)) posts[sl.job] = (posts[sl.job] ?? 0) + (b.def === 'shipyard' ? 1 : Math.min(sl.count, 1));
+    for (const j of ['shipwright', 'engineer', 'distiller', 'tobacconist', 'gunsmith'] as Job[]) if ((posts[j] ?? 0) > (have[j] ?? 0)) return j;
     const order: Job[] = ['shipwright', ...KIDNAP_ORDER];
     for (const j of order) if (useful[j] && want(j)) return j;
     return null;
@@ -658,11 +711,45 @@ export class Bot {
     if (errands && free < (small ? 5 : 2) && g.captives().length < capTarget && raiding === 0) return 'raid';
     // a kidnapping costs 250: only when the treasury can spare it after the next ship and captain
     const target = this.kidnapTarget();
-    if (errands && target && g.treasury > 250 + this.savingFor()) return 'kidnap';
+    // the trader comes first when money is short: a smuggler's cove is the cheapest income there is
+    const bootstrap = target === 'trader' || target === 'shipwright';
+    if (errands && target && g.treasury > 250 + (bootstrap ? 100 : this.savingFor() + (this.hasWarship() ? 0 : 600))) return 'kidnap';
     if (errands && free < 8 && g.captives().length < capTarget && raiding === 0 && small) return 'raid';
     const unexplored = g.regions.some((r) => r.knowledge === 0 && regionReachable(g, s, r.id).ok);
-    if (unexplored && (small ? g.rng.chance(0.6) : g.rng.chance(0.08))) return 'explore';
+    const unarmed = s.cannons < 2 && s.cutlasses < 2;
+    if (unexplored && (unarmed || (small ? g.rng.chance(0.6) : g.rng.chance(0.08)))) return 'explore';
+    // nobody sane cruises without guns or blades
+    if (unarmed) return 'raid';
     return 'cruise';
+  }
+
+  /** a captain's fee for a ship of this class, with the king's own discounts */
+  private feeFor(t: ShipType): number {
+    const kingMod = this.g.edictAvailability('recruit_captain').cost / this.baseFee();
+    return Math.round(CAPTAIN_COST[t] * kingMod);
+  }
+  private baseFee(): number {
+    const waiting = [...this.g.ships.values()].filter((s) => !s.captain && s.status !== 'atsea');
+    return waiting.length ? Math.max(...waiting.map((s) => CAPTAIN_COST[s.type])) : 1200;
+  }
+
+  /** what the captain for the grandest captainless ship will cost (0 if none waits) */
+  private captainFee(): number {
+    const waiting = [...this.g.ships.values()].some((s) => !s.captain && s.status !== 'atsea');
+    return waiting ? this.g.edictAvailability('recruit_captain').cost : 0;
+  }
+
+  private hasWarship(): boolean {
+    return [...this.g.ships.values()].some((x) => SHIPS[x.type].cannons > 8);
+  }
+
+  /** timber held back for the first real warship */
+  private lumberHold(): number {
+    const g = this.g;
+    if (!this.p.plan) return 0;
+    const warships = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons > 8).length;
+    const queued = [...g.buildings.values()].some((b) => b.building_ship);
+    return !warships && !queued ? SHIPS.sloop.lumber : 0;
   }
 
   /** gold the bot is holding back for the next warship and her captain */

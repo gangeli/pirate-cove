@@ -21,7 +21,7 @@ for name in names:
     k = Kit(seed=abs(hash(name)) % 10007)
     opts = fn(k) or {}
     k.finish(name.replace('@', '_'), os.path.abspath(OUT), ao_size=opts.get('ao', 1024), ao_samples=32 if fast else opts.get('samples', 96),
-             ao_dist=opts.get('ao_dist', 0.9))
+             ao_dist=opts.get('ao_dist', 0.9), ground=opts.get('ground', True))
     # the far LOD: the same building rebuilt with simplified forms, with its own small weathering map
     k2 = Kit(seed=abs(hash(name)) % 10007, lod=True)
     fn(k2)

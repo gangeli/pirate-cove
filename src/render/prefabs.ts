@@ -86,14 +86,17 @@ function crops(W: number, D: number, kind: string, bare = false): THREE.Group {
     }
     return parts;
   })();
-  const merged = new THREE.BufferGeometry().copy(mergeAll(leafGeo));
+  // a modelled plant when there is one; the old paper-leaf plant otherwise
+  const plant = bldModels.meshOf('plant_' + kind);
+  const merged = plant ? plant.geometry : new THREE.BufferGeometry().copy(mergeAll(leafGeo));
   const col = { corn: 0x86a840, banana: 0x5a9a38, papaya: 0x4a8a30, sugarcane: 0x8aa850, tobacco: 0x6a9a3a }[kind] ?? 0x6a9a3a;
-  const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.8, side: THREE.DoubleSide });
+  const mat = plant ? plant.material : new THREE.MeshStandardMaterial({ color: col, roughness: 0.8, side: THREE.DoubleSide });
   const per = kind === 'banana' || kind === 'papaya' ? 3 : 7;
   const cnt = rows * Math.round(W * per / 3);
   const im = new THREE.InstancedMesh(merged, mat, cnt);
   let i = 0;
   const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
+  const tint = new THREE.Color();
   for (let rr = 0; rr < rows; rr++)
     for (let c = 0; c < Math.round(W * per / 3); c++) {
       const x = -W / 2 + 0.25 + (c / Math.max(1, Math.round(W * per / 3) - 1)) * (W - 0.5) + (r() - 0.5) * 0.05;
@@ -102,6 +105,11 @@ function crops(W: number, D: number, kind: string, bare = false): THREE.Group {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * 6.28);
       const sc = 0.8 + r() * 0.4;
       mtx.compose(p.set(x, 0.02, z), q, s.set(sc, sc, sc));
+      if (plant) {
+        // near-white jitter: some plants a little brighter, yellower or bluer than their neighbours
+        const b = 0.82 + r() * 0.3;
+        im.setColorAt(i, tint.setRGB(b * (0.95 + r() * 0.12), b, b * (0.82 + r() * 0.2)));
+      }
       im.setMatrixAt(i++, mtx);
     }
   im.castShadow = true;

@@ -2,7 +2,8 @@
 //   npx tsx scripts/tune.ts compare [seeds] [years]        -> skill ladder + exploit policies
 //   npx tsx scripts/tune.ts search [iters] [seeds] [years]  -> random/coordinate search over Policy knobs
 import { spawn } from 'node:child_process';
-import { DEFAULT_POLICY, type Policy } from '../src/sim/bot';
+import { DEFAULT_POLICY, LADDER, type Policy } from '../src/sim/bot';
+import { PRESETS } from '../src/sim/presets';
 const mode = process.argv[2] ?? 'compare';
 const J = +(process.env.J ?? 3);
 
@@ -38,7 +39,7 @@ function summarize(name: string, rs: any[]) {
   const mean = sc.reduce((a, b) => a + b, 0) / sc.length;
   const sd = Math.sqrt(sc.reduce((a, b) => a + (b - mean) ** 2, 0) / sc.length);
   const lost = rs.filter((r) => r.win === false).length;
-  const medals = { gold: rs.filter((r) => r.win && r.score >= 25000).length, silver: rs.filter((r) => r.win && r.score >= 15000 && r.score < 25000).length };
+  const medals = { gold: rs.filter((r) => r.win && r.parts?.medal === 'gold').length, silver: rs.filter((r) => r.win && r.parts?.medal === 'silver').length };
   const reasons = [...new Set(rs.filter((r) => r.win === false).map((r) => r.reason.slice(0, 40)))];
   console.log(`${name.padEnd(14)} mean ${Math.round(mean).toString().padStart(6)} sd ${Math.round(sd).toString().padStart(5)} lost ${lost}/${rs.length} gold ${medals.gold} silver ${medals.silver} hoard ${Math.round(rs.reduce((a, r) => a + (r.hoard ?? 0), 0) / rs.length)} hap ${(rs.reduce((a, r) => a + (r.hap ?? 0), 0) / rs.length).toFixed(2)} ${reasons.join(' | ')}`);
   return { mean, sd, lost };
@@ -49,22 +50,26 @@ const SEEDS = (n: number) => Array.from({ length: n }, (_, i) => 101 + i * 7);
 if (mode === 'compare') {
   const seeds = SEEDS(+(process.argv[3] ?? 6)), years = +(process.argv[4] ?? 10);
   const extra = process.env.POLICY ? JSON.parse(process.env.POLICY) : null;
+  // PRESET=<id> plays that preset's island and start (default: the old free-form settings)
+  const pr = process.env.PRESET ? PRESETS.find((p) => p.id === process.env.PRESET) : undefined;
+  const settings = pr ? { ...pr.settings, years } : undefined;
   const ladder: [string, Partial<Policy>][] = [
     ['idle', { exploit: 'idle' }],
-    ['novice', { cadence: 3, sloppy: 0.4, fear: false, priceBias: -1, entertainment: 0.5, shipAt: 4000, festivalAt: 0, peaceAt: -101 }],
-    ['casual', { cadence: 1.5, sloppy: 0.2, entertainment: 0.8 }],
-    ['default', {}],
+    ...Object.entries(LADDER),
     ...(extra ? [['tuned', extra] as [string, Partial<Policy>]] : []),
     ['x:pressgang', { exploit: 'pressgang' }],
     ['x:gouge', { exploit: 'gouge' }],
     ['x:nofun', { exploit: 'nofun' }],
     ['x:nofleet', { exploit: 'nofleet' }],
+    ['x:raidonly', { exploit: 'raidonly' }],
+    ['x:enddump', { exploit: 'enddump' }],
     ['x:hoard25', { hoardRate: 0.25 }],
+    ['x:hoard05', { hoardRate: 0.05 }],
   ];
   const only = process.env.ONLY?.split(',');
   for (const [name, pol] of ladder) {
     if (only && !only.includes(name)) continue;
-    const rs = await pool(seeds.map((seed) => () => run({ seed, years, policy: pol })));
+    const rs = await pool(seeds.map((seed) => () => run({ seed, years, policy: pol, settings })));
     summarize(name, rs);
   }
 }
@@ -112,13 +117,9 @@ if (mode === 'starts') {
 if (mode === 'calibrate') {
   // play every preset with a skill ladder; the multiplier that equalises the default bot's raw score across
   // presets is the calibrated difficulty (relative to Brethren of the Coast = 100%)
-  const { PRESETS, difficultyOf } = await import('../src/sim/presets');
+  const { difficultyOf } = await import('../src/sim/presets');
   const seeds = SEEDS(+(process.argv[3] ?? 6)), years = +(process.argv[4] ?? 10);
-  const ladder: [string, Partial<Policy>][] = [
-    ['novice', { cadence: 3, sloppy: 0.4, fear: false, priceBias: -1, entertainment: 0.5, shipAt: 4000, festivalAt: 0, peaceAt: -101 }],
-    ['casual', { cadence: 1.5, sloppy: 0.2, entertainment: 0.8 }],
-    ['default', {}],
-  ];
+  const ladder: [string, Partial<Policy>][] = Object.entries(LADDER).filter(([k]) => !process.env.RUNGS || process.env.RUNGS.split(',').includes(k));
   const only = process.env.ONLY?.split(',');
   const raw: Record<string, Record<string, { sub: number; lost: number; score: number }>> = {};
   for (const pr of PRESETS) {

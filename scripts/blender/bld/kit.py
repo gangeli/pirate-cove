@@ -14,7 +14,7 @@ from mathutils import Vector, Matrix, Euler
 MATS = ['thatch', 'thatchDark', 'planks', 'planksDark', 'oldplanks', 'plaster', 'plasterPink', 'plasterYellow',
         'plasterBlue', 'coral', 'bamboo', 'weave', 'stone', 'stoneDark', 'tiles', 'bark', 'dirt', 'wood', 'darkwood',
         'iron', 'gold', 'brass', 'canvas', 'canvasRed', 'canvasBlue', 'canvasGreen', 'canvasPurple', 'black', 'window',
-        'bone', 'rope', 'leaf', 'soil', 'red', 'water', 'sand', 'terracotta', 'fire', 'flagBlack']
+        'bone', 'rope', 'leaf', 'soil', 'red', 'water', 'sand', 'terracotta', 'fire', 'flagBlack', 'crop']
 # bevel widths by material (tiles): timber gets a crisp arris, stone a softer one, render barely any
 BEVEL = {'planks': 0.006, 'planksDark': 0.006, 'oldplanks': 0.007, 'wood': 0.008, 'darkwood': 0.008, 'stone': 0.012,
          'stoneDark': 0.01, 'coral': 0.012, 'plaster': 0.01, 'plasterPink': 0.01, 'plasterYellow': 0.01, 'plasterBlue': 0.01,

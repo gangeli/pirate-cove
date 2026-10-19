@@ -42,7 +42,7 @@ export const EDICTS: EdictDef[] = [
   { id: 'prohibit_fra', name: 'Prohibit French Victims', tab: 'cruise', cost: 0, ongoing: true, target: 'none', desc: 'Captains leave French ships alone.' },
   { id: 'prohibit_spa', name: 'Prohibit Spanish Victims', tab: 'cruise', cost: 0, ongoing: true, target: 'none', desc: 'Captains leave Spanish ships alone.' },
   { id: 'walk_plank', name: 'Walk the Plank', tab: 'cruise', cost: 0, ongoing: true, target: 'none', desc: 'No witnesses: take no captives or recruits from victims.' },
-  { id: 'recruit_captain', name: 'Recruit Captain', tab: 'cruise', cost: 1200, target: 'none', desc: 'Hire a famous captain to command one of your ships.' },
+  { id: 'recruit_captain', name: 'Recruit Captain', tab: 'cruise', cost: 1200, target: 'none', desc: 'Hire a captain to command your grandest ship that lacks one. A snow\'s skipper comes cheap; a galleon\'s does not.' },
   // captive policy
   { id: 'informants', name: 'Pay for Informants', tab: 'captive', cost: 1000, ongoing: true, target: 'none', desc: 'Captives snitch on each other. Fear rises.' },
   { id: 'free_all', name: 'Free All of Nationality', tab: 'captive', cost: 0, target: 'nation', desc: 'Release every captive of one nation. A grand gesture.' },

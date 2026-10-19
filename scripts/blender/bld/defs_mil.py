@@ -1467,9 +1467,8 @@ def school_marksman(k):
         k.box('wood', 0.06, 0.48, 0.06, x, 0, 0.55)
     k.box('planks', 2.2, 0.04, 0.16, 0, 0.48, 0.55)
     for x in (-0.7, -0.15, 0.4, 0.85):
-        k.push(x, 0.52, 0.55)
-        sack(k, 0, 0, 0.55, 1.57)
-        k.pop()
+        sandbag(k, x, 0.5, 0.55, 0.2)
+        sandbag(k, x + 0.12, 0.56, 0.55, -0.3)
     musket(k, V(-0.45, 0.6, 0.35), V(0.02, 0.0, 1.0), up=(0, 1, 0))
     k.pop()
     hanging_sign(k, -1.4, 1.0, 1.2, 'MARKSMEN') if False else None
@@ -1486,6 +1485,8 @@ def school_marksman(k):
             k.cyl('bark', 0.025, 0.022, 0.62, 1.65, 0, z + s * 0.15, seg=6)
         k.box('wood', 0.05, 0.05, 0.36, 1.65, 0.5, z)
         target(k, 1.62, 0.72, z, 0.24, -math.pi / 2, holes=6)
+    silhouette(k, 1.15, -0.45, -math.pi / 2)
+    silhouette(k, 1.2, 0.5, -math.pi / 2 + 0.2)
     # range pegs
     for x in (-0.4, 0.4, 1.1):
         for z in (-1.15, 1.15):
@@ -1516,6 +1517,26 @@ def school_marksman(k):
     return {'ao': 1024}
 
 
+def sandbag(k, x, y, z, ry=0.0):
+    k.push(x, y, z, ry)
+    k.stack[-1] = k.stack[-1] @ Matrix.Diagonal((1.0, 0.42, 0.62, 1))
+    sphere(k, 'canvas', 0.1, 0, 0.1, 0, seg=10, rings=6)
+    k.pop()
+
+
+def silhouette(k, x, z, ry=0.0, mat='red'):
+    """a man-shaped board target painted as a redcoat, on a stake"""
+    k.push(x, 0, z, ry)
+    k.cyl('bark', 0.025, 0.022, 0.5, 0, 0, -0.03, seg=6)
+    k.mesh(mat, [V(-0.13, 0.3, 0), V(0.13, 0.3, 0), V(0.17, 0.68, 0), V(0.09, 0.76, 0), V(-0.09, 0.76, 0), V(-0.17, 0.68, 0)],
+           [(0, 1, 2, 3, 4, 5)], uvscale=1.0)
+    k.mesh('planks', [V(-0.13, 0.3, -0.02), V(0.13, 0.3, -0.02), V(0.17, 0.68, -0.02), V(0.09, 0.76, -0.02), V(-0.09, 0.76, -0.02), V(-0.17, 0.68, -0.02)],
+           [(5, 4, 3, 2, 1, 0)], uvscale=1.0)
+    k.cyl('bone', 0.055, 0.05, 0.02, 0, 0.83, -0.02, seg=10, rx=math.pi / 2)
+    k.cyl('black', 0.07, 0.07, 0.03, 0, 0.9, -0.02, seg=3, rx=math.pi / 2)
+    k.pop()
+
+
 def pell(k, x, z, h=0.95):
     """a hacked practice post with rope bindings"""
     k.cyl('darkwood', 0.07, 0.065, h, x, -0.05, z, seg=9)
@@ -1533,13 +1554,15 @@ def dummy(k, x, z, ry=0.0):
     k.push(x, 0, z, ry)
     k.cyl('bark', 0.035, 0.03, 1.3, 0, -0.05, 0, seg=7)
     k.beam('wood', V(-0.35, 0.92, 0), V(0.35, 0.92, 0), 0.04, round_=True, seg=6)
-    k.push(0, 0.5, 0)
-    sack(k, 0, 0, 1.25)
-    k.pop()
-    sphere(k, 'canvas', 0.1, 0, 1.17, 0, seg=10, rings=6, squash=1.1)
-    for s in (-1, 1):
-        k.cyl('thatch', 0.05, 0.03, 0.12, s * 0.33, 0.92, 0, seg=6, rz=s * math.pi / 2)
-    k.cbox('canvasRed', 0.34, 0.06, 0.24, 0, 0.82, 0.0)
+    lathe(k, 'thatchDark', [(0.09, 0.5), (0.13, 0.56), (0.15, 0.72), (0.16, 0.86), (0.12, 0.95), (0.05, 0.99)], seg=12)
+    if not k.lod:
+        for y in (0.6, 0.78):
+            k.torus('rope', 0.145 + (y - 0.6) * 0.06, 0.01, 0, y, 0, seg=12, rseg=3)
+        k.cbox('canvasRed', 0.05, 0.4, 0.02, 0.0, 0.75, 0.15, rz=0.6)
+    sphere(k, 'canvas', 0.085, 0, 1.08, 0, seg=10, rings=6, squash=1.15)
+    for s_ in (-1, 1):
+        k.beam('thatch', V(s_ * 0.15, 0.92, 0), V(s_ * 0.36, 0.92, 0), 0.07, round_=True, seg=6)
+    k.cyl('black', 0.1, 0.06, 0.06, 0, 1.15, 0, seg=3)
     k.pop()
 
 
@@ -1554,7 +1577,8 @@ def school_sword(k):
     # crossed cutlasses over the door
     if not k.lod:
         for s in (-1, 1):
-            cutlass(k, V(-0.4 + s * 0.15, 1.25, -0.56), V(-s * 0.7, 0.7, 0), side=(0.7, 0.7 * s, 0))
+            cutlass(k, V(1.15 + s * 0.13, 0.45, -0.575), V(-s * 0.7, 0.7, 0), side=(0.7, 0.7 * s, 0))
+        k.cyl('planksDark', 0.1, 0.1, 0.02, 1.15, 0.68, -0.6, seg=12, rx=math.pi / 2)
     hanging_sign(k, 0.25, 1.0, -0.55, 'SWORDS')
     # sanded yard with a post-and-rail fence, open to the road
     k.box('sand', 4.1, 0.016, 2.25, 0, 0, 0.55, uvscale=0.6)
@@ -1656,7 +1680,7 @@ def school_seaman(k):
     # foot ropes under the yard
     if not k.lod:
         for s in (-1, 1):
-            rope_line(k, hang(V(0, yy - 0.02, 0.14), V(s * 0.88, yy - 0.02, 0.14), 0.22, 5), 0.01)
+            rope_line(k, hang(V(0, yy - 0.02, 0.14), V(s * 0.88, yy - 0.02, 0.14), 0.12, 5), 0.01)
     # shrouds with ratlines
     for s in (-1, 1):
         mine = [p for (ss, p) in chain_pts if ss == s]

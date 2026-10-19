@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { assetUrl, loadTex } from './textures';
 import { M, sign, flag } from './kit';
 
@@ -59,7 +60,8 @@ class BuildingModels {
         m = (base as THREE.MeshStandardMaterial).clone();
         if (!location.search.includes('noao')) (m as THREE.MeshStandardMaterial).aoMap = ao;
         (m as THREE.MeshStandardMaterial).aoMapIntensity = 1;
-        (m as THREE.MeshStandardMaterial).side = THREE.FrontSide;
+        // leaves and stalks are single sheets
+        (m as THREE.MeshStandardMaterial).side = n === 'leaf' || n === 'crop' ? THREE.DoubleSide : THREE.FrontSide;
         // the baked map holds occlusion and weathering: let it darken sunlit surfaces too, not only ambient
         m.onBeforeCompile = (sh) => {
           sh.fragmentShader = sh.fragmentShader.replace('#include <aomap_fragment>', `#include <aomap_fragment>
@@ -124,6 +126,31 @@ class BuildingModels {
     if (smoke.length) out.userData.smokeList = smoke;
     // building views read these hooks off the model root
     root.userData = {};
+    return out;
+  }
+
+  private merged = new Map<string, THREE.Mesh | null>();
+  /** a model collapsed to one geometry (groups per material), for instancing (crop plants) */
+  meshOf(name: string): THREE.Mesh | null {
+    if (this.merged.has(name)) return this.merged.get(name)!;
+    const s = this.src.get(name);
+    let out: THREE.Mesh | null = null;
+    if (s) {
+      s.updateMatrixWorld(true);
+      const geos: THREE.BufferGeometry[] = [];
+      const mats: THREE.Material[] = [];
+      s.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const g = m.geometry.clone().applyMatrix4(m.matrixWorld);
+        for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'uv1'].includes(k)) g.deleteAttribute(k);
+        geos.push(g.index ? g.toNonIndexed() : g);
+        mats.push(m.material as THREE.Material);
+      });
+      const geo = geos.length ? mergeGeometries(geos, true) : null;
+      if (geo) out = new THREE.Mesh(geo, mats);
+    }
+    this.merged.set(name, out);
     return out;
   }
 
