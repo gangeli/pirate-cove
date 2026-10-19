@@ -80,8 +80,8 @@ export class Hud {
       let x = r.left + r.width / 2 - tw / 2, y = r.top - th - 8;
       if (y < 4) y = r.bottom + 8;
       x = Math.max(4, Math.min(innerWidth - tw - 4, x));
-      this.tip.style.left = `${x}px`;
-      this.tip.style.top = `${y}px`;
+      // positioned with a transform: no layout pass for the move itself
+      this.tip.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px)`;
     });
   }
 

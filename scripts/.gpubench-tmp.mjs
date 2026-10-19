@@ -6,7 +6,7 @@ const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-un
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 const errs = [];
 p.on('pageerror', (e) => errs.push(e.message));
-await p.goto(`http://localhost:5173/?play=1&bot=1.5&seed=7&${extra}`);
+await p.goto(`http://localhost:${process.env.PORT ?? 5173}/?play=1&bot=1.5&seed=7&${extra}`);
 await p.waitForFunction(() => window.__app?.state === 'game', null, { timeout: 900000, polling: 1000 });
 await p.waitForTimeout(6000);
 const r = await p.evaluate(async () => {

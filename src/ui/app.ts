@@ -75,16 +75,26 @@ export class App {
     }
   }
 
-  qualitySettings() {
-    return this.quality === 'low'
-      ? { ao: false, bloom: false, shadows: false, pixelRatio: 1 }
-      : this.quality === 'medium'
-        ? { ao: false, bloom: true, shadows: true, pixelRatio: Math.min(1.25, devicePixelRatio) }
-        : { ao: true, bloom: true, shadows: true, pixelRatio: Math.min(2, devicePixelRatio) };
+  /** render settings per tier; dynamic resolution keeps each tier inside its frame budget (?dynres=0 turns it off) */
+  qualitySettings(): Partial<Quality> {
+    const dyn = !/[?&](dynres=0|shot=1)/.test(location.search);
+    if (this.quality === 'low') return { shadows: false, ao: false, bloom: false, post: false, aa: 'none', pixelRatio: 1, minPixelRatio: 0.6, dynamicRes: dyn, flashLights: 0 };
+    if (this.quality === 'medium') return { shadows: true, shadowSize: 1024, softShadows: false, shadowHz: 20, ao: false, bloom: true, bloomScale: 0.25, aa: 'fxaa', pixelRatio: 1, minPixelRatio: 0.7, dynamicRes: dyn, flashLights: 0 };
+    return { shadows: true, shadowSize: 2048, softShadows: true, shadowHz: 30, ao: true, aoScale: 0.5, aoSamples: 8, bloom: true, bloomScale: 0.5, aa: 'smaa', pixelRatio: 1.25, minPixelRatio: 0.8, dynamicRes: dyn, flashLights: 2 };
+  }
+
+  /** switch the graphics tier live (settings) */
+  applyQuality(): void {
+    this.world.setQuality(this.qualitySettings());
   }
 
   async init(): Promise<void> {
     this.world = new World(this.canvas, this.qualitySettings());
+    // no graphics acceleration: everything is drawn on the CPU, so drop to the cheapest settings (unless ?q= forces a tier)
+    if (this.world.gpu.software && !/[?&]q=/.test(location.search)) {
+      this.quality = 'low';
+      this.world.setQuality(this.qualitySettings());
+    }
     this.world.scene.add(this.ghost, this.roadPreview);
     await audio.init();
     this.modal = new Modal(this);
@@ -334,8 +344,7 @@ export class App {
     c.addEventListener('pointermove', (ev) => {
       if (this.state !== 'game') return;
       this.hover = this.tileAt(ev);
-      this.cursorTip.style.left = `${ev.clientX + 16}px`;
-      this.cursorTip.style.top = `${ev.clientY + 14}px`;
+      this.cursorTip.style.transform = `translate(${ev.clientX + 16}px,${ev.clientY + 14}px)`; // no layout for a move
       if (this.tool.kind === 'clear' && this.dragStart && this.hover) this.cmd({ type: 'clearTrees', x: this.hover.x, y: this.hover.y, r: 1 });
     });
     c.addEventListener('pointerdown', (ev) => {

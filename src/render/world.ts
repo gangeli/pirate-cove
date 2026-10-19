@@ -3,9 +3,10 @@ import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
-import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
+import { HalfResAO, ScaledBloom } from './post';
 import type { Game } from '../sim/game';
 import { TerrainMesh } from './terrain';
 import { Water } from './water';
@@ -20,9 +21,65 @@ import { disposeObject, disposeComposer } from './dispose';
 
 export interface Quality {
   shadows: boolean;
+  /** shadow map resolution */
+  shadowSize: number;
+  /** PCF soft (9 taps, bilinear) instead of plain PCF */
+  softShadows: boolean;
+  /** how often the shadow map is re-rendered while the view stands still (it is always redrawn when the view moves) */
+  shadowHz: number;
+  /** ambient occlusion (GTAO from the main depth buffer at aoScale of the screen) */
   ao: boolean;
+  aoScale: number;
+  aoSamples: number;
   bloom: boolean;
+  /** bloom blur chain resolution relative to the frame */
+  bloomScale: number;
+  aa: 'smaa' | 'fxaa' | 'none';
+  /** post-processing at all (off: render straight to the canvas, tone mapping in the materials) */
+  post: boolean;
+  /** upper bound for the device pixel ratio */
   pixelRatio: number;
+  /** dynamic resolution: lowest pixel ratio the controller may drop to (= pixelRatio disables it) */
+  minPixelRatio: number;
+  dynamicRes: boolean;
+  /** point lights for cannon muzzle flashes (each costs every lit pixel) */
+  flashLights: number;
+}
+
+export const QUALITY_DEFAULTS: Quality = {
+  shadows: true, shadowSize: 2048, softShadows: false, shadowHz: 30, ao: false, aoScale: 0.5, aoSamples: 8, bloom: true, bloomScale: 0.25,
+  aa: 'fxaa', post: true, pixelRatio: 1, minPixelRatio: 0.7, dynamicRes: true, flashLights: 1,
+};
+
+export interface GpuInfo {
+  renderer: string;
+  vendor: string;
+  /** rendering on the CPU (SwiftShader, llvmpipe, Microsoft Basic Render, ...) or the browser flags a major performance caveat */
+  software: boolean;
+}
+
+/** which GPU the browser gave us; software rasterisers make everything crawl */
+function detectGpu(r: THREE.WebGLRenderer): GpuInfo {
+  const gl = r.getContext();
+  let renderer = '', vendor = '';
+  try {
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    renderer = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? '');
+    vendor = String(gl.getParameter(ext ? ext.UNMASKED_VENDOR_WEBGL : gl.VENDOR) ?? '');
+  } catch {
+    /* ignore */
+  }
+  let caveat = false;
+  try {
+    // browsers refuse this flag when they would fall back to a software rasteriser
+    const g2 = document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: true });
+    caveat = !g2;
+    g2?.getExtension('WEBGL_lose_context')?.loseContext();
+  } catch {
+    /* ignore */
+  }
+  const soft = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render|gdi generic|mesa offscreen/i.test(`${renderer} ${vendor}`);
+  return { renderer: renderer || 'unknown', vendor, software: soft || caveat };
 }
 
 export class World {
@@ -38,28 +95,35 @@ export class World {
   effects!: Effects;
   readonly sun: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
+  readonly gpu: GpuInfo;
   private sky: Sky;
-  private composer!: EffectComposer;
-  private bloom?: UnrealBloomPass;
-  private ao?: GTAOPass;
+  private composer?: EffectComposer;
+  private fxaa?: ShaderPass;
   private pmrem: THREE.PMREMGenerator;
   readonly sunDir = new THREE.Vector3();
   game!: Game;
   quality: Quality;
+  /** current (dynamic) pixel ratio */
+  pr = 1;
   time = 0;
+  /** set by the app while nothing advances (paused, modal open): the view then redraws at a low rate unless something moves */
+  idle = false;
   readonly raycaster = new THREE.Raycaster();
   readonly overlayGroup = new THREE.Group();
   private roadTex?: THREE.DataTexture;
 
   constructor(readonly canvas: HTMLCanvasElement, quality: Partial<Quality> = {}) {
-    this.quality = { shadows: true, ao: true, bloom: true, pixelRatio: Math.min(window.devicePixelRatio, 2), ...quality };
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-    this.renderer.setPixelRatio(this.quality.pixelRatio);
+    this.quality = { ...QUALITY_DEFAULTS, ...quality };
+    // no preserveDrawingBuffer: it forces a full-frame copy every frame (screenshots go through the compositor)
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false, stencil: false });
+    this.gpu = detectGpu(this.renderer);
+    this.pr = this.maxPixelRatio();
+    this.renderer.setPixelRatio(this.pr);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.95;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.shadowMap.enabled = this.quality.shadows;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // the shadow map is redrawn on demand (view moved, or at quality.shadowHz), not on every render call
+    this.renderer.shadowMap.autoUpdate = false;
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
     this.rig = new CameraRig(canvas);
     this.pmrem = new THREE.PMREMGenerator(this.renderer);
@@ -74,8 +138,6 @@ export class World {
     su.mieDirectionalG.value = 0.8;
     this.scene.add(this.sky);
     this.sun = new THREE.DirectionalLight(0xfff1dc, 3.2);
-    this.sun.castShadow = this.quality.shadows;
-    this.sun.shadow.mapSize.set(4096, 4096);
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.04;
     this.scene.add(this.sun, this.sun.target);
@@ -84,6 +146,44 @@ export class World {
     this.scene.fog = new THREE.Fog(0xa9c8de, 250, 900);
     this.setSun(50, 32);
     this.scene.add(this.overlayGroup);
+    this.applyShadowQuality();
+    const poke = () => (this.lastInput = performance.now());
+    for (const ev of ['pointermove', 'pointerdown', 'keydown', 'wheel']) window.addEventListener(ev, poke, { passive: true });
+  }
+
+  private maxPixelRatio(): number {
+    return Math.max(0.5, Math.min(window.devicePixelRatio || 1, this.quality.pixelRatio));
+  }
+
+  /** switch quality live (settings): shadows, post chain and resolution */
+  setQuality(q: Partial<Quality>): void {
+    this.quality = { ...QUALITY_DEFAULTS, ...q };
+    this.pr = this.maxPixelRatio();
+    this.applyShadowQuality();
+    this.effects?.setFlashLights(this.quality.flashLights);
+    // shadow on/off and filter changes alter the shaders
+    this.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true;
+    });
+    if (this.game) {
+      this.resize(this.canvas.clientWidth, this.canvas.clientHeight);
+      this.setupComposer();
+    }
+  }
+
+  private applyShadowQuality(): void {
+    const q = this.quality;
+    this.renderer.shadowMap.enabled = q.shadows;
+    this.renderer.shadowMap.type = q.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this.sun.castShadow = q.shadows;
+    if (this.sun.shadow.mapSize.x !== q.shadowSize) {
+      this.sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
+      this.sun.shadow.map?.dispose();
+      (this.sun.shadow as any).map = null;
+    }
+    this.shadowRect = null;
+    this.renderer.shadowMap.needsUpdate = true;
   }
 
   /** elevation & azimuth in degrees */
@@ -126,34 +226,159 @@ export class World {
     this.rig.heightAt = (x, z) => m.heightAt(x, z);
     const palace = game.findBuilding('palace');
     if (palace) this.rig.lookAt(palace.x + palace.w / 2, palace.y + palace.h + 4, true);
+    // the sun hangs still over the map centre; updateShadows() fits its frustum to the view
+    const c = m.size / 2, R = m.size * 0.75 + 24;
+    this.sun.target.position.set(c, 0, c);
+    this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, m.size);
+    this.sun.shadow.camera.near = Math.max(1, m.size - R);
+    this.sun.shadow.camera.far = m.size + R;
+    this.shadowRect = null;
+    this.effects.setFlashLights(this.quality.flashLights);
     this.setupComposer();
     const wu = this.water.uniforms;
     (wu.uSunDir.value as THREE.Vector3).copy(this.sunDir);
   }
 
   private setupComposer(): void {
-    const size = this.renderer.getSize(new THREE.Vector2());
     disposeComposer(this.composer);
-    const rt = new THREE.WebGLRenderTarget(size.x * this.quality.pixelRatio, size.y * this.quality.pixelRatio, { type: THREE.HalfFloatType, samples: 0 });
+    this.composer = undefined;
+    this.fxaa = undefined;
+    const q = this.quality;
+    if (!q.post) return;
+    const size = this.renderer.getSize(new THREE.Vector2());
+    const pr = this.renderer.getPixelRatio();
+    const W = Math.floor(size.x * pr), H = Math.floor(size.y * pr);
+    // HalfFloat keeps the HDR highlights the bloom picks out; AO reads the main pass's depth texture
+    const rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, samples: 0, depthTexture: q.ao ? new THREE.DepthTexture(W, H) : undefined });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.rig.camera));
-    if (this.quality.ao) {
-      this.ao = new GTAOPass(this.scene, this.rig.camera, size.x, size.y);
-      this.ao.blendIntensity = 0.85;
-      (this.ao as any).updateGtaoMaterial({ radius: 1.2, distanceExponent: 1.6, thickness: 2, scale: 1, samples: 12 });
-      this.composer.addPass(this.ao);
-    }
-    if (this.quality.bloom) {
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.18, 0.5, 0.92);
-      this.composer.addPass(this.bloom);
-    }
+    if (q.ao) this.composer.addPass(new HalfResAO(this.scene, this.rig.camera, W, H, q.aoScale, q.aoSamples, 0.85));
+    if (q.bloom) this.composer.addPass(new ScaledBloom(new THREE.Vector2(W, H), 0.18, 0.5, 0.92, q.bloomScale));
     this.composer.addPass(new OutputPass());
-    this.composer.addPass(new SMAAPass(size.x * this.quality.pixelRatio, size.y * this.quality.pixelRatio));
+    if (q.aa === 'smaa' && pr < 1.5) this.composer.addPass(new SMAAPass(W, H));
+    else if (q.aa === 'fxaa' && pr < 1.5) {
+      this.fxaa = new ShaderPass(FXAAShader);
+      this.composer.addPass(this.fxaa);
+      this.updateFxaa();
+    }
+  }
+
+  private updateFxaa(): void {
+    if (!this.fxaa) return;
+    const s = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    this.fxaa.material.uniforms.resolution.value.set(1 / s.x, 1 / s.y);
   }
 
   resize(w: number, h: number): void {
+    const prChanged = this.renderer.getPixelRatio() !== this.pr;
+    if (prChanged) this.renderer.setPixelRatio(this.pr);
     this.renderer.setSize(w, h, false);
-    this.composer?.setSize(w, h);
+    if (this.composer) {
+      if (prChanged) this.composer.setPixelRatio(this.pr);
+      this.composer.setSize(w, h);
+    }
+    this.updateFxaa();
+    this.renderer.shadowMap.needsUpdate = true;
+  }
+
+  // ------------------------------------------------------------------------------------------------- dynamic resolution
+  private dts: number[] = [];
+  private resCooldown = 3;
+  private refresh = 1000 / 60;
+  /** pixel ratio steps we dropped from recently: don't climb straight back into them */
+  private resBlock = new Map<number, number>();
+
+  /** lower the pixel ratio when frames run over budget, raise it again when every frame makes vsync */
+  private adaptResolution(dt: number): void {
+    const q = this.quality;
+    if (!q.dynamicRes || q.minPixelRatio >= this.maxPixelRatio() || document.hidden) return;
+    const ms = dt * 1000;
+    if (ms <= 0 || ms >= 100) return; // stalls (tab switch, loading) say nothing about the GPU
+    this.dts.push(ms);
+    this.refresh = Math.min(this.refresh * 1.0005, Math.max(4, ms)); // the display's frame interval, slowly forgotten
+    this.resCooldown -= dt;
+    if (this.dts.length < 24 || this.resCooldown > 0) return;
+    const s = [...this.dts].sort((x, y) => x - y);
+    this.dts.length = 0;
+    const med = s[s.length >> 1], p90 = s[Math.floor(s.length * 0.9)];
+    const budget = Math.max(this.refresh * 1.3, 1000 / 55);
+    const now = performance.now();
+    const max = this.maxPixelRatio(), min = Math.min(max, q.minPixelRatio);
+    const key = (v: number) => Math.round(v * 20);
+    if (med > budget && this.pr > min) {
+      this.resBlock.set(key(this.pr), now + 30000);
+      this.pr = Math.max(min, Math.round((this.pr - (med > budget * 1.8 ? 0.2 : 0.1)) * 20) / 20);
+      this.resCooldown = 1.2;
+    } else if (p90 < this.refresh * 1.15 && this.pr < max) {
+      const next = Math.min(max, Math.round((this.pr + 0.05) * 20) / 20);
+      if ((this.resBlock.get(key(next)) ?? 0) < now) this.pr = next;
+      this.resCooldown = 3;
+    } else this.resCooldown = 0.5;
+  }
+
+  // ------------------------------------------------------------------------------------------------- shadows
+  /** current shadow frustum in light space: x0..x1, y0..y1 */
+  private shadowRect: { x0: number; x1: number; y0: number; y1: number } | null = null;
+  private shadowAge = 0;
+  private readonly tmpV = new THREE.Vector3();
+  private readonly tmpD = new THREE.Vector3();
+
+  /**
+   * Fit the sun's orthographic shadow camera to the part of the ground the view can see. The light sits still
+   * (aimed at the map centre), so in its space the view footprint just slides around; the frustum is refitted with
+   * some slack only when the footprint leaves it or shrinks a lot (zoom), and snapped to whole texels so shadows
+   * don't shimmer. Casters outside the footprint whose shadows fall inside it project into the same light-space
+   * rectangle, so nothing is lost. The map is only re-rendered when the frustum changed or at quality.shadowHz.
+   */
+  private updateShadows(dt: number): void {
+    const q = this.quality;
+    if (!q.shadows) return;
+    const cam = this.rig.camera;
+    cam.updateMatrixWorld();
+    const sc = this.sun.shadow.camera;
+    sc.position.copy(this.sun.position);
+    sc.lookAt(this.sun.target.position);
+    sc.updateMatrixWorld();
+    const inv = sc.matrixWorldInverse;
+    const gy = this.rig.target.y;
+    const maxLen = Math.min(320, this.rig.dist * 3 + 40);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const [nx, ny] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const d = this.tmpD.set(nx, ny, 0.5).unproject(cam).sub(cam.position).normalize();
+      let t = d.y < -0.02 ? (gy - cam.position.y) / d.y : maxLen;
+      t = Math.min(t, maxLen);
+      for (const lift of [0, 8]) {
+        const p = this.tmpV.copy(cam.position).addScaledVector(d, t);
+        p.y += lift;
+        p.applyMatrix4(inv);
+        x0 = Math.min(x0, p.x), x1 = Math.max(x1, p.x), y0 = Math.min(y0, p.y), y1 = Math.max(y1, p.y);
+      }
+    }
+    const m = 3;
+    x0 -= m, x1 += m, y0 -= m, y1 += m;
+    const r = this.shadowRect;
+    const fits = r && r.x0 <= x0 && r.x1 >= x1 && r.y0 <= y0 && r.y1 >= y1 && (r.x1 - r.x0) < (x1 - x0) * 1.6 && (r.y1 - r.y0) < (y1 - y0) * 1.6;
+    let changed = false;
+    if (!fits) {
+      const N = this.sun.shadow.mapSize.x;
+      // grow by 20% of slack, quantise the size so panning at a fixed zoom keeps a constant texel size
+      const quant = (v: number) => Math.ceil((v * 1.2) / 8) * 8;
+      const sw = quant(x1 - x0), sh = quant(y1 - y0);
+      const tx = sw / N, ty = sh / N;
+      const cx = Math.round((x0 + x1) / 2 / tx) * tx, cy = Math.round((y0 + y1) / 2 / ty) * ty;
+      this.shadowRect = { x0: cx - sw / 2, x1: cx + sw / 2, y0: cy - sh / 2, y1: cy + sh / 2 };
+      sc.left = this.shadowRect.x0;
+      sc.right = this.shadowRect.x1;
+      sc.bottom = this.shadowRect.y0;
+      sc.top = this.shadowRect.y1;
+      sc.updateProjectionMatrix();
+      changed = true;
+    }
+    this.shadowAge += dt;
+    if (changed || this.shadowAge >= 1 / q.shadowHz - 0.002) {
+      this.renderer.shadowMap.needsUpdate = true;
+      this.shadowAge = 0;
+    }
   }
 
   updateRoadTex(): void {
@@ -209,12 +434,26 @@ export class World {
     // UI/audio listeners consume the same list; it is cleared by the app after all listeners ran
   }
 
+  private lastInput = 0;
+  private pendingDt = 0;
+  private lastCam = new THREE.Matrix4();
+
   render(dt: number): void {
-    this.time += dt;
+    this.adaptResolution(dt);
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
-    if (this.canvas.width !== Math.floor(w * this.quality.pixelRatio) || this.canvas.height !== Math.floor(h * this.quality.pixelRatio)) this.resize(w, h);
+    if (this.canvas.width !== Math.floor(w * this.pr) || this.canvas.height !== Math.floor(h * this.pr)) this.resize(w, h);
     this.rig.update(dt, w, h);
     this.consumeEvents();
+    this.pendingDt += dt;
+    // nothing advancing and nobody touching anything: redraw at ~15 fps (water and flags keep moving, the GPU rests)
+    const cam = this.rig.camera;
+    cam.updateMatrixWorld();
+    const still = this.lastCam.equals(cam.matrixWorld);
+    if (this.idle && still && performance.now() - this.lastInput > 500 && this.pendingDt < 1 / 15) return;
+    this.lastCam.copy(cam.matrixWorld);
+    dt = Math.min(0.1, this.pendingDt);
+    this.pendingDt = 0;
+    this.time += dt;
     const t = this.time;
     this.terrain.uniforms.uTime.value = t;
     this.water.uniforms.uTime.value = t;
@@ -223,23 +462,9 @@ export class World {
     this.people.update(dt);
     this.ships.update(dt);
     this.effects.update(dt);
-    // shadow camera follows the view
-    const tgt = this.rig.target;
-    const ext = Math.min(120, this.rig.dist * 1.25 + 20);
-    const sc = this.sun.shadow.camera;
-    sc.left = -ext;
-    sc.right = ext;
-    sc.top = ext;
-    sc.bottom = -ext;
-    sc.near = 1;
-    sc.far = 400;
-    sc.updateProjectionMatrix();
-    // snap to texel grid to avoid shimmering
-    const texel = (ext * 2) / this.sun.shadow.mapSize.x;
-    const snap = (v: number) => Math.round(v / texel) * texel;
-    this.sun.target.position.set(snap(tgt.x), 0, snap(tgt.z));
-    this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 200);
-    this.composer.render(dt);
+    this.updateShadows(dt);
+    if (this.composer) this.composer.render(dt);
+    else this.renderer.render(this.scene, cam);
   }
 
   /** world point under a screen position (terrain or water plane) */

@@ -11,6 +11,7 @@ export class PathFinder {
   private cur = 1;
   private heap: Int32Array;
   private cache = new Map<number, Int32Array | null>();
+  private readonly nb: Int32Array;
   private cacheOrder: number[] = [];
   blocked: Uint8Array;
   /** monotonically increasing; bumping clears cache */
@@ -25,6 +26,7 @@ export class PathFinder {
     this.closed = new Uint32Array(n * n);
     this.heap = new Int32Array(n * n * 4);
     this.blocked = new Uint8Array(n * n);
+    this.nb = Int32Array.from([1, -1, n, -n, n + 1, n - 1, -n + 1, -n - 1]);
   }
 
   invalidate(): void {
@@ -95,47 +97,62 @@ export class PathFinder {
     };
     g[s] = 0;
     f[s] = h(s);
-    this.stamp[s] = st;
-    this.from[s] = -1;
+    const stamp = this.stamp, closed = this.closed, from = this.from;
+    stamp[s] = st;
+    from[s] = -1;
     push(s);
     let expanded = 0;
-    const nb = [1, -1, n, -n, n + 1, n - 1, -n + 1, -n - 1];
+    const NN = n * n;
+    // this.cost() inlined over local arrays (same rules; see cost())
+    const blk = this.blocked, m = this.map, ter = m.terrain, pth = m.path, trs = m.trees;
+    const cost = (i: number): number => {
+      if (blk[i]) return Infinity;
+      if (!(i >= 0 && i < NN)) return Infinity;
+      const t = ter[i];
+      if (!(t >= Terrain.Beach && t !== Terrain.Mountain)) return Infinity;
+      if (pth[i]) return 1;
+      return trs[i] ? 3.2 : 2.2;
+    };
+    const nb = this.nb;
     while (hs > 0) {
       const c = pop();
       if (c === goal) break;
-      if (this.closed[c] === st) continue;
-      this.closed[c] = st;
+      if (closed[c] === st) continue;
+      closed[c] = st;
       if (++expanded > maxNodes) return null;
       const cx = c % n;
+      const gc = g[c];
       for (let k = 0; k < 8; k++) {
         const ni = c + nb[k];
-        if (ni < 0 || ni >= n * n) continue;
+        if (ni < 0 || ni >= NN) continue;
         const nx = ni % n;
-        if (Math.abs(nx - cx) > 1) continue;
-        if (this.closed[ni] === st) continue;
-        let cc = ni === goal ? Math.min(this.cost(ni), 2) : this.cost(ni);
+        const ddx = nx - cx;
+        if (ddx > 1 || ddx < -1) continue;
+        if (closed[ni] === st) continue;
+        let cc = ni === goal ? Math.min(cost(ni), 2) : cost(ni);
         if (cc === Infinity) continue;
         if (k >= 4) {
           // no corner cutting
-          const ox = c + (nx - cx), oy = ni - (nx - cx);
-          if ((ox !== goal && this.cost(ox) === Infinity) || (oy !== goal && this.cost(oy) === Infinity)) continue;
+          const ox = c + ddx, oy = ni - ddx;
+          if ((ox !== goal && cost(ox) === Infinity) || (oy !== goal && cost(oy) === Infinity)) continue;
           cc *= Math.SQRT2;
         }
-        const ng = g[c] + cc;
-        if (this.stamp[ni] !== st || ng < g[ni]) {
-          this.stamp[ni] = st;
+        const ng = gc + cc;
+        if (stamp[ni] !== st || ng < g[ni]) {
+          stamp[ni] = st;
           g[ni] = ng;
           f[ni] = ng + h(ni);
-          this.from[ni] = c;
+          from[ni] = c;
           push(ni);
         }
       }
     }
-    if (this.stamp[goal] !== st) return null;
-    const out: number[] = [];
-    for (let c = goal; c !== s; c = this.from[c]) out.push(c);
-    out.reverse();
-    return Int32Array.from(out);
+    if (stamp[goal] !== st) return null;
+    let len = 0;
+    for (let c = goal; c !== s; c = from[c]) len++;
+    const out = new Int32Array(len);
+    for (let c = goal, i = len - 1; c !== s; c = from[c]) out[i--] = c;
+    return out;
   }
 
   /** nearest walkable tile to (x,y) by BFS */

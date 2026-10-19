@@ -3,17 +3,9 @@ import { installTheme } from './ui/theme';
 import { pending } from './render/textures';
 import { props } from './render/props';
 import { Game } from './sim/game';
+import { initPwa, launchShortcut } from './ui/install';
 
 /** Entry point. URL parameters (for testing): ?play=1 starts a game immediately; ?shot=1 renders a still. */
-function registerServiceWorker() {
-  // only for real builds: the dev server serves modules that must not be cached
-  if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch((e) => console.warn('service worker', e));
-  });
-}
-registerServiceWorker();
-
 async function boot() {
   installTheme();
   const params = new URLSearchParams(location.search);
@@ -26,6 +18,7 @@ async function boot() {
   const bar = loading.querySelector('.pbar > div') as HTMLElement;
   bar.style.width = '15%';
   const app = new App(canvas, ui);
+  initPwa(app);
   if (params.get('q')) app.quality = params.get('q') as any;
   await app.init();
   await props.load();
@@ -62,6 +55,7 @@ async function boot() {
   if (params.get('nohud')) ui.style.display = 'none';
   setTimeout(() => loading.remove(), 200);
   (window as any).__ready = true;
+  launchShortcut(app, params);
   if (params.get('shot')) {
     const frames = +(params.get('frames') ?? 3);
     const ui2 = params.get('ui');

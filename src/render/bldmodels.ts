@@ -12,6 +12,79 @@ import { markSharedTree } from './dispose';
  * on the second UV set). Marker nodes become the hooks the buildings view already understands:
  * smoke (chimney smoke), sign:TEXT (painted board), flag (pirate flag on a pole).
  */
+/**
+ * Compact a decoded model's vertex data in place (GPU and JS heap): positions as normalized Int16 (the dequantize
+ * scale/offset moves into the mesh transform), normals as Int8, the tiling UVs as half floats where their range
+ * allows, the AO UVs as normalized Uint16, indices as Uint16 when they fit. 40 bytes per vertex become ~17.
+ */
+function quantize(root: THREE.Object3D): void {
+  const done = new Map<THREE.BufferGeometry, { c: THREE.Vector3; h: number }>();
+  const meshes: THREE.Mesh[] = [];
+  root.traverse((o) => {
+    if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh);
+  });
+  for (const mesh of meshes) {
+    const g = mesh.geometry;
+    let q = done.get(g);
+    if (!q) {
+      q = { c: new THREE.Vector3(), h: 0 };
+      done.set(g, q);
+      const pos = g.getAttribute('position') as THREE.BufferAttribute | undefined;
+      if (!pos || !(pos.array instanceof Float32Array)) continue;
+      g.computeBoundingBox();
+      const bb = g.boundingBox!;
+      bb.getCenter(q.c);
+      const sz = bb.getSize(new THREE.Vector3());
+      const h = Math.max(sz.x, sz.y, sz.z) / 2 || 1;
+      const pa = pos.array, n = pos.count;
+      const pq = new Int16Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        pq[i * 3] = Math.round(((pa[i * 3] - q.c.x) / h) * 32767);
+        pq[i * 3 + 1] = Math.round(((pa[i * 3 + 1] - q.c.y) / h) * 32767);
+        pq[i * 3 + 2] = Math.round(((pa[i * 3 + 2] - q.c.z) / h) * 32767);
+      }
+      g.setAttribute('position', new THREE.BufferAttribute(pq, 3, true));
+      q.h = h;
+      const nrm = g.getAttribute('normal') as THREE.BufferAttribute | undefined;
+      if (nrm && nrm.array instanceof Float32Array) {
+        const na = nrm.array, nq = new Int8Array(na.length);
+        for (let i = 0; i < na.length; i++) nq[i] = Math.round(Math.max(-1, Math.min(1, na[i])) * 127);
+        g.setAttribute('normal', new THREE.BufferAttribute(nq, 3, true));
+      }
+      const uv = g.getAttribute('uv') as THREE.BufferAttribute | undefined;
+      if (uv && uv.array instanceof Float32Array) {
+        let m = 0;
+        for (const v of uv.array) m = Math.max(m, Math.abs(v));
+        // half floats keep ~1/1000 of a repeat below 2 repeats; beyond 8 the steps would show
+        if (m <= 8) {
+          const hq = new Uint16Array(uv.array.length);
+          for (let i = 0; i < hq.length; i++) hq[i] = THREE.DataUtils.toHalfFloat(uv.array[i]);
+          g.setAttribute('uv', new THREE.Float16BufferAttribute(hq, 2));
+        }
+      }
+      const uv1 = g.getAttribute('uv1') as THREE.BufferAttribute | undefined;
+      if (uv1 && uv1.array instanceof Float32Array) {
+        let lo = Infinity, hi = -Infinity;
+        for (const v of uv1.array) (lo = Math.min(lo, v)), (hi = Math.max(hi, v));
+        if (lo >= 0 && hi <= 1) {
+          const uq = new Uint16Array(uv1.array.length);
+          for (let i = 0; i < uq.length; i++) uq[i] = Math.round(uv1.array[i] * 65535);
+          g.setAttribute('uv1', new THREE.BufferAttribute(uq, 2, true));
+        }
+      }
+      const idx = g.index;
+      if (idx && !(idx.array instanceof Uint16Array) && n <= 65535) g.setIndex(new THREE.BufferAttribute(Uint16Array.from(idx.array as ArrayLike<number>), 1));
+      g.computeBoundingBox();
+      g.computeBoundingSphere();
+    }
+    if (!q.h) continue;
+    // world = T + R*S*(h*p' + c): fold the offset and scale into the node transform
+    mesh.position.add(q.c.clone().multiply(mesh.scale).applyQuaternion(mesh.quaternion));
+    mesh.scale.multiplyScalar(q.h);
+    mesh.updateMatrix();
+  }
+}
+
 class BuildingModels {
   private src = new Map<string, THREE.Group>();
   private far = new Map<string, THREE.Group>();
@@ -150,6 +223,7 @@ class BuildingModels {
       }
       return m;
     };
+    if (!name.startsWith('plant_') && !location.search.includes('noquant')) quantize(root);
     const markers: THREE.Object3D[] = [];
     root.traverse((o) => {
       const mesh = o as THREE.Mesh;

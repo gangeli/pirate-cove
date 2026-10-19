@@ -7,6 +7,7 @@ import type { Settings } from '../sim/types';
 import { PRESETS, difficultyOf } from '../sim/presets';
 import { audio } from '../audio/audio';
 import credits from '../credits.json';
+import { pwaMenuItems } from './install';
 
 const charCreditFiles = import.meta.glob('../charcredits/*.json', { eager: true }) as Record<string, { default: { asset: string; id: string; author: string; license: string; url: string }[] }>;
 
@@ -101,6 +102,7 @@ export class MainMenu {
         <button class="item" data-act="credits">Credits</button>
       </div></div>
       <div class="foot">A tribute to the pirate island builders of old. Click anywhere to enable sound.</div>`);
+    pwaMenuItems(this.root.querySelector('.items'));
     this.root.classList.remove('hidden');
   }
   hide(): void {

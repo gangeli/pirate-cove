@@ -351,8 +351,8 @@ function absorbEnv(g: Game, p: Person, dt: number): void {
 const PEACE_KEY = Object.fromEntries(NATIONS.map((n) => [n, `peace:${n}`])) as Record<Nation, string>;
 
 /** happiness: mean of six opinions (weighted), plus anarchy and defense feelings */
-export function pirateFactors(g: Game, p: Person): Record<string, number> {
-  const f: Record<string, number> = {};
+export function pirateFactors(g: Game, p: Person, into?: Record<string, number>): Record<string, number> {
+  const f: Record<string, number> = into ?? {};
   for (const n of PIRATE_NEEDS) f[n] = p.opinion[n] ?? 0.5;
   const delayOver = g.time - p.arrived >= g.auraDelay();
   // anarchy: pirates like low order (negative order channel)
@@ -370,8 +370,9 @@ export function pirateFactors(g: Game, p: Person): Record<string, number> {
 }
 
 /** the happiness a pirate's needs and surroundings add up to (weighted mean of the factors) */
+const FACTORS_SCRATCH: Record<string, number> = {};
 function pirateMood(g: Game, p: Person): number {
-  const f = pirateFactors(g, p);
+  const f = pirateFactors(g, p, FACTORS_SCRATCH); // consumed right here, so one shared object will do
   let tot = 0, wsum = 0;
   for (const n of PIRATE_NEEDS) {
     const w = p.weights[n] ?? 1;
@@ -414,9 +415,10 @@ function updateResignation(g: Game, p: Person, dt: number): void {
   const fear = delayOver ? Math.min(1, p.env.fear) : 0.5;
   const order = delayOver ? Math.max(0, Math.min(1, 0.4 + p.env.order)) : 0.5;
   const awe = delayOver ? Math.min(1, 0.15 + p.env.awe) : 0.4;
-  const parts = [p.opinion.food ?? 0.5, p.opinion.rest ?? 0.5, fear, order, awe];
-  if (g.time - p.arrived > YEAR * 2 && g.buildingCount('church')) parts.push(p.opinion.prayer ?? 0.5);
-  let r = parts.reduce((a, b) => a + b, 0) / parts.length;
+  // left-to-right sum, exactly as [food, rest, fear, order, awe, (prayer)].reduce((a, b) => a + b, 0) / length
+  let sum = 0 + (p.opinion.food ?? 0.5) + (p.opinion.rest ?? 0.5) + fear + order + awe, cnt = 5;
+  if (g.time - p.arrived > YEAR * 2 && g.buildingCount('church')) (sum += p.opinion.prayer ?? 0.5), cnt++;
+  let r = sum / cnt;
   if (g.ongoing.has('executions')) r -= 0.03;
   if (g.time < g.effects.festivalUntil) r -= 0.04;
   p.resignation += (r - p.resignation) * Math.min(1, dt / 30);

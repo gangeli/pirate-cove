@@ -34,6 +34,7 @@ class Cloud {
   readonly list: Particle[] = [];
   private geo = new THREE.BufferGeometry();
   private cap = 4000;
+  private lastN = 0;
   constructor(additive: boolean, tex: THREE.Texture) {
     this.geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.cap * 3), 3));
     this.geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(this.cap * 4), 4));
@@ -76,7 +77,16 @@ class Cloud {
       n++;
     }
     this.geo.setDrawRange(0, n);
-    pos.needsUpdate = col.needsUpdate = size.needsUpdate = true;
+    // upload only the live particles (the buffers hold room for 4000)
+    if (n || this.lastN) {
+      for (const [a, k] of [[pos, 3], [col, 4], [size, 1]] as [THREE.BufferAttribute, number][]) {
+        a.clearUpdateRanges();
+        a.addUpdateRange(0, Math.max(1, n) * k);
+        a.needsUpdate = true;
+      }
+    }
+    this.lastN = n;
+    this.points.visible = n > 0;
     (this.points.material as THREE.ShaderMaterial).uniforms.scale.value = h * 0.6;
   }
 }
@@ -86,7 +96,9 @@ export class Effects {
   private normal: Cloud;
   private add: Cloud;
   private balls: THREE.InstancedMesh;
-  private flashes: { light: THREE.PointLight; t: number }[] = [];
+  /** muzzle-flash lights: a fixed pool that always stays in the scene (adding or removing lights recompiles every
+   *  lit material); idle ones sit at intensity 0. Size comes from the quality setting (0 on low). */
+  private lights: { light: THREE.PointLight; t: number }[] = [];
 
   constructor(private world: World, private game: Game) {
     const tex = softTex();
@@ -97,6 +109,15 @@ export class Effects {
     this.balls.count = 0;
     this.balls.frustumCulled = false;
     this.group.add(this.balls);
+  }
+
+  setFlashLights(n: number): void {
+    while (this.lights.length > n) this.group.remove(this.lights.pop()!.light);
+    while (this.lights.length < n) {
+      const light = new THREE.PointLight(0xffa040, 0, 12, 2);
+      this.group.add(light);
+      this.lights.push({ light, t: 99 });
+    }
   }
 
   emit(cloud: 'normal' | 'add', p: THREE.Vector3, v: THREE.Vector3, life: number, size: number, grow: number, color: THREE.ColorRepresentation, alpha = 1): void {
@@ -125,10 +146,13 @@ export class Effects {
   muzzle(x: number, y: number, z: number): void {
     this.burst(x, y, z, 0xffb050, 10, 3, 0.5, 0.25);
     for (let i = 0; i < 8; i++) this.emit('normal', new THREE.Vector3(x, y, z), new THREE.Vector3((Math.random() - 0.5) * 2, Math.random() * 1.5, (Math.random() - 0.5) * 2), 2.5, 0.6, 0.9, 0xd8d0c8, 0.6);
-    const light = new THREE.PointLight(0xffa040, 30, 12, 2);
-    light.position.set(x, y + 0.5, z);
-    this.group.add(light);
-    this.flashes.push({ light, t: 0 });
+    // reuse the pool's oldest light
+    let f: { light: THREE.PointLight; t: number } | undefined;
+    for (const l of this.lights) if (!f || l.t > f.t) f = l;
+    if (f) {
+      f.light.position.set(x, y + 0.5, z);
+      f.t = 0;
+    }
   }
 
   onEvent(e: { type: string; [k: string]: any }): void {
@@ -165,14 +189,10 @@ export class Effects {
     const h = this.world.canvas.clientHeight;
     this.normal.update(dt, h);
     this.add.update(dt, h);
-    for (const f of this.flashes) {
+    for (const f of this.lights) {
       f.t += dt;
       f.light.intensity = Math.max(0, 30 * (1 - f.t / 0.25));
     }
-    this.flashes = this.flashes.filter((f) => {
-      if (f.t > 0.25) this.group.remove(f.light);
-      return f.t <= 0.25;
-    });
     // cannonballs from sim
     const balls = this.game.cannonballs ?? [];
     const m = new THREE.Matrix4();
@@ -187,7 +207,12 @@ export class Effects {
         else this.burst(c.x, Math.max(0, this.game.map.heightAt(c.x, c.y)) + 0.3, c.y, 0xffa050, 14, 3, 0.4, 0.5);
       }
     }
+    if (n || this.balls.count) {
+      this.balls.instanceMatrix.clearUpdateRanges();
+      this.balls.instanceMatrix.addUpdateRange(0, Math.max(1, n) * 16);
+      this.balls.instanceMatrix.needsUpdate = true;
+    }
     this.balls.count = n;
-    this.balls.instanceMatrix.needsUpdate = true;
+    this.balls.visible = n > 0;
   }
 }
