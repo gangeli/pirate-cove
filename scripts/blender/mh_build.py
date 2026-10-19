@@ -5,9 +5,10 @@
 # Output contract (see src/render/crowd.ts):
 #  * one skinned mesh, one material whose baseColor texture is an atlas of *detail* maps: the shader multiplies
 #    the texel by 2 x the per-instance colour of the vertex's region (eyes are untinted).
-#  * vertex colour R = region / 10:
+#  * vertex colour R = region / 20:
 #      0 skin, 1 shirt, 2 trousers/skirt, 3 boots, 4 hair+brows, 5 bandana/cap (toggle), 6 sash/apron, 7 coat,
-#      8 eyes (untinted), 9 tricorn (toggle), 10 beard (toggle)
+#      8 eyes (untinted), 9 tricorn (toggle), 10 beard (toggle),
+#      11-15 hand props shown only during their clip: cutlass, axe, hoe, tankard, sack
 #  * actions named after src/render/crowd.ts CLIPS.
 import bpy, bmesh, sys, os, math, json
 from mathutils import Vector, Matrix, Euler
@@ -447,6 +448,78 @@ if 'coat' in EX:
 if 'crossbelt' in EX:
     pass
 
+# ------------------------------------------------------------------------------------------- hand props
+def hand_prop(kind):
+    """a tool in the right hand, built in the rest pose and bound rigidly to the hand bone"""
+    H, T = bone_head('RightHand'), bone_tail('RightHand')
+    fing = (T - H)
+    if fing.length < 1e-4:
+        fing = bone_tail('RightForeArm') - bone_head('RightForeArm')
+    fing.normalize()
+    fw = Vector((0, -1, 0))
+    fw = (fw - fing * fw.dot(fing)).normalized()
+    side = fing.cross(fw).normalized()
+    grip = bone_tail('RightForeArm') + fing * 0.06
+    bm = bmesh.new()
+
+    def box(c, ax, ay, az, sx, sy, sz):
+        res = bmesh.ops.create_cube(bm, size=1.0)
+        M = Matrix(((ax.x * sx, ay.x * sy, az.x * sz, c.x), (ax.y * sx, ay.y * sy, az.y * sz, c.y), (ax.z * sx, ay.z * sy, az.z * sz, c.z), (0, 0, 0, 1)))
+        bmesh.ops.transform(bm, matrix=M, verts=res['verts'])
+
+    def rod(a, b, r, seg=8):
+        d = b - a
+        res = bmesh.ops.create_cone(bm, cap_ends=True, segments=seg, radius1=r, radius2=r, depth=d.length)
+        q = Vector((0, 0, 1)).rotation_difference(d.normalized())
+        bmesh.ops.transform(bm, matrix=Matrix.Translation((a + b) / 2) @ q.to_matrix().to_4x4(), verts=res['verts'])
+
+    if kind == 'cutlass':
+        rod(grip - fw * 0.05, grip + fw * 0.06, 0.013)
+        box(grip + fw * 0.07, side, fw, fing, 0.09, 0.012, 0.05)  # guard
+        n = 8
+        for i in range(n):  # gently curved blade
+            t0, t1 = i / n, (i + 1) / n
+            c = grip + fw * (0.08 + 0.62 * (t0 + t1) / 2) - fing * 0.05 * ((t0 + t1) / 2) ** 2
+            box(c, side, fw, fing, 0.004, 0.62 / n * 1.02, 0.036 * (1 - 0.35 * t0))
+    elif kind == 'axe':
+        rod(grip - fw * 0.12, grip + fw * 0.6, 0.016)
+        box(grip + fw * 0.56 - fing * 0.06, side, fw, fing, 0.018, 0.07, 0.16)
+    elif kind == 'hoe':
+        # handle runs down and forward from the fist to a blade biting the ground
+        ax = (fing * 0.75 + fw * 0.66).normalized()
+        a, b = grip - ax * 0.3, grip + ax * 1.05
+        rod(a, b, 0.016)
+        blade_n = ax.cross(side).normalized()
+        box(b + fw * 0.05, side, blade_n, ax, 0.17, 0.012, 0.14)
+    elif kind == 'tankard':
+        # gripped like a tumbler: the body runs through the fist, rim on the thumb side
+        c = grip + fw * 0.05 - fing * 0.01
+        res = bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=0.042, radius2=0.048, depth=0.14)
+        q = Vector((0, 0, 1)).rotation_difference(fw)
+        bmesh.ops.transform(bm, matrix=Matrix.Translation(c) @ q.to_matrix().to_4x4(), verts=res['verts'])
+    elif kind == 'sack':
+        res = bmesh.ops.create_uvsphere(bm, u_segments=10, v_segments=7, radius=1.0)
+        c = grip + fing * 0.22
+        M = Matrix(((side.x * 0.15, fw.x * 0.13, fing.x * 0.2, c.x), (side.y * 0.15, fw.y * 0.13, fing.y * 0.2, c.y), (side.z * 0.15, fw.z * 0.13, fing.z * 0.2, c.z), (0, 0, 0, 1)))
+        bmesh.ops.transform(bm, matrix=M, verts=res['verts'])
+        # a fuller bottom and a tied neck under the fist
+        for v in res['verts']:
+            t = (v.co - c).dot(fing) / 0.2
+            k = 1.0 + 0.25 * max(0.0, t) - 0.45 * max(0.0, -t) ** 2
+            off = v.co - c
+            along = fing * off.dot(fing)
+            v.co = c + along + (off - along) * k
+    bm.normal_update()
+    uvl = bm.loops.layers.uv.new('UVMap')
+    for f in bm.faces:
+        for l in f.loops:
+            l[uvl].uv = (0.5, 0.5)
+    return new_obj('prop_' + kind, bm, [{'RightHand': 1.0} for _ in bm.verts])
+
+
+for k, (kind, src) in enumerate((('cutlass', 'steel'), ('axe', 'wood'), ('hoe', 'wood'), ('tankard', 'pewter'), ('sack', 'cloth'))):
+    extras.append((hand_prop(kind), 11 + k, src))
+
 # ------------------------------------------------------------------------------------------- atlas
 ATLAS = 2048
 atlas = np.zeros((ATLAS, ATLAS, 4), dtype=np.float32)
@@ -478,6 +551,10 @@ def procedural_detail(kind, size):
         v = 0.9 + 0.08 * rng.standard_normal((size, size)) * 0.5
     elif kind == 'wool':
         v = 0.92 + 0.06 * np.sin(x * 400) * np.sin(y * 400) + 0.03 * rng.standard_normal((size, size))
+    elif kind in ('steel', 'pewter'):
+        v = 0.95 + 0.04 * rng.standard_normal((size, size))
+    elif kind == 'wood':
+        v = 0.85 + 0.15 * np.sin(y * 80 + np.sin(x * 9) * 2)
     elif kind == 'hair':
         v = 0.85 + 0.15 * np.sin(x * 300 + rng.standard_normal((size, size)) * 0.6)
     else:  # cloth
@@ -523,14 +600,22 @@ def to_detail(px, region):
     return res
 
 
+proc_slots = {}
+
+
 def place(obj, region, src):
     """put obj's texture into the next atlas slot and remap its UVs"""
     global slot_i
+    shared = isinstance(src, str) and src != 'skin'
     if src == 'skin' or region == 0:
         x0, y0, sz = slots[0]
+    elif shared and src in proc_slots:
+        x0, y0, sz = proc_slots[src]  # procedural detail of the same kind shares one tile
     else:
         slot_i += 1
         x0, y0, sz = slots[slot_i]
+        if shared:
+            proc_slots[src] = (x0, y0, sz)
     if isinstance(src, str) and src not in ('skin',):
         px = procedural_detail(src, sz)
     elif src is None:
@@ -572,7 +657,7 @@ for o, r, src in all_parts:
         me.color_attributes.remove(a)
     ca = me.color_attributes.new('Col', 'FLOAT_COLOR', 'POINT')
     for d in ca.data:
-        d.color = (r / 10, 0, 0, 1)
+        d.color = (r / 20, 0, 0, 1)
     me.materials.clear()
 
 mat = bpy.data.materials.new('crowd')

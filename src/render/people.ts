@@ -125,7 +125,8 @@ export class PeopleView {
       l.hat = C(0x111111);
       l.skin = SKIN[Math.floor(h(1) * 3)].clone();
     } else if (p.kind === 'skeleton') {
-      const bone = C(0xe8e0c8);
+      // old bone: ivory to tobacco-stained, never chalk white
+      const bone = C([0xcdbf9c, 0xc2b28a, 0xb8a67e, 0xd2c6a6][Math.floor(h(2) * 4)]);
       l = { skin: bone, shirt: bone.clone(), pants: bone.clone(), hair: bone.clone(), beard: false, hat: null, hat2: null, sash: C(0x4a4038), boots: bone.clone() };
     }
     this.looks.set(p.id, l);

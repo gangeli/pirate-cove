@@ -75,7 +75,8 @@ export function transitTime(g: Game, s: Ship, region: number): number {
   return MONTH * (0.25 + d * 3.2 * (28 / sp));
 }
 export function rationRate(s: Ship): number {
-  return ((s.crew.length + 1) * 0.3) / MONTH;
+  // explorers hop from cay to cay and live off turtles, fish and fruit, so stores stretch twice as far
+  return ((s.crew.length + 1) * 0.3 * (s.mission === 'explore' ? 0.5 : 1)) / MONTH;
 }
 /** can a ship reach a region (cleared/adjacent rule + rations) */
 export function regionReachable(g: Game, s: Ship, region: number): { ok: boolean; reason?: string } {
@@ -450,7 +451,10 @@ function voyageTick(g: Game, s: Ship, dt: number): void {
     const FRAGILE = { snow: 1.8, schooner: 1.4, sloop: 1.1, brigantine: 0.8, frigate: 0.55, galleon: 0.5 } as const;
     const seaman = cap?.skills.seamanship ?? 2;
     const farOut = Math.min(1, regionDistance(g, g.homeRegion, s.region) / 0.55);
-    if (g.rng.chance(STORM[s.type] * (1.25 - seaman * 0.1) * (1 + farOut * 0.5))) {
+    // coastal work (raids, kidnappings, charting) hugs the shore and runs for shelter: far safer than cruising
+    // and explorers, with no prize to chase, can wait out any sky they dislike
+    const coastal = s.mission === 'cruise' || s.mission === 'foster_war' ? 1 : s.mission === 'explore' ? 0.1 : 0.2;
+    if (g.rng.chance(STORM[s.type] * coastal * (1.25 - seaman * 0.1) * (1 + farOut * 0.5))) {
       s.hull -= g.rng.range(0.15, 0.45) * FRAGILE[s.type];
       if (s.hull <= 0 || g.rng.chance(FOUNDER[s.type] * (1.2 - seaman * 0.08))) {
         logV(g, s, 'A squall rolled her over. She went down in minutes.');

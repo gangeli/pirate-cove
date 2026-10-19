@@ -11,6 +11,8 @@ import { assetUrl } from './textures';
 export const CLIPS = ['idle', 'walk', 'run', 'carry', 'swing', 'farm', 'drink', 'cheer', 'fight', 'die', 'sleep', 'sit', 'dance', 'talk', 'limp', 'swagger', 'march'] as const;
 export type ClipName = (typeof CLIPS)[number];
 const BAKE_FPS = 30;
+/** which hand prop (region id) a clip shows */
+const PROP_OF: Record<string, number> = { fight: 11, swing: 12, farm: 13, drink: 14, carry: 15 };
 const DATA_W = 9; // texels per instance
 
 interface ClipInfo {
@@ -146,7 +148,7 @@ ivec4 sj = ivec4(skinIndex);
 mat4 sm0 = skinMat(sj, skinWeight, int(anim.x));
 mat4 sm1 = skinMat(sj, skinWeight, int(anim.y));
 mat4 skinM = sm0 * (1.0 - anim.z) + sm1 * anim.z;
-int region = int(floor(color.r * 10.0 + 0.5));
+int region = int(floor(color.r * 20.0 + 0.5));
 float hide = 0.0;
 vec3 rc = vec3(1.0);
 if (region == 0) rc = idat(1).rgb;
@@ -160,6 +162,11 @@ else if (region == 7) rc = idat(8).rgb;
 else if (region == 8) rc = ${this.textured ? 'vec3(1.0)' : 'vec3(0.03)'};
 else if (region == 9) { vec4 h = idat(6); rc = h.rgb; hide = 1.0 - h.a; }
 else if (region == 10) { vec4 h = idat(4); rc = h.rgb * 0.85; hide = 1.0 - h.a; }
+else if (region >= 11) {
+  // hand props: only the one belonging to the current clip is shown
+  hide = int(anim.w + 0.5) == region ? 0.0 : 1.0;
+  rc = region == 11 ? vec3(0.55, 0.56, 0.6) : region == 14 ? vec3(0.2, 0.2, 0.21) : region == 15 ? vec3(0.22, 0.14, 0.065) : vec3(0.16, 0.085, 0.04);
+}
 ${depthOnly ? '' : 'vRC = rc;'}`,
         )
         .replace('#include <skinnormal_vertex>', depthOnly ? '' : 'objectNormal = normalize(mat3(skinM) * objectNormal);')
@@ -193,6 +200,7 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
     d[o] = c.start + f0;
     d[o + 1] = c.start + f1;
     d[o + 2] = f - f0;
+    d[o + 3] = PROP_OF[clip] ?? 0;
     const put = (k: number, col: THREE.Color, a = 1) => {
       d[o + k * 4] = col.r;
       d[o + k * 4 + 1] = col.g;

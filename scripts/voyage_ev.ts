@@ -10,7 +10,9 @@ import { regionDistance } from '../src/sim/sea';
 
 const N = +(process.argv[2] ?? 20);
 const TYPES = (process.argv[3] ?? 'snow,schooner,sloop,brigantine,frigate,galleon').split(',') as ShipType[];
-const V = { captive: 50, recruit: 70, pirate: 70, lumber: 4, captain: 600 };
+const V = { skilled: 350, captive: 50, recruit: 70, pirate: 70, lumber: 4, captain: 600 };
+// MISSION=raid|kidnap|explore values those coastal errands instead (a kidnapped craftsman counts V.skilled)
+const MISSION = (process.env.MISSION ?? 'cruise') as 'cruise' | 'raid' | 'kidnap' | 'explore';
 const kidd = KINGS.find((k) => k.id === 'kidd')!;
 
 function voyage(seed: number, type: ShipType, dest: 'home' | 'near' | 'far') {
@@ -43,7 +45,9 @@ function voyage(seed: number, type: ShipType, dest: 'home' | 'near' | 'far') {
   if (dest === 'near') region = others.filter((o) => o.dist < 0.35).sort((a, b) => b.rich - a.rich)[0]?.r.id ?? g.homeRegion;
   if (dest === 'far') region = others.filter((o) => o.dist >= 0.45).sort((a, b) => b.rich - a.rich)[0]?.r.id ?? g.homeRegion;
   s.region = region;
-  s.mission = 'cruise';
+  s.mission = MISSION;
+  if (MISSION === 'kidnap') s.kidnapJob = 'doctor' as any;
+  if (MISSION === 'explore') for (const r of g.regions) if (r.id === region) r.knowledge = 0;
   s.orders = 'board';
   s.spoils = 'selfish';
   const crew0 = s.crew.length;
@@ -51,11 +55,11 @@ function voyage(seed: number, type: ShipType, dest: 'home' | 'near' | 'far') {
   const r = g.cmd({ type: 'setSail', ship: s.id, force: true });
   if (!r.ok) return { err: r.reason };
   const t0 = g.time;
-  let loot = { gold: 0, captives: 0, recruits: 0 };
+  let loot = { gold: 0, captives: 0, recruits: 0, skilled: 0 };
   let lost = false;
   let cause = '';
   while (g.time - t0 < MONTH * 10) {
-    if (s.voyage) loot = { gold: s.voyage.loot.gold, captives: s.voyage.loot.captives + s.voyage.loot.skilled.length + s.voyage.loot.wealthy, recruits: s.voyage.loot.recruits };
+    if (s.voyage) loot = { gold: s.voyage.loot.gold, captives: s.voyage.loot.captives + s.voyage.loot.wealthy, skilled: s.voyage.loot.skilled.length, recruits: s.voyage.loot.recruits };
     g.run(MONTH / 10);
     if (!g.ships.has(s.id)) {
       lost = true;
@@ -69,7 +73,7 @@ function voyage(seed: number, type: ShipType, dest: 'home' | 'near' | 'far') {
   const logDead = s.log.reduce((a, e) => a + +(e.text.match(/Lost (\d+) men/)?.[1] ?? 0) + +(e.text.match(/lost (\d+) men/)?.[1] ?? 0), 0);
   const dead = lost ? crew0 + 1 : logDead;
   const shipCost = d.gold + d.lumber * V.lumber;
-  const ev = loot.gold * (lost ? 0 : 1) + (lost ? 0 : loot.captives * V.captive + loot.recruits * V.recruit) - dead * V.pirate - (lost ? shipCost + V.captain : 0) - d.rations * 3;
+  const ev = loot.gold * (lost ? 0 : 1) + (lost ? 0 : loot.captives * V.captive + loot.skilled * V.skilled + loot.recruits * V.recruit) - (MISSION === 'kidnap' ? 250 : 0) - dead * V.pirate - (lost ? shipCost + V.captain : 0) - d.rations * 3;
   return { gold: lost ? 0 : loot.gold, captives: lost ? 0 : loot.captives, recruits: lost ? 0 : loot.recruits, dead, lost, months, ev, cause, log: s.log.map((e) => e.text), dist: regionDistance(g, g.homeRegion, region) };
 }
 

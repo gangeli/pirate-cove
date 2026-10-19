@@ -121,61 +121,13 @@ function leather(w: number, h: number, seed: number, base: [number, number, numb
   return c.toDataURL('image/jpeg', 0.85);
 }
 
-function iron(w: number, h: number, seed: number, base: [number, number, number]): string {
-  // hammered, slightly rusted dark metal
-  const r = rng(seed);
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  const g = c.getContext('2d')!;
-  const img = g.createImageData(w, h);
-  const n = fbm(w, h, 70, 4, r), dents = fbm(w, h, 12, 2, r), rust = fbm(w, h, 40, 3, r);
-  for (let i = 0; i < w * h; i++) {
-    const v = 0.7 + (n[i] - 0.5) * 0.35 + (dents[i] - 0.5) * 0.25;
-    const rs = Math.max(0, rust[i] - 0.62) * 2.5;
-    img.data[i * 4] = base[0] * v + rs * 40;
-    img.data[i * 4 + 1] = base[1] * v + rs * 16;
-    img.data[i * 4 + 2] = base[2] * v;
-    img.data[i * 4 + 3] = 255;
-  }
-  g.putImageData(img, 0, 0);
-  return c.toDataURL('image/jpeg', 0.85);
-}
-
-export type Skin = 'timber' | 'admiralty' | 'blackflag';
-export const SKINS: Record<Skin, string> = { timber: 'Timber & Parchment', admiralty: 'Admiralty Chart', blackflag: 'Black Flag' };
-
-export function currentSkin(): Skin {
-  // skins are a development aid for comparing looks (?skin=...); players get the default
-  const s = new URLSearchParams(location.search).get('skin');
-  return s && s in SKINS ? (s as Skin) : 'timber';
-}
-
-/** Paints the UI materials for a skin and exposes them as CSS variables; the stylesheet keys palette overrides off data-skin. */
-export function installTheme(skin: Skin = currentSkin()): void {
-  const root = document.documentElement;
-  root.dataset.skin = skin;
-  const st = root.style;
+/** Paints the UI materials (timber, parchment, leather) and exposes them as CSS variables. */
+export function installTheme(): void {
+  const st = document.documentElement.style;
   const set = (k: string, url: string) => st.setProperty(k, `url(${url})`);
-  if (skin === 'admiralty') {
-    // black lacquered oak, cool chart paper, navy leather
-    set('--paper', parchment(512, 512, 7, false, [232, 224, 196]));
-    set('--paper-big', parchment(900, 640, 11, true, [232, 224, 196]));
-    set('--wood-img', wood(512, 256, 3, [34, 30, 30]));
-    set('--wood-dark', wood(512, 256, 5, [24, 22, 24]));
-    set('--leather-img', leather(256, 256, 9, [30, 40, 62]));
-  } else if (skin === 'blackflag') {
-    // blackened iron, smoke-stained bone paper, oxblood leather
-    set('--paper', parchment(512, 512, 7, false, [214, 200, 170]));
-    set('--paper-big', parchment(900, 640, 11, true, [214, 200, 170]));
-    set('--wood-img', iron(512, 256, 3, [40, 38, 36]));
-    set('--wood-dark', iron(512, 256, 5, [26, 24, 23]));
-    set('--leather-img', leather(256, 256, 9, [96, 26, 20]));
-  } else {
-    set('--paper', parchment(512, 512, 7, false));
-    set('--paper-big', parchment(900, 640, 11, true));
-    set('--wood-img', wood(512, 256, 3, [74, 46, 28]));
-    set('--wood-dark', wood(512, 256, 5, [44, 28, 18]));
-    set('--leather-img', leather(256, 256, 9));
-  }
+  set('--paper', parchment(512, 512, 7, false));
+  set('--paper-big', parchment(900, 640, 11, true));
+  set('--wood-img', wood(512, 256, 3, [74, 46, 28]));
+  set('--wood-dark', wood(512, 256, 5, [44, 28, 18]));
+  set('--leather-img', leather(256, 256, 9));
 }

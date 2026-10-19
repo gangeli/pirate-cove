@@ -222,6 +222,19 @@ for side in ('Left', 'Right'):
         o = Vector(((k - 1.5) * 0.014, 0, 0))
         tube([ta + o, tb + o + Vector((0, 0, -0.005))], 0.0045, 4)
 
+# a rusty cutlass in the right fist, shown only while fighting (prop region 11)
+use('RightHand', 11)
+_h, _t = H('RightHand'), T('RightHand')
+_fing = (_t - _h).normalized() if (_t - _h).length > 1e-4 else (T('RightForeArm') - H('RightForeArm')).normalized()
+_fw = Vector((0, -1, 0))
+_fw = (_fw - _fing * _fw.dot(_fing)).normalized()
+_grip = T('RightForeArm') + _fing * 0.06
+rod(_grip - _fw * 0.05, _grip + _fw * 0.06, 0.012, seg=6, knob=0)
+rod(_grip + _fw * 0.065, _grip + _fw * 0.075, 0.035, seg=8, knob=0)  # guard
+_pts = [_grip + _fw * (0.08 + 0.62 * t) - _fing * 0.05 * t * t for t in (0, 0.25, 0.5, 0.75, 1.0)]
+for _i in range(4):
+    rod(_pts[_i], _pts[_i + 1], 0.011 * (1 - 0.2 * _i), 0.011 * (1 - 0.2 * (_i + 1)) + 0.002, seg=4, knob=0)
+
 bm.normal_update()
 for f in bm.faces:
     for l in f.loops:
@@ -246,7 +259,7 @@ mod = body.modifiers.new('Armature', 'ARMATURE')
 mod.object = rig
 ca = me.color_attributes.new('Col', 'FLOAT_COLOR', 'POINT')
 for i, d in enumerate(ca.data):
-    d.color = (regions[i] / 10, 0, 0, 1)
+    d.color = (regions[i] / 20, 0, 0, 1)
 for p in me.polygons:
     p.use_smooth = True
 

@@ -93,7 +93,26 @@ async function lineup(app: App, params: URLSearchParams) {
   g.paused = true;
   const pal = [...g.buildings.values()].find((b) => b.def === 'palace') ?? [...g.buildings.values()][0];
   const items = params.get('lineup')!.split(',').map((s) => s.split(':'));
-  const cx = pal.x + pal.w / 2, cz = pal.y + pal.h + 3;
+  // the clearest flat patch of open ground near the palace
+  let cx = pal.x + pal.w / 2, cz = pal.y + pal.h + 3, best = -Infinity;
+  const m = g.map;
+  for (let y = pal.y - 40; y < pal.y + 40; y += 2)
+    for (let x = pal.x - 40; x < pal.x + 40; x += 2) {
+      let ok = 0, hmin = Infinity, hmax = -Infinity;
+      for (let j = -6; j <= 6; j++)
+        for (let i = -8; i <= 8; i++) {
+          const tx = x + i, ty = y + j;
+          if (!m.inBounds(tx, ty) || !m.isWalkable(tx, ty) || !m.isLand(tx, ty) || m.heightAt(tx, ty) < 0.4) { ok -= 5; continue; }
+          const k = m.idx(tx, ty);
+          if (m.occupied[k] || m.trees[k]) ok -= 2; else ok++;
+          const hh = m.heightAt(tx, ty);
+          hmin = Math.min(hmin, hh);
+          hmax = Math.max(hmax, hh);
+        }
+      if (hmin === Infinity) continue;
+      const sc = ok - (hmax - hmin) * 20 - Math.hypot(x - pal.x, y - pal.y) * 0.3;
+      if (sc > best) (best = sc), (cx = x), (cz = y);
+    }
   const yaw = +(params.get('yaw') ?? app.world.rig.yaw);
   app.world.rig.yaw = app.world.rig.yawGoal = yaw;
   const t = params.get('t') ? +params.get('t')! : undefined;
@@ -118,7 +137,7 @@ async function lineup(app: App, params: URLSearchParams) {
     const o = (i - (n - 1) / 2) * spacing;
     const x = cx + right.x * o, z = cz + right.z * o;
     // models face +Z; turn each toward the camera (plus a little three-quarter turn)
-    const bone = C(0xe8dcc0);
+    const bone = C(0xc2b28a);
     const look = model === 'skeleton' ? { ...looks[0], skin: bone } : looks[i % looks.length];
     return { model: model as any, clip: clip ?? 'idle', x, z, dir: Math.atan2(cam.x - x, cam.z - z) + turn, look, t: t !== undefined ? t + i * 0.13 : undefined };
   });

@@ -193,7 +193,6 @@ CLIPS = {
     'carry': ('70_03', (700, 1854), dict(lmin=110, lmax=160, inplace=True)),
     'farm': ('13_23', (400, 3600), dict(lmin=180, lmax=320)),
     'drink': ('13_09', (100, 1103), dict(lmin=300, lmax=700)),
-    'cheer': ('13_14', (100, 2400), dict(lmin=240, lmax=480)),
     'fight': ('02_07', (200, 2200), dict(lmin=150, lmax=300)),
     'talk': ('18_08', (100, 2087), dict(lmin=300, lmax=600)),
     'dance': ('141_12', None, dict(lmin=180, lmax=400)),
@@ -243,6 +242,23 @@ def _swing_edit(t, pw, rest):
                 pw[hb] = pw[fore] @ rest[fore].inverted() @ rest[hb]
 
 
+def _cheer_edit(t, pw, rest):
+    """both fists pumping in the air, out of step"""
+    for side, sx, ph in (('Left', 1, 0.0), ('Right', -1, 0.5)):
+        k = 0.5 + 0.5 * math.sin(2 * math.pi * (2 * t + ph))
+        arm = side + 'Arm'
+        d = rest[arm] @ Vector((0, 1, 0))
+        Rin = d.rotation_difference(Vector((sx * 0.3, 0.0, -1)).normalized()).to_matrix()
+        Rw = Matrix.Rotation(math.radians(-150 - 20 * k), 3, 'X') @ Matrix.Rotation(math.radians(sx * -15), 3, 'Y')
+        Rb = Matrix.Rotation(math.radians(-(25 + 55 * (1 - k))), 3, 'X')
+        pw[arm] = Rw @ Rin @ rest[arm]
+        fore = side + 'ForeArm'
+        pw[fore] = Rw @ Rb @ Rin @ rest[fore]
+        for hb in (side + 'Hand', side + 'FingerBase', side + 'HandFinger1', ('LThumb' if side == 'Left' else 'RThumb')):
+            if hb in pw:
+                pw[hb] = pw[fore] @ rest[fore].inverted() @ rest[hb]
+
+
 def bake_all_clips(rig, only=None):
     want = only.split(',') if only else None
     loops = json.load(open(LOOP_CACHE)) if os.path.exists(LOOP_CACHE) else {}
@@ -268,11 +284,15 @@ def bake_all_clips(rig, only=None):
         src = load_bvh(os.path.join(BVH_DIR, '77_02.bvh'))
         _push(rig, retarget(src, rig, 'swing', [200 + i * 0.5 for i in range(36)], loop=True, edit=_swing_edit))
         bpy.data.objects.remove(src)
+    if not want or 'cheer' in want:
+        src = load_bvh(os.path.join(BVH_DIR, '77_02.bvh'))
+        _push(rig, retarget(src, rig, 'cheer', [300 + i * 0.5 for i in range(30)], loop=True, edit=_cheer_edit))
+        bpy.data.objects.remove(src)
     if not want or 'die' in want or 'sleep' in want:
-        # lying on the ground, and the get-up of 77_16 played backwards as a collapse
-        src = load_bvh(os.path.join(BVH_DIR, '77_16.bvh'))
-        _push(rig, retarget(src, rig, 'sleep', list(range(20, 140, 4)), loop=True))
-        _push(rig, retarget(src, rig, 'die', list(range(520, 60, -10)) + [60] * 6, loop=False))
+        # lying on his back, and the get-up of 77_18 played backwards as a collapse
+        src = load_bvh(os.path.join(BVH_DIR, '77_18.bvh'))
+        _push(rig, retarget(src, rig, 'sleep', list(range(40, 130, 3)), loop=True))
+        _push(rig, retarget(src, rig, 'die', list(range(600, 60, -12)) + [60] * 6, loop=False))
         bpy.data.objects.remove(src)
 
 
