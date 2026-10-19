@@ -587,6 +587,7 @@ export class App {
     const tgt = this.world.rig.target;
     const d = (x: number, y: number) => Math.hypot(x - tgt.x, y - tgt.z) * (this.world.rig.dist / 40);
     for (const e of g.events) {
+      this.hud.minimap.onEvent(e);
       switch (e.type) {
         case 'message':
           this.hud.message(e.msg);

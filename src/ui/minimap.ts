@@ -52,22 +52,42 @@ export class Minimap {
     return { x: (x + 0.5) * n, y: (y + 0.5) * n };
   }
 
+  /** the base (terrain + buildings) is redrawn when the map changes, and at most every few seconds */
+  private baseDirty = true;
+  private lastDraw = 0;
+  private ctx: CanvasRenderingContext2D | null = null;
+  private ray = new THREE.Raycaster();
+  private ndc = new THREE.Vector2();
+  private hit = new THREE.Vector3();
+  private ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private corners: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+
+  /** sim events that change what the base layer shows */
+  onEvent(e: { type: string }): void {
+    switch (e.type) {
+      case 'terrain': case 'roads': case 'trees': case 'placed': case 'built': case 'removed':
+        this.baseDirty = true;
+    }
+  }
+
   private buildBase(): void {
     const m = this.app.game.map, n = m.size;
     const c = (this.base ??= document.createElement('canvas'));
-    c.width = c.height = n;
+    if (c.width !== n) c.width = c.height = n;
     const g = c.getContext('2d')!;
     const img = g.createImageData(n, n);
-    const col: Record<number, [number, number, number]> = {
-      [Terrain.DeepWater]: [18, 52, 86], [Terrain.Shallow]: [40, 130, 150], [Terrain.Beach]: [226, 210, 160], [Terrain.Grass]: [110, 160, 70],
-      [Terrain.Jungle]: [48, 104, 44], [Terrain.Hill]: [140, 136, 96], [Terrain.Mountain]: [120, 112, 104],
-    };
+    const px = img.data;
     for (let i = 0; i < n * n; i++) {
-      let [r, gg, b] = col[m.terrain[i]];
+      const col = TERRAIN_RGB[m.terrain[i]];
+      let r = col[0], gg = col[1], b = col[2];
       if (m.trees[i]) (r *= 0.75), (gg *= 0.8), (b *= 0.7);
       if (m.path[i]) (r = 170), (gg = 140), (b = 100);
       const sh = Math.max(0.7, Math.min(1.25, 1 + (m.height[i] - 2) * 0.03));
-      img.data.set([r * sh, gg * sh, b * sh, 255], i * 4);
+      const o = i * 4;
+      px[o] = r * sh;
+      px[o + 1] = gg * sh;
+      px[o + 2] = b * sh;
+      px[o + 3] = 255;
     }
     g.putImageData(img, 0, 0);
     for (const bl of this.app.game.buildings.values()) {
@@ -76,15 +96,19 @@ export class Minimap {
       g.fillRect(bl.x, bl.y, bl.w, bl.h);
     }
     this.baseAt = performance.now();
+    this.baseDirty = false;
   }
 
   draw(): void {
     if (this.wrap.classList.contains('hidden')) return;
+    const now = performance.now();
+    // ~10 Hz is plenty for dots on a 160 px map; the base layer only when something was built or cleared
+    if (now - this.lastDraw < 100) return;
+    this.lastDraw = now;
     this.t++;
-    if (!this.base || performance.now() - this.baseAt > 3000) this.buildBase();
-    if (this.t % 3) return;
+    if (!this.base || (this.baseDirty && now - this.baseAt > 500) || now - this.baseAt > 10000) this.buildBase();
     const app = this.app, g = app.game, n = g.map.size;
-    const c = this.canvas, ctx = c.getContext('2d')!;
+    const c = this.canvas, ctx = (this.ctx ??= c.getContext('2d')!);
     const W = c.width;
     ctx.save();
     ctx.clearRect(0, 0, W, W);
@@ -100,40 +124,51 @@ export class Minimap {
     ctx.translate(-n / 2, -n / 2);
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this.base!, 0, 0);
-    // people
-    for (const p of g.people.values()) {
-      if (p.task.kind === 'atsea' || p.task.kind === 'dead') continue;
-      ctx.fillStyle = p.kind === 'pirate' ? '#ff4030' : p.kind === 'soldier' ? '#ff00ff' : p.rebel ? '#ff8000' : '#f8f0e0';
-      ctx.fillRect(p.x - 0.6, p.y - 0.6, 1.2, 1.2);
+    // people, one fill colour at a time
+    for (const [kind, col] of DOT_COLORS) {
+      ctx.fillStyle = col;
+      for (const p of g.people.values()) {
+        if (p.task.kind === 'atsea' || p.task.kind === 'dead') continue;
+        const k = p.kind === 'pirate' ? 0 : p.kind === 'soldier' ? 1 : p.rebel ? 2 : 3;
+        if (k === kind) ctx.fillRect(p.x - 0.6, p.y - 0.6, 1.2, 1.2);
+      }
     }
+    ctx.fillStyle = '#1a1a1a';
     for (const sh of g.ships.values()) {
       if (sh.status === 'atsea') continue;
-      ctx.fillStyle = '#1a1a1a';
       ctx.beginPath();
       ctx.arc(sh.vx, sh.vy, 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.fillStyle = '#ff2020';
     for (const v of g.invaders ?? []) {
-      ctx.fillStyle = '#ff2020';
       ctx.beginPath();
       ctx.arc(v.x, v.y, 2.6, 0, Math.PI * 2);
       ctx.fill();
     }
     // camera view footprint
     const cam = app.world.rig.camera;
-    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([x, y]) => {
-      const ray = new THREE.Raycaster();
-      ray.setFromCamera(new THREE.Vector2(x, y), cam);
-      const p = new THREE.Vector3();
-      const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), p);
-      return hit ? [p.x, p.z] : [app.world.rig.target.x + x * 200, app.world.rig.target.z + y * 200];
-    });
+    const cs = this.corners;
+    for (let i = 0; i < 4; i++) {
+      const x = i === 0 || i === 3 ? -1 : 1, y = i < 2 ? -1 : 1;
+      this.ray.setFromCamera(this.ndc.set(x, y), cam);
+      const hit = this.ray.ray.intersectPlane(this.ground, this.hit);
+      cs[i * 2] = hit ? hit.x : app.world.rig.target.x + x * 200;
+      cs[i * 2 + 1] = hit ? hit.z : app.world.rig.target.z + y * 200;
+    }
     ctx.strokeStyle = '#fff6d0';
     ctx.lineWidth = 1.2 / s * 2;
     ctx.beginPath();
-    corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.moveTo(cs[0], cs[1]);
+    for (let i = 1; i < 4; i++) ctx.lineTo(cs[i * 2], cs[i * 2 + 1]);
     ctx.closePath();
     ctx.stroke();
     ctx.restore();
   }
 }
+
+const TERRAIN_RGB: Record<number, [number, number, number]> = {
+  [Terrain.DeepWater]: [18, 52, 86], [Terrain.Shallow]: [40, 130, 150], [Terrain.Beach]: [226, 210, 160], [Terrain.Grass]: [110, 160, 70],
+  [Terrain.Jungle]: [48, 104, 44], [Terrain.Hill]: [140, 136, 96], [Terrain.Mountain]: [120, 112, 104],
+};
+const DOT_COLORS: [number, string][] = [[3, '#f8f0e0'], [2, '#ff8000'], [0, '#ff4030'], [1, '#ff00ff']];

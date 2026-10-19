@@ -41,6 +41,11 @@ export class CrowdModel {
   private boneTex!: THREE.DataTexture;
   private dataTex!: THREE.DataTexture;
   private data!: Float32Array;
+  /** rows in the per-instance data texture: grows in powers of two up to `cap`, so the per-frame upload
+   *  is about the size of the crowd rather than the capacity */
+  private rows = 0;
+  private readonly uData = { value: null as THREE.DataTexture | null };
+  private lastCount = 0;
   count = 0;
   readonly cap: number;
   private bones = 0;
@@ -93,9 +98,7 @@ export class CrowdModel {
     rows.forEach((r, i) => buf.set(r, i * w * 4));
     this.boneTex = new THREE.DataTexture(buf, w, h, THREE.RGBAFormat, THREE.FloatType);
     this.boneTex.needsUpdate = true;
-    this.data = new Float32Array(DATA_W * this.cap * 4);
-    this.dataTex = new THREE.DataTexture(this.data as any, DATA_W, this.cap, THREE.RGBAFormat, THREE.FloatType);
-    this.dataTex.needsUpdate = true;
+    this.resizeData(Math.min(this.cap, 64));
 
     const geo = skinned.geometry;
     // the atlas holds linear detail multipliers (x2), not colours
@@ -120,10 +123,9 @@ export class CrowdModel {
 
   private inject(mat: THREE.Material, depthOnly: boolean): void {
     const boneTex = () => this.boneTex;
-    const dataTex = () => this.dataTex;
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uBones = { value: boneTex() };
-      sh.uniforms.uData = { value: dataTex() };
+      sh.uniforms.uData = this.uData; // shared, so a regrown data texture reaches both materials
       sh.vertexShader = sh.vertexShader
         .replace(
           '#include <common>',
@@ -181,6 +183,17 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
     mat.customProgramCacheKey = () => 'crowd' + (depthOnly ? 'd' : 'c') + (this.textured ? 't' : '');
   }
 
+  private resizeData(rows: number): void {
+    const data = new Float32Array(DATA_W * rows * 4);
+    if (this.data) data.set(this.data.subarray(0, Math.min(this.data.length, data.length)));
+    this.data = data;
+    this.dataTex?.dispose();
+    this.dataTex = new THREE.DataTexture(data as any, DATA_W, rows, THREE.RGBAFormat, THREE.FloatType);
+    this.dataTex.needsUpdate = true;
+    this.uData.value = this.dataTex;
+    this.rows = rows;
+  }
+
   /** begin a frame */
   reset(): void {
     this.count = 0;
@@ -195,33 +208,41 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
     const f = u * (c.frames - 1);
     const f0 = Math.floor(f), f1 = c.loop ? (f0 + 1) % c.frames : Math.min(c.frames - 1, f0 + 1);
     const i = this.count++;
-    this.mesh.setMatrixAt(i, matrix);
+    if (i >= this.rows) this.resizeData(Math.min(this.cap, this.rows * 2));
+    matrix.toArray(this.mesh.instanceMatrix.array, i * 16);
     const d = this.data, o = i * DATA_W * 4;
     d[o] = c.start + f0;
     d[o + 1] = c.start + f1;
     d[o + 2] = f - f0;
     d[o + 3] = PROP_OF[clip] ?? 0;
-    const put = (k: number, col: THREE.Color, a = 1) => {
-      d[o + k * 4] = col.r;
-      d[o + k * 4 + 1] = col.g;
-      d[o + k * 4 + 2] = col.b;
-      d[o + k * 4 + 3] = a;
-    };
-    put(1, look.skin);
-    put(2, look.shirt);
-    put(3, look.pants);
-    put(4, look.hair, look.beard ? 1 : 0);
-    put(5, look.hat ?? look.hair, look.hat ? 1 : 0);
-    put(6, look.hat2 ?? look.hair, look.hat2 ? 1 : 0);
-    put(7, look.sash);
-    put(8, look.coat ?? look.shirt);
+    put(d, o + 4, look.skin, 1);
+    put(d, o + 8, look.shirt, 1);
+    put(d, o + 12, look.pants, 1);
+    put(d, o + 16, look.hair, look.beard ? 1 : 0);
+    put(d, o + 20, look.hat ?? look.hair, look.hat ? 1 : 0);
+    put(d, o + 24, look.hat2 ?? look.hair, look.hat2 ? 1 : 0);
+    put(d, o + 28, look.sash, 1);
+    put(d, o + 32, look.coat ?? look.shirt, 1);
   }
 
   commit(): void {
     this.mesh.count = this.count;
-    this.mesh.instanceMatrix.needsUpdate = true;
+    // nothing drawn now or last frame: no uploads at all
+    if (this.count === 0 && this.lastCount === 0) return;
+    this.lastCount = this.count;
+    const im = this.mesh.instanceMatrix;
+    im.clearUpdateRanges();
+    im.addUpdateRange(0, Math.max(1, this.count) * 16);
+    im.needsUpdate = true;
     this.dataTex.needsUpdate = true;
   }
+}
+
+function put(d: Float32Array, o: number, col: THREE.Color, a: number): void {
+  d[o] = col.r;
+  d[o + 1] = col.g;
+  d[o + 2] = col.b;
+  d[o + 3] = a;
 }
 
 export const MODELS = ['pirate', 'pirate_f', 'captive', 'captive_f', 'soldier', 'skeleton'] as const;

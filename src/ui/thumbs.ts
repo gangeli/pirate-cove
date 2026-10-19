@@ -8,6 +8,41 @@ const cache = new Map<string, string>();
 let scene: THREE.Scene | null = null;
 let rt: THREE.WebGLRenderTarget | null = null;
 const W = 216, H = 160;
+const GAMMA = Uint8ClampedArray.from({ length: 256 }, (_, v) => Math.min(255, Math.pow(v / 255, 1 / 2.2) * 255));
+/** transparent 1x1 stand-in while a thumbnail is still queued */
+export const THUMB_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+const queue: string[] = [];
+const queued = new Set<string>();
+let pumping = false;
+/** the thumbnail if it was already rendered, else null (and it is queued: `onReady` fires when it is) */
+export function thumbOrQueue(world: World, id: string, onReady: (id: string, url: string) => void): string | null {
+  const hit = cache.get(id);
+  if (hit) return hit;
+  if (!queued.has(id)) {
+    queued.add(id);
+    queue.push(id);
+  }
+  listener = onReady;
+  if (!pumping) {
+    pumping = true;
+    const step = () => {
+      const next = queue.shift();
+      if (!next) {
+        pumping = false;
+        return;
+      }
+      queued.delete(next);
+      const url = thumb(world, next);
+      listener?.(next, url);
+      // one render per frame, after the frame, so opening the menu never stalls on thumbnails
+      requestAnimationFrame(() => setTimeout(step, 0));
+    };
+    requestAnimationFrame(() => setTimeout(step, 0));
+  }
+  return null;
+}
+let listener: ((id: string, url: string) => void) | null = null;
 
 export function thumb(world: World, id: string): string {
   const hit = cache.get(id);
@@ -57,7 +92,7 @@ export function thumb(world: World, id: string): string {
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       const si = ((H - 1 - y) * W + x) * 4, di = (y * W + x) * 4;
-      for (let k = 0; k < 3; k++) img.data[di + k] = Math.min(255, Math.pow(px[si + k] / 255, 1 / 2.2) * 255);
+      for (let k = 0; k < 3; k++) img.data[di + k] = GAMMA[px[si + k]];
       img.data[di + 3] = px[si + 3];
     }
   ctx.putImageData(img, 0, 0);

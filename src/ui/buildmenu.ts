@@ -2,7 +2,7 @@ import type { App } from './app';
 import { el, html, patchHTML, delegate, raw } from './dom';
 import { icon } from './icons';
 import { BUILDINGS, BUILDING, CATEGORY_NAMES, JOB_NAMES, type Category } from '../sim/data/buildings';
-import { thumb } from './thumbs';
+import { thumbOrQueue, THUMB_PLACEHOLDER } from './thumbs';
 import { audio } from '../audio/audio';
 
 const CATS: Category[] = ['infrastructure', 'resource', 'production', 'entertainment', 'nautical', 'control', 'education', 'defense', 'accoutrement'];
@@ -49,6 +49,12 @@ export class BuildMenu {
     this.app.hud.updateTool();
   }
 
+  /** a queued thumbnail is ready: drop it into the open menu without a rebuild */
+  private onThumb = (id: string, url: string): void => {
+    if (!this.visible) return;
+    for (const img of this.panel.querySelectorAll<HTMLImageElement>(`img[data-thumb="${id}"]`)) img.src = url;
+  };
+
   refresh(force = false): void {
     if (!this.visible) return;
     if (!force && (performance.now() - this.lastRefresh < 1000 || this.panel.matches(':hover'))) return;
@@ -65,7 +71,7 @@ export class BuildMenu {
         const tip = `<b>${d.name}</b><br>${d.desc}${d.workers.length ? `<br><i>Staff: ${d.workers.map((w) => `${w.count} ${JOB_NAMES[w.job]}`).join(', ')}${d.overseer ? ', overseer' : ''}${d.guards ? `, ${d.guards} guards` : ''}</i>` : ''}${d.upkeep ? `<br>Upkeep ${d.upkeep}/month` : ''}${miss.length && miss[0] !== 'unique' ? `<br><span style="color:#ff9070">Requires a skilled ${miss.map((m) => JOB_NAMES[m as keyof typeof JOB_NAMES] ?? m).join(', ')}</span>` : ''}`;
         return html`<div class="bcard ${lock || !afford ? 'disabled' : ''}" data-act="pick:${d.id}" data-tip="${raw(tip)}">
           ${lock ? html`<span class="lock">${lock}</span>` : ''}
-          ${d.id === 'road' ? html`<div style="height:80px;display:grid;place-items:center">${icon('road', 54)}</div>` : html`<img src="${thumb(this.app.world, d.id)}" alt="">`}
+          ${d.id === 'road' ? html`<div style="height:80px;display:grid;place-items:center">${icon('road', 54)}</div>` : html`<img src="${thumbOrQueue(this.app.world, d.id, this.onThumb) ?? THUMB_PLACEHOLDER}" data-thumb="${d.id}" alt="">`}
           <div class="nm">${d.name}</div>
           <div class="cost">${cost.gold ? html`<span>${icon('coin', 13)} ${cost.gold}</span>` : ''}${cost.lumber ? html`<span>${icon('lumber', 13)} ${cost.lumber}</span>` : ''}${!cost.gold && !cost.lumber ? 'free' : ''}</div></div>`;
       })}</div>`);

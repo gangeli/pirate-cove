@@ -33,6 +33,7 @@ function hash(n: number, s: number): number {
   return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
 }
 const C = (hex: number) => new THREE.Color(hex);
+const UP = new THREE.Vector3(0, 1, 0);
 const SKIN = [0xd8a585, 0xc89070, 0xb07a58, 0x8a5a3c, 0x6a4028, 0x4a2c1c].map(C);
 const HAIR = [0x1a1210, 0x3a2414, 0x5a3a1e, 0x8a5a2a, 0xb8884a, 0x9a3a1a, 0x8a8a88].map(C);
 const PIRATE_SHIRT = [0xe8e0cc, 0xd8ccb0, 0xf0ece0, 0x8a2a20, 0x2a3a5a, 0x4a3a2a, 0xa8a090].map(C);
@@ -54,8 +55,6 @@ export class PeopleView {
   private ring: THREE.Mesh;
   private t = 0;
   private looks = new Map<number, Look>();
-  /** per-frame list of drawn people for picking */
-  private drawn: { id: number; x: number; y: number; z: number }[] = [];
   /** debug: draw these instead of the simulation's people (?lineup=...) */
   debug: { model: ModelName; clip: string; x: number; z: number; dir: number; look: Look; t?: number }[] | null = null;
   /** visual scale of characters (model is ~1.82 m tall; tiles are 2 m) */
@@ -191,50 +190,90 @@ export class PeopleView {
     return ['idle', 1];
   }
 
+  // per-frame scratch (no allocations in update)
+  private mtx = new THREE.Matrix4();
+  private q = new THREE.Quaternion();
+  private sv = new THREE.Vector3();
+  private p3 = new THREE.Vector3();
+  private sphere = new THREE.Sphere();
+  private frustum = new THREE.Frustum();
+  private projView = new THREE.Matrix4();
+  private modelList: CrowdModel[] = [];
+  private drawnN = 0;
+
   update(dt: number): void {
     this.t += dt;
     const g = this.game;
     if (!this.models) return;
     const ms = this.models;
-    for (const m of Object.values(ms)) m!.reset();
-    this.drawn.length = 0;
-    const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p3 = new THREE.Vector3();
-    const up = new THREE.Vector3(0, 1, 0);
-    const cam = this.world.rig.camera.position;
-    let selPos: THREE.Vector3 | null = null;
+    if (this.modelList.length === 0) for (const m of Object.values(ms)) if (m) this.modelList.push(m);
+    for (const m of this.modelList) m.reset();
+    this.drawnN = 0;
+    const mtx = this.mtx, q = this.q, s = this.sv, p3 = this.p3;
+    const camera = this.world.rig.camera;
+    const cam = camera.position;
+    // cull people outside the view (with a margin for the shadows they cast just inside it)
+    camera.updateMatrixWorld();
+    this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    const frustum = this.frustum.setFromProjectionMatrix(this.projView);
+    const sphere = this.sphere;
+    sphere.radius = 2.5;
+    let selFound = false;
     if (this.debug) {
       for (const d of this.debug) {
         const m = ms[d.model];
         if (!m) continue;
-        q.setFromAxisAngle(up, d.dir);
+        q.setFromAxisAngle(UP, d.dir);
         const y = g.map.heightAt(d.x, d.z);
         mtx.compose(p3.set(d.x, y, d.z), q, s.set(this.scale, this.scale, this.scale));
         m.add(mtx, d.clip, d.t ?? this.t, d.look);
       }
     }
-    for (const per of this.debug ? [] : g.people.values()) {
+    if (!this.debug) for (const per of g.people.values()) {
       if (!isVisible(g, per)) continue;
       // distance cull for very far zoom
       if (Math.abs(per.x - cam.x) > 200 || Math.abs(per.y - cam.z) > 200) continue;
       let y = g.map.heightAt(per.x, per.y);
+      sphere.center.set(per.x, y + 0.6, per.y);
+      if (!frustum.intersectsSphere(sphere)) continue;
       const tb = per.task.bld ? g.buildings.get(per.task.bld) : undefined;
       if (tb && tb.def === 'dock' && g.map.height[g.map.idx(Math.floor(per.x), Math.floor(per.y))] < 0.2) y = Math.max(y, 0.35);
       if (y < -0.3) y = -0.3; // wading
       const [clip, speed] = this.clipFor(per);
       const dead = per.task.kind === 'dead';
       const tt = dead ? 6 - (per.dyingTimer ?? 0) : this.t * speed + hash(per.id, 30) * 10;
-      q.setFromAxisAngle(up, Math.PI / 2 - per.dir);
+      q.setFromAxisAngle(UP, Math.PI / 2 - per.dir);
       const sc = this.scale * (per.kind === 'soldier' ? 1.02 : 0.94 + hash(per.id, 31) * 0.12) * (per.sex === 'F' ? 0.95 : 1);
       mtx.compose(p3.set(per.x, y, per.y), q, s.set(sc, sc, sc));
       const model = ms[this.modelOf(per)] ?? ms.captive;
       if (!model) continue;
       model.add(mtx, clip, tt, this.lookOf(per));
-      this.drawn.push({ id: per.id, x: per.x, y, z: per.y });
-      if (per.id === this.selected) selPos = new THREE.Vector3(per.x, y + 0.04, per.y);
+      this.pushDrawn(per.id, per.x, y, per.y);
+      if (per.id === this.selected) {
+        selFound = true;
+        this.ring.position.set(per.x, y + 0.04, per.y);
+      }
     }
-    for (const m of Object.values(ms)) m!.commit();
-    this.ring.visible = !!selPos;
-    if (selPos) this.ring.position.copy(selPos);
+    for (const m of this.modelList) m.commit();
+    this.ring.visible = selFound;
+  }
+
+  /** drawn people for picking, as flat arrays reused frame to frame */
+  private drawnId = new Int32Array(256);
+  private drawnPos = new Float32Array(256 * 3);
+  private pushDrawn(id: number, x: number, y: number, z: number): void {
+    const i = this.drawnN++;
+    if (i >= this.drawnId.length) {
+      const ids = new Int32Array(this.drawnId.length * 2), pos = new Float32Array(ids.length * 3);
+      ids.set(this.drawnId);
+      pos.set(this.drawnPos);
+      this.drawnId = ids;
+      this.drawnPos = pos;
+    }
+    this.drawnId[i] = id;
+    this.drawnPos[i * 3] = x;
+    this.drawnPos[i * 3 + 1] = y;
+    this.drawnPos[i * 3 + 2] = z;
   }
 
   /** nearest drawn person to the pick ray */
@@ -242,11 +281,12 @@ export class PeopleView {
     let best = 0, bd = 0.45 * 0.45;
     const r = ray.ray;
     const pt = new THREE.Vector3(), c = new THREE.Vector3();
-    for (const d of this.drawn) {
-      c.set(d.x, d.y + 0.5, d.z);
+    const P = this.drawnPos;
+    for (let i = 0; i < this.drawnN; i++) {
+      c.set(P[i * 3], P[i * 3 + 1] + 0.5, P[i * 3 + 2]);
       r.closestPointToPoint(c, pt);
       const dd = pt.distanceToSquared(c);
-      if (dd < bd) (bd = dd), (best = d.id);
+      if (dd < bd) (bd = dd), (best = this.drawnId[i]);
     }
     return best;
   }
