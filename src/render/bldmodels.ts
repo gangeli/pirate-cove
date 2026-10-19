@@ -70,6 +70,12 @@ class BuildingModels {
     return this.src.has(def) || this.far.has(def) ? def : null;
   }
 
+  /** ask for full detail of a building type (the buildings view calls this for buildings near the camera) */
+  request(def: string, level: number): void {
+    const n = this.resolve(def, level);
+    if (n && this.fullDetail && !this.src.has(n)) void this.loadFull(n);
+  }
+
   /** 'F' once the full model is in, 'L' while only the far model is (part of a view's rebuild key) */
   stateOf(def: string, level: number): string {
     const n = this.resolve(def, level);
@@ -202,7 +208,6 @@ class BuildingModels {
     const s = this.src.get(name);
     const farSrc = this.far.get(name);
     if (!s && !farSrc) return null;
-    if (!s && this.fullDetail) void this.loadFull(name);
     const base = (s ?? farSrc)!;
     const g = new THREE.Group();
     const force = location.search.match(/[?&]lod=(near|far)/)?.[1];

@@ -37,6 +37,12 @@ export class BuildingsView {
     this.group.add(this.selRing);
   }
 
+  private palaceLevel(): number {
+    let lv = 0;
+    for (let i = 0; i < PALACE_LEVELS.length; i++) if (this.game.hoard >= PALACE_LEVELS[i].hoard) lv = i;
+    return lv;
+  }
+
   private keyOf(b: Building): string {
     let lv = b.houseLevel ?? 0;
     if (b.def === 'palace') {
@@ -152,6 +158,10 @@ export class BuildingsView {
       if (key !== v.key) {
         this.make(b);
         continue;
+      }
+      // stream full detail only for buildings close enough to show it
+      if (key.endsWith(':L') && v.group.position.distanceToSquared(this.world.rig.camera.position) < 45 * 45) {
+        bldModels.request(b.def, b.houseLevel ?? (b.def === 'palace' ? this.palaceLevel() : 1));
       }
       if (v.clip) v.clip.constant = v.group.position.y + 0.02 + v.height * b.built;
       for (const f of v.flags) {

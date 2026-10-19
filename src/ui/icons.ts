@@ -40,6 +40,7 @@ const P: Record<string, string> = {
   flag: `<g ${S}><path d="M5 22V2.5"/><path d="M5 3.5c3-1.5 5 1 8 0s4-1 6 0v9c-2-1-3-1-6 0s-5-1.5-8 0"/></g><g ${S} stroke-width="1"><circle cx="12" cy="7.5" r="1.6"/><path d="M10 11l4-1.5M10 9.5l4 1.5"/></g>`,
   gear: `<g ${S}><circle cx="12" cy="12" r="3.3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/><circle cx="12" cy="12" r="6.5"/></g>`,
   follow: `<g ${S}><circle cx="12" cy="12" r="7.5"/><path d="M12 1.5v6M12 16.5v6M1.5 12h6M16.5 12h6"/></g><circle cx="12" cy="12" r="1.3" ${F}/>`,
+  speakerOff: `<g ${S}><path d="M3.5 9.5h3.5l5-4v13l-5-4H3.5z"/><path d="M15.5 9.5l5 5M20.5 9.5l-5 5"/></g>`,
   speaker: `<g ${S}><path d="M3.5 9.5h3.5l5-4v13l-5-4H3.5z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></g>`,
   mute: `<g ${S}><path d="M3.5 9.5h3.5l5-4v13l-5-4H3.5z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></g>`,
   info: `<g ${S}><circle cx="12" cy="12" r="8.5"/><path d="M12 10.5V17M10.5 17h3"/></g><circle cx="12" cy="7.3" r="1.1" ${F}/>`,

@@ -23,7 +23,23 @@ export class Audio {
   private voiceNode: AudioBufferSourceNode | null = null;
   private loops = new Map<string, { src: AudioBufferSourceNode; gain: GainNode }>();
   vol = { master: 0.8, music: 0.5, voice: 0.9, sfx: 0.7, ambient: 0.6 };
-  muted = false;
+  muted = (() => {
+    try {
+      return localStorage.getItem('bc_muted') === '1';
+    } catch {
+      return false;
+    }
+  })();
+  /** mute or unmute everything; remembered between visits */
+  setMuted(m: boolean): void {
+    this.muted = m;
+    try {
+      localStorage.setItem('bc_muted', m ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    this.applyVolumes();
+  }
   private lastPlay = new Map<string, number>();
   onVoice: ((speaking: boolean) => void) | null = null;
   private playlist: string[] = [];

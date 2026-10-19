@@ -8,6 +8,7 @@ import { World } from '../render/world';
 import { buildPrefab } from '../render/prefabs';
 import { audio } from '../audio/audio';
 import { el } from './dom';
+import { icon } from './icons';
 import { Hud } from './hud';
 import { Inspector } from './inspector';
 import { BuildMenu } from './buildmenu';
@@ -91,10 +92,30 @@ export class App {
     this.log = new IslandLog(this);
     this.overlays = new Overlays(this);
     this.menu = new MainMenu(this);
+    this.soundButton();
     this.bindInput();
     audio.onVoice = (s) => this.hud.setSpeaking(s);
     window.addEventListener('pointerdown', () => audio.unlock(), { once: false });
     window.addEventListener('keydown', () => audio.unlock(), { once: false });
+  }
+
+  /** a speaker button in the corner, on the title screen and in play: mutes everything, remembered */
+  private soundButton(): void {
+    const b = el('button', 'soundbtn', this.root) as HTMLButtonElement;
+    const paint = () => {
+      b.innerHTML = icon(audio.muted ? 'speakerOff' : 'speaker', 22).html;
+      b.title = audio.muted ? 'Sound off (click to turn on)' : 'Sound on (click to mute)';
+      b.setAttribute('aria-label', b.title);
+      b.classList.toggle('off', audio.muted);
+    };
+    b.onclick = (e) => {
+      e.stopPropagation();
+      audio.unlock();
+      audio.setMuted(!audio.muted);
+      paint();
+    };
+    b.onpointerdown = (e) => e.stopPropagation();
+    paint();
   }
 
   /** a background game for the title screen */
@@ -117,7 +138,26 @@ export class App {
     (window as any).__game = g;
   }
 
+  /** a full-screen loading card while a game is built, painted before the heavy work starts */
+  private async withLoading<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    const card = el('div', 'loading', document.body);
+    card.innerHTML = `<div style="text-align:center"><div class="t">Buccaneer Cove</div><div class="pbar busy"><div></div></div><div class="lt" style="margin-top:8px;font-family:var(--body);opacity:.85">${label}</div></div>`;
+    // let the card paint before the synchronous island generation blocks the thread
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+    try {
+      return await fn();
+    } finally {
+      card.classList.add('fade');
+      setTimeout(() => card.remove(), 400);
+    }
+  }
+
   async newGame(settings: Partial<Settings>, king: KingDef, botYears = 0): Promise<void> {
+    if (this.state === 'menu' && !location.search.includes('shot')) return this.withLoading('Charting your island...', () => this.newGameNow(settings, king, botYears));
+    return this.newGameNow(settings, king, botYears);
+  }
+
+  private async newGameNow(settings: Partial<Settings>, king: KingDef, botYears = 0): Promise<void> {
     const g = new Game(settings, king);
     if (botYears > 0) {
       // debug/screenshots: let the bot play for a while before the world is built
@@ -139,10 +179,12 @@ export class App {
   async continueGame(slot = 'auto'): Promise<boolean> {
     const json = await loadGame(slot);
     if (!json) return false;
-    const g = Game.deserialize(json);
-    await this.attach(g);
-    this.startPlaying();
-    return true;
+    return this.withLoading('Hoisting the sails...', async () => {
+      const g = Game.deserialize(json);
+      await this.attach(g);
+      this.startPlaying();
+      return true;
+    });
   }
 
   hasSave(slot = 'auto'): Promise<boolean> {
@@ -501,7 +543,7 @@ export class App {
     if (this.state === 'game' && !this.modal.pausing) g.advance(dt);
     if (this.state === 'menu') {
       this.menuSpin += dt;
-      this.world.rig.yaw = Math.PI / 4 + this.menuSpin * 0.03;
+      this.world.rig.yaw = this.world.rig.yawGoal = Math.PI / 4 + this.menuSpin * 0.03;
       g.advance(dt);
     }
     this.updateGhost();
