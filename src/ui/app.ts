@@ -20,6 +20,7 @@ import { Modal } from './modal';
 import { MainMenu } from './menu';
 import { Overlays } from './overlays';
 import { saveGame, loadGame, hasSave } from './saves';
+import type { Profiler } from './profiler';
 
 /** wall-clock milliseconds per frame the simulation may use before it starts dropping backlog */
 const SIM_BUDGET_MS = 8;
@@ -63,6 +64,8 @@ export class App {
   private autosaveAt = 0;
   private menuSpin = 0;
   quality: 'low' | 'medium' | 'high' = 'high';
+  /** performance recording in progress (Settings › Record performance) */
+  prof?: Profiler;
   fps = 60;
   private fpsAcc = { t: 0, n: 0 };
 
@@ -70,7 +73,7 @@ export class App {
     this.root = ui;
     this.cursorTip = el('div', 'cursor-tip hidden', document.body);
     try {
-      this.quality = (localStorage.getItem('bc_quality') as any) ?? (navigator.hardwareConcurrency <= 4 ? 'medium' : 'high');
+      this.quality = (localStorage.getItem('bc_quality') as any) ?? defaultQuality();
     } catch {
       /* ignore */
     }
@@ -554,6 +557,8 @@ export class App {
 
   // ------------------------------------------------------------------------------------------------- per frame
   frame(now: number): void {
+    const prof = this.prof;
+    prof?.begin(now);
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     this.fpsAcc.t += dt;
@@ -563,7 +568,7 @@ export class App {
       this.fpsAcc = { t: 0, n: 0 };
     }
     const g = this.game;
-    if (!g) return;
+    if (!g) return prof?.end();
     // the sim gets a bounded slice of each frame, so input and rendering stay responsive at 8x
     if (this.state === 'game' && !this.modal.pausing) g.advance(dt, SIM_BUDGET_MS);
     if (this.state === 'menu') {
@@ -572,9 +577,11 @@ export class App {
       g.advance(dt, SIM_BUDGET_MS);
     }
     this.updateGhost();
+    prof?.lap('sim');
     // nothing advancing: the world may redraw at a low rate until something moves
     this.world.idle = this.state === 'game' && (g.paused || this.modal.pausing);
     this.world.render(dt);
+    prof?.lap('render');
     if (this.state === 'game') {
       this.handleEvents();
       // UI refreshes alternate between frames (HUD + inspector, then the big panels) so no frame does both
@@ -601,6 +608,10 @@ export class App {
       }
     }
     g.events.length = 0;
+    if (prof) {
+      prof.lap('ui');
+      prof.end();
+    }
   }
 
   private handleEvents(): void {
@@ -814,4 +825,27 @@ function barkVoice(p: { kind: string; sex: string; id: number }): string {
   if (p.kind === 'soldier') return 'soldier';
   if (p.kind === 'wealthy') return 'wealthy';
   return 'polly';
+}
+
+/**
+ * Graphics tier for a first run (a tier chosen in Settings is remembered instead): phones get 'low', tablets and
+ * small 4-core machines 'medium', everything else 'high'. Phones are told apart by a coarse primary pointer with no
+ * hover, or a mobile/tablet browser; of those, a short screen side under 600 CSS px is a phone, anything larger a tablet.
+ */
+export function deviceClass(): 'phone' | 'tablet' | 'desktop' {
+  const mq = (q: string) => typeof matchMedia === 'function' && matchMedia(q).matches;
+  const touchOnly = mq('(pointer: coarse)') && !mq('(hover: hover)');
+  const short = Math.min(screen.width, screen.height);
+  const ua = navigator.userAgent;
+  const iPadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1; // iPadOS 13+ poses as a Mac
+  const mobile = touchOnly || iPadOS || (navigator as any).userAgentData?.mobile === true || /Mobi|iPhone|iPod|iPad|Android|Tablet/i.test(ua);
+  if (mobile) return short < 600 ? 'phone' : 'tablet';
+  return 'desktop';
+}
+
+function defaultQuality(): 'low' | 'medium' | 'high' {
+  const d = deviceClass();
+  if (d === 'phone') return 'low';
+  if (d === 'tablet' || navigator.hardwareConcurrency <= 4) return 'medium';
+  return 'high';
 }

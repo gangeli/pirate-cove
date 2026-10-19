@@ -1,4 +1,5 @@
 import type { App } from './app';
+import { recordProfile } from './profiler';
 import { el, html, setHTML, delegate, fmt, raw } from './dom';
 import { icon } from './icons';
 import type { Message } from '../sim/types';
@@ -143,10 +144,15 @@ export class Modal {
       <h3>Sound</h3>${slider('master', 'Master')}${slider('music', 'Music')}${slider('voice', 'Voices')}${slider('sfx', 'Effects')}${slider('ambient', 'Ambience')}
       <h3>Graphics</h3><div class="row">${(['low', 'medium', 'high'] as const).map((x) => html`<button class="btn small ${q === x ? 'on' : ''}" data-act="do:q_${x}">${x[0].toUpperCase() + x.slice(1)}</button>`)}</div>
       <div class="sub" style="font-size:12px;margin-top:4px;user-select:text;-webkit-user-select:text">Renderer: ${this.app.world.gpu.renderer}${this.app.world.gpu.software ? ' (software, no graphics acceleration)' : ''} &middot; resolution ${Math.round(this.app.world.pr * 100)}%</div>
+      <div class="row" style="margin-top:6px;align-items:center;gap:8px"><button class="btn small" data-act="do:profile">Record performance (60 s)</button><span class="sub" style="font-size:12px">Play normally for a minute, then copy the report.</span></div>
       <h3>Advisor</h3><div class="row">${(['full', 'brief', 'off'] as const).map((x) => html`<button class="btn small ${adv === x ? 'on' : ''}" data-act="do:a_${x}">${x === 'full' ? 'Chatty' : x === 'brief' ? 'Brief' : 'Silent'}</button>`)}</div>
       <h3>Camera</h3><label><input type="checkbox" data-edge ${this.app.world.rig.edgeScroll ? 'checked' : ''}> Scroll at the screen edges</label>
       <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn green" data-act="do:done">Done</button></div>`, {
       done: () => this.close(),
+      profile: () => {
+        this.close();
+        recordProfile(this.app, 60);
+      },
       q_low: () => this.setQuality('low'),
       q_medium: () => this.setQuality('medium'),
       q_high: () => this.setQuality('high'),
