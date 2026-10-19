@@ -46,6 +46,8 @@ function pwa(): Plugin {
           f.startsWith('draco/') ||
           /^assets\/[^/]+\.(js|css|woff2?)$/.test(f) || // Vite's hashed bundles and fonts
           f.endsWith('.json');
+        // a .jpg with a compressed .ktx2 twin is only a fallback for browsers without KTX2: fetched (and cached) on demand, not bundled for offline
+        if (/\.jpg$/.test(f) && files.includes(f.replace(/\.jpg$/, '.ktx2'))) continue;
         if (isShell) shell.push([f, hash]);
         else assets.push([f, hash, buf.length]);
       }

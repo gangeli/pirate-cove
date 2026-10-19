@@ -84,6 +84,8 @@ await step('open build menu (B)', async () => {
   await shot(p, 'play_build');
 });
 await step('pick a tavern and place it', async () => {
+  await p.click('.cat[data-act="cat:entertainment"]', { timeout: 300000 });
+  await p.waitForTimeout(600);
   const ok = await p.evaluate(() => {
     const el = [...document.querySelectorAll('[data-act^="pick:"], [data-act^="build:"]')].find((e) => /tavern/i.test(e.getAttribute('data-act') ?? '') || /tavern/i.test(e.textContent ?? ''));
     if (!el) return false;
@@ -126,9 +128,12 @@ await step('select a pirate', async () => {
   await shot(p, 'play_select');
 });
 await step('let a few months pass', async () => {
-  await p.keyboard.press('Escape');
-  await p.keyboard.press('3');
+  // deselect without opening the game menu (Escape with nothing open brings it up and pauses)
+  await p.evaluate(() => { const a = window.__app; a.select?.(null); a.closeAll?.(); a.game.paused = false; });
+  await p.keyboard.press('4');
+  const t0 = (await gameState(p)).t;
   await p.waitForTimeout(30000);
+  if ((await gameState(p)).t <= t0) throw new Error('time did not advance');
   await shot(p, 'play_later');
 });
 log(`[play] errors: ${p.errors.length}${p.errors.length ? '\n   ' + p.errors.slice(0, 10).join('\n   ') : ''}`);
