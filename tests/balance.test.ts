@@ -87,3 +87,40 @@ describe('ships and captains', () => {
     expect(launchStores('frigate').cannons).toBe(0);
   });
 });
+
+describe('recovery', () => {
+  it('a revolt that fails to take the palace burns out within a month', () => {
+    const g = new Game({ seed: 12 }, KIDD);
+    const caps = g.captives().slice(0, 4);
+    for (const c of caps) c.rebel = true;
+    g.unrest.rebellion = true;
+    g.unrest.rebelSince = g.time;
+    g.run(MONTH * 1.2);
+    expect(g.unrest.rebellion).toBe(false);
+    expect(g.captives().some((c) => c.rebel)).toBe(false);
+  });
+
+  it('a shipless island with nobody to build a hull is not stuck for good', () => {
+    const g = new Game({ seed: 13 }, KIDD);
+    for (const s of [...g.ships.values()]) g.ships.delete(s.id);
+    for (const b of g.buildings.values()) b.ship = 0;
+    for (const p of [...g.people.values()]) if (p.skilled && p.profession === 'shipwright') g.people.delete(p.id);
+    expect(g.hasProfession('shipwright')).toBe(false);
+    g.run(MONTH * 18);
+    expect(g.hasProfession('shipwright')).toBe(true);
+  });
+
+  it('raiding parties spare the towns of a power we are at peace with', () => {
+    const g = new Game({ seed: 14 }, KIDD);
+    g.treasury = 9999;
+    for (const n of ['eng', 'fra'] as const) g.cmd({ type: 'edict', id: 'peace', nation: n });
+    const s = [...g.ships.values()][0];
+    s.rations = 20;
+    expect(g.cmd({ type: 'shipOrders', ship: s.id, mission: 'raid' }).ok).toBe(true);
+    expect(g.cmd({ type: 'setSail', ship: s.id }).ok).toBe(true);
+    for (let i = 0; i < 20 && !s.log.some((e) => /Raided/.test(e.text)); i++) g.run(MONTH * 0.1);
+    expect(s.log.find((e) => /Raided/.test(e.text))?.text).toMatch(/Spanish/);
+    expect(g.ongoing.has('peace:eng') && g.ongoing.has('peace:fra')).toBe(true);
+  });
+});
+
