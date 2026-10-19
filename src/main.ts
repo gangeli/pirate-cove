@@ -29,7 +29,12 @@ async function boot() {
   if (params.get('q')) app.quality = params.get('q') as any;
   await app.init();
   await props.load();
-  await (await import('./render/bldmodels')).bldModels.load();
+  {
+    // far models up front; full detail streams in per building type (never on low quality)
+    const { bldModels } = await import('./render/bldmodels');
+    bldModels.fullDetail = app.quality !== 'low';
+    await bldModels.load();
+  }
   bar.style.width = '50%';
   (window as any).__app = app;
   const seed = params.get('seed');

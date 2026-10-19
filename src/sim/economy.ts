@@ -209,6 +209,7 @@ export function haulStep(g: Game, p: Person): boolean {
     const price = Math.floor((SMUGGLER_PRICE[good] ?? 1) * (1 + traders / 50));
     g.earn(price * amt, 'smuggling');
     home.income += price * amt;
+    g.stats.exported[good] = (g.stats.exported[good] ?? 0) + amt;
     return false;
   }
   home.inv[good] = (home.inv[good] ?? 0) + amt;

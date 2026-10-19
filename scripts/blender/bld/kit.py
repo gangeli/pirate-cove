@@ -353,9 +353,11 @@ class Kit:
         bpy.ops.object.bake(type='EMIT', margin=6, use_clear=True, uv_layer='AO')
         me.uv_layers.active = me.uv_layers['UVMap']
         os.makedirs(out_dir, exist_ok=True)
+        # the map is smooth: bake at full size for clean edges, ship at half size
+        img.scale(max(128, ao_size // 2), max(128, ao_size // 2))
         img.filepath_raw = os.path.join(out_dir, name + '_ao.jpg')
         img.file_format = 'JPEG'
-        sc.render.image_settings.quality = 88
+        sc.render.image_settings.quality = 82
         img.save()
         if gp:
             bpy.data.objects.remove(gp)

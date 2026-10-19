@@ -3,6 +3,7 @@ import type { Game } from '../sim/game';
 import type { Building } from '../sim/types';
 import { BUILDING, PALACE_LEVELS } from '../sim/data/buildings';
 import { buildPrefab, scaffold } from './prefabs';
+import { bldModels } from './bldmodels';
 import type { World } from './world';
 import { SHIPS } from '../sim/data/ships';
 
@@ -42,7 +43,7 @@ export class BuildingsView {
       lv = 0;
       for (let i = 0; i < PALACE_LEVELS.length; i++) if (this.game.hoard >= PALACE_LEVELS[i].hoard) lv = i;
     }
-    return `${b.def}:${lv}:${b.built >= 1 ? 1 : 0}`;
+    return `${b.def}:${lv}:${b.built >= 1 ? 1 : 0}:${bldModels.stateOf(b.def, b.def === 'housing_plot' ? lv : b.def === 'palace' ? lv : 1)}`;
   }
 
   private make(b: Building): void {

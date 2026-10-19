@@ -78,7 +78,7 @@ export class Game {
   /** monthly history for graphs */
   history: { m: number; treasury: number; hoard: number; pirates: number; captives: number; happiness: number; resignation: number; income: number; expense: number }[] = [];
   finance = { income: {} as Record<string, number>, expense: {} as Record<string, number>, lastIncome: {} as Record<string, number>, lastExpense: {} as Record<string, number> };
-  stats = { plundered: 0, captured: 0, shipsSunk: 0, escapes: 0, escapeKills: 0, deaths: 0, piratesDied: 0, recruits: 0 };
+  stats = { plundered: 0, captured: 0, shipsSunk: 0, escapes: 0, escapeKills: 0, deaths: 0, piratesDied: 0, recruits: 0, exported: {} as Partial<Record<Good, number>> };
   /** coup/rebellion warnings */
   unrest: { coupWarn: number; rebellion: boolean; coupMonths: number; rebelSince?: number } = { coupWarn: 0, rebellion: false, coupMonths: 0 };
   graveyard: { name: string; nat: Nation }[] = [];
@@ -575,7 +575,7 @@ export class Game {
     g.buildings = new Map(d.buildings.map((b: Building) => [b.id, b]));
     g.ships = new Map(d.ships.map((s: Ship) => [s.id, s]));
     g.regions = d.regions; g.nations = d.nations; g.ongoing = new Set(d.ongoing); g.messages = d.messages; g.nextId = d.nextId;
-    g.history = d.history; g.finance = d.finance; g.stats = d.stats; g.unrest = d.unrest; g.graveyard = d.graveyard; g.effects = d.effects;
+    g.history = d.history; g.finance = d.finance; g.stats = { ...d.stats, exported: d.stats.exported ?? {} }; g.unrest = d.unrest; g.graveyard = d.graveyard; g.effects = d.effects;
     g.blackMarketMarkup = d.bm; g.rng.state = d.rng; g.advisorState = d.advisor; g.captainPool = d.captainPool;
     g.pf = new PathFinder(g.map);
     for (const b of g.buildings.values()) markBlocked(g, b);

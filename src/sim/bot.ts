@@ -359,7 +359,10 @@ export class Bot {
     // a captive eats about a corn and a half a month; a farm grows enough for twenty or so
     const hungry = g.captives().filter((c) => c.kind === 'captive' && c.needs.food < 0.2).length;
     const farms = Math.ceil(cap / 13) + Math.floor(kitchens / 2) + (this.p.plan && hungry > cap * 0.1 ? 1 : 0);
-    if (this.count('corn_farm') < farms && g.goodTotal('corn') < 60) this.build('corn_farm', undefined, this.fertile());
+    // (corn sitting in kitchens' bins is spoken for: judge by what's left against the mouths to feed)
+    if (this.count('corn_farm') < farms && (g.goodTotal('corn') < 40 + cap || hungry > cap * 0.05)) this.build('corn_farm', undefined, this.fertile());
+    // more cooks at the chuck tents when the queues grow
+    if (this.p.plan && hungry > cap * 0.08 && this.count('chuck_tent') < Math.ceil(cap / 18)) this.build('chuck_tent');
     if (this.count('bunkhouse') * 5 < cap * 0.6) this.build('bunkhouse');
     // housing
     const homeless = g.pirates().filter((p) => !p.home && !p.captain).length - (this.p.plan && g.lumber() < 20 ? 3 : 0);
@@ -376,6 +379,12 @@ export class Bot {
       else this.staffed('ration_factory');
     }
     if (this.p.plan) {
+      // hands follow the shortages: lumberjacks with a full woodpile give way to other work
+      const lumberPr = g.lumber() < 60 ? 4 : 2;
+      for (const b of g.buildings.values()) {
+        const want = b.def === 'timber_camp' || b.def === 'sawmill' ? lumberPr : 0;
+        if (want && b.priority !== want) g.cmd({ type: 'setPriority', id: b.id, priority: want });
+      }
       // when the fleet is short of stores the kitchens get first pick of the cooks
       const short = g.goodTotal('ration') < 20 && g.ships.size > 0;
       for (const b of g.buildings.values()) if (b.def === 'ration_factory' && b.priority !== (short ? 5 : 4)) g.cmd({ type: 'setPriority', id: b.id, priority: short ? 5 : 4 });
@@ -825,9 +834,12 @@ export class Bot {
   }
 
   /** the crew's share comes back through the venues anyway; keep more only when the treasury is in trouble */
-  private autoSpoils(): 'selfish' | 'generous' {
+  private autoSpoils(): 'miserly' | 'selfish' | 'generous' {
     const g = this.g;
     if (!this.p.plan) return g.avgHappiness() < 0.5 ? 'generous' : 'selfish';
+    // more pirates than the captives can feed, house and entertain: take the treasury's share and fewer
+    // recruits (the rest of a prize's crew come home as captives instead)
+    if (g.pirates().length > Math.max(40, g.captives().length)) return 'miserly';
     return g.treasury < 300 && g.avgHappiness() > 0.5 ? 'selfish' : 'generous';
   }
 

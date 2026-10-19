@@ -18,6 +18,14 @@ class BuildingModels {
   lodDistance = 15;
   loaded = false;
 
+  /** load full-detail models on demand (off on low quality: the far models are used throughout) */
+  fullDetail = true;
+  private loader: GLTFLoader | null = null;
+  private loading = new Set<string>();
+  /** bumped whenever a full model arrives, so views can rebuild */
+  stamp = 0;
+
+  /** at startup: the light far models of everything, plus the crop plants in full */
   async load(): Promise<void> {
     let names: string[] = [];
     try {
@@ -28,22 +36,44 @@ class BuildingModels {
     }
     const draco = new DRACOLoader();
     draco.setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
-    const loader = new GLTFLoader();
-    loader.setDRACOLoader(draco);
+    this.loader = new GLTFLoader();
+    this.loader.setDRACOLoader(draco);
     await Promise.all(names.map(async (name) => {
       try {
-        const [gltf, lod] = await Promise.all([
-          loader.loadAsync(assetUrl(`buildings/${name}.glb`)),
-          loader.loadAsync(assetUrl(`buildings/${name}_lod.glb`)).catch(() => null),
-        ]);
-        const mats = new Map<string, THREE.Material>();
-        this.src.set(name, this.prepare(name, gltf.scene, mats));
-        if (lod) this.far.set(name, this.prepare(name + '_lod', lod.scene, new Map(), true));
+        if (name.startsWith('plant_')) return this.loadFull(name);
+        const lod = await this.loader!.loadAsync(assetUrl(`buildings/${name}_lod.glb`)).catch(() => null);
+        if (lod) this.far.set(name, this.prepare(name + '_lod', lod.scene, new Map()));
+        else await this.loadFull(name);
       } catch (e) {
         console.warn('building model failed', name, e);
       }
     }));
     this.loaded = true;
+  }
+
+  private async loadFull(name: string): Promise<void> {
+    if (this.src.has(name) || this.loading.has(name) || !this.loader) return;
+    this.loading.add(name);
+    try {
+      const gltf = await this.loader.loadAsync(assetUrl(`buildings/${name}.glb`));
+      this.src.set(name, this.prepare(name, gltf.scene, new Map()));
+      this.stamp++;
+    } catch (e) {
+      console.warn('building model failed', name, e);
+    }
+  }
+
+  /** the model name used for a building def at a level, if any */
+  resolve(def: string, level: number): string | null {
+    const lv = `${def}_${level}`;
+    if (this.src.has(lv) || this.far.has(lv)) return lv;
+    return this.src.has(def) || this.far.has(def) ? def : null;
+  }
+
+  /** 'F' once the full model is in, 'L' while only the far model is (part of a view's rebuild key) */
+  stateOf(def: string, level: number): string {
+    const n = this.resolve(def, level);
+    return n && this.src.has(n) ? 'F' : 'L';
   }
 
   private prepare(name: string, root: THREE.Group, mats: Map<string, THREE.Material>, bare = false): THREE.Group {
@@ -89,7 +119,14 @@ class BuildingModels {
         mesh.receiveShadow = true;
         if (Array.isArray(mesh.material)) mesh.material = mesh.material.map((m) => matFor(m.name));
         else mesh.material = matFor(mesh.material.name);
-      } else if (/^(smoke|sign:|flag|glow|hull$|deck$)/.test(o.name)) markers.push(o);
+      } else {
+        // GLTFLoader sanitises node names (drops ':' and '.'); the original survives in userData.name
+        const n = (o.userData.name as string | undefined) ?? o.name;
+        if (/^(smoke|sign:|flag|glow|hull$|deck$)/.test(n)) {
+          o.name = n;
+          markers.push(o);
+        }
+      }
     });
     const out = new THREE.Group();
     out.add(root);
@@ -156,18 +193,20 @@ class BuildingModels {
   }
 
   has(name: string): boolean {
-    return this.src.has(name);
+    return this.src.has(name) || this.far.has(name);
   }
 
   get(name: string): THREE.Group | null {
     const s = this.src.get(name);
-    if (!s) return null;
-    const near = s.clone(true);
-    near.userData = {};
     const farSrc = this.far.get(name);
+    if (!s && !farSrc) return null;
+    if (!s && this.fullDetail) void this.loadFull(name);
+    const base = (s ?? farSrc)!;
     const g = new THREE.Group();
     const force = location.search.match(/[?&]lod=(near|far)/)?.[1];
-    if (farSrc && force !== 'near') {
+    if (s && farSrc && force !== 'near') {
+      const near = s.clone(true);
+      near.userData = {};
       const lod = new THREE.LOD();
       lod.addLevel(near, 0);
       // big buildings stay big on screen for longer: switch by apparent size, not a fixed distance
@@ -175,10 +214,14 @@ class BuildingModels {
       lod.addLevel(farSrc.clone(true), force === 'far' ? 0.001 : this.lodDistance * (0.6 + r * 0.55));
       if (force === 'far') near.visible = false;
       g.add(lod);
-    } else g.add(near);
-    if (s.userData.hull) g.userData.hull = (s.userData.hull as THREE.Vector3).clone();
-    if (s.userData.deckY !== undefined) g.userData.deckY = s.userData.deckY;
-    const list = s.userData.smokeList as THREE.Vector3[] | undefined;
+    } else {
+      const only = base.clone(true);
+      only.userData = {};
+      g.add(only);
+    }
+    if (base.userData.hull) g.userData.hull = (base.userData.hull as THREE.Vector3).clone();
+    if (base.userData.deckY !== undefined) g.userData.deckY = base.userData.deckY;
+    const list = base.userData.smokeList as THREE.Vector3[] | undefined;
     if (list?.length) {
       // the buildings view reads one smoke point per object; hang each on its own empty
       for (const p of list) {
