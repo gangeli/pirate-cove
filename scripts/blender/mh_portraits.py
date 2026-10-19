@@ -337,7 +337,7 @@ def build(pid, S):
         # gold trim on the tricorn brim
         if hat == 'tricorn':
             pass
-        if hat == 'cavalier' and S.get('plume'):
+        if hat == 'cavalier' and S.get('plume') and os.environ.get('PLUMES'):
             # ostrich plume curling over the brim
             # ostrich plume tucked into the band, sweeping back over the pinned-up side
             pts = [Vector((hc.x - 0.06, hc.y - 0.06, cz + 0.07)), Vector((hc.x - 0.12, hc.y - 0.02, cz + 0.12)), Vector((hc.x - 0.17, hc.y + 0.06, cz + 0.11)), Vector((hc.x - 0.19, hc.y + 0.13, cz + 0.04))]
@@ -366,7 +366,7 @@ def build(pid, S):
     beard = S.get('beard', 'none')
     if beard != 'none' and S['sex'] == 'M':
         vg = base.vertex_groups.new(name='beard')
-        lens = {'stubble': 0.003, 'full': 0.035, 'braided': 0.07, 'goatee': 0.025, 'moustache': 0.011, 'chin': 0.03}
+        lens = {'stubble': 0.003, 'full': 0.035, 'braided': 0.07, 'goatee': 0.025, 'moustache': 0.009, 'chin': 0.03}
         idx = []
         for i, c in enumerate(body):
             if not is_body[i] or c.y > hc.y - 0.01:
@@ -384,7 +384,7 @@ def build(pid, S):
         ps = base.modifiers.new('beard', 'PARTICLE_SYSTEM').particle_system
         st = ps.settings
         st.type = 'HAIR'
-        st.count = 4000 if beard != 'stubble' else 12000
+        st.count = {'stubble': 12000, 'moustache': 1400}.get(beard, 4000)
         pass
         ps.vertex_group_density = 'beard'
         st.use_advanced_hair = True
@@ -404,10 +404,10 @@ def build(pid, S):
             st.factor_random *= k
         st.child_type = 'INTERPOLATED'
         st.child_percent = st.rendered_child_count = 6 if beard != 'stubble' else 2
-        st.clump_factor = 0.5 if beard == 'braided' else 0.15
+        st.clump_factor = 0.5 if beard == 'braided' else 0.35 if beard == 'moustache' else 0.15
         st.roughness_2 = 0.02
         st.roughness_endpoint = 0.01
-        st.root_radius = 0.6 if beard == 'stubble' else 1.0
+        st.root_radius = 0.6 if beard in ('stubble', 'moustache') else 1.0
         st.radius_scale = 0.0012
         hm = bpy.data.materials.new('beard')
         hm.use_nodes = True
