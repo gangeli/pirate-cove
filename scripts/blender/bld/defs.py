@@ -549,4 +549,9 @@ def timber_camp(k):
 # each group of buildings lives in its own defs_<group>.py so several people can work at once
 import importlib, glob, os as _os
 for _f in sorted(glob.glob(_os.path.join(_os.path.dirname(__file__), 'defs_*.py'))):
-    importlib.import_module(_os.path.basename(_f)[:-3])
+    try:
+        importlib.import_module(_os.path.basename(_f)[:-3])
+    except Exception as _e:  # one broken module must not stop everyone else's builds
+        import traceback
+        print(f'!! could not load {_os.path.basename(_f)}: {_e!r}')
+        traceback.print_exc()

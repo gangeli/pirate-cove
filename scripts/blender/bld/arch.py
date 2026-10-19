@@ -755,7 +755,7 @@ def sack(k: Kit, x, z, s=1.0, ry=0.0):
             faces.append((a, a + seg, b + seg, b))
     faces.append(tuple(range(seg))[::-1])
     local = Matrix.Translation((x, 0, z)) @ Matrix.Rotation(ry, 4, 'Y')
-    k.mesh('canvas', verts, faces, uvscale=1.5, local=local)
+    k.mesh('weave', verts, faces, uvscale=1.5, local=local)
 
 
 def rope_coil(k: Kit, x, z, r=0.13):

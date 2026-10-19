@@ -37,12 +37,12 @@ function chimney(x: number, z: number, h: number): THREE.Group {
   g.userData.smoke = new THREE.Vector3(x, h + 0.1, z);
   return g;
 }
-function crops(W: number, D: number, kind: string): THREE.Group {
+/** a field of instanced plants; bare = plants only (the modelled farm supplies ground, walls and shelter) */
+function crops(W: number, D: number, kind: string, bare = false): THREE.Group {
   const g = new THREE.Group();
   const k = M();
   // furrowed soil
-  const soil = box(W - 0.15, 0.06, D - 0.15, k.soil, 0, -0.02, 0, 0, 1);
-  g.add(soil);
+  if (!bare) g.add(box(W - 0.15, 0.06, D - 0.15, k.soil, 0, -0.02, 0, 0, 1));
   const r = rand(kind.length * 97 + W * 7);
   const rows = Math.round(D * 2.2);
   const leafGeo = (() => {
@@ -98,6 +98,7 @@ function crops(W: number, D: number, kind: string): THREE.Group {
     for (let c = 0; c < Math.round(W * per / 3); c++) {
       const x = -W / 2 + 0.25 + (c / Math.max(1, Math.round(W * per / 3) - 1)) * (W - 0.5) + (r() - 0.5) * 0.05;
       const z = -D / 2 + 0.25 + (rr / Math.max(1, rows - 1)) * (D - 0.5);
+      if (bare && x > W / 2 - 0.85 && z < -D / 2 + 0.85) continue; // the field shelter's corner
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * 6.28);
       const sc = 0.8 + r() * 0.4;
       mtx.compose(p.set(x, 0.02, z), q, s.set(sc, sc, sc));
@@ -107,8 +108,9 @@ function crops(W: number, D: number, kind: string): THREE.Group {
   im.receiveShadow = true;
   im.userData.crops = true;
   g.add(im);
+  im.count = i;
   // fence along the back
-  g.add(at(fence(W - 0.2), 0, 0, -D / 2 + 0.05));
+  if (!bare) g.add(at(fence(W - 0.2), 0, 0, -D / 2 + 0.05));
   return g;
 }
 function mergeAll(parts: THREE.BufferGeometry[]): THREE.BufferGeometry {
@@ -811,10 +813,16 @@ const P: Record<string, Prefab> = {
   },
 };
 
+const FARM_CROP: Record<string, string> = { corn_farm: 'corn', banana_farm: 'banana', papaya_farm: 'papaya', sugar_farm: 'sugarcane', tobacco_farm: 'tobacco' };
+
 export function buildPrefab(def: string, W: number, D: number, level = 1): THREE.Group {
   // modelled buildings first (per level where a building has levels), procedural otherwise
   const made = bldModels.get(`${def}_${level}`) ?? bldModels.get(def);
-  if (made) return made;
+  if (made) {
+    const crop = FARM_CROP[def];
+    if (crop) made.add(crops(W, D, crop, true));
+    return made;
+  }
   const f = P[def];
   if (f) return f(W, D, level);
   // fallback: generic cottage scaled to footprint

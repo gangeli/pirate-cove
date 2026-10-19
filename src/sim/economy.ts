@@ -236,7 +236,10 @@ export function builderTask(g: Game, tent: Building, p: Person): Task | null {
 
 export function updateEconomy(g: Game, dt: number): void {
   // employment every 3 seconds
-  if (Math.floor(g.time / 3) !== Math.floor((g.time - dt) / 3)) employ(g);
+  if (Math.floor(g.time / 3) !== Math.floor((g.time - dt) / 3)) {
+    sweepCustomers(g);
+    employ(g);
+  }
   // present-worker tallies
   const eff = new Map<number, number>();
   const overseer = new Set<number>();
@@ -344,6 +347,21 @@ function fellTree(g: Game, b: Building): void {
   m.trees[k] = Math.max(0, m.trees[k] - 1);
   if (!m.trees[k] && m.terrain[k] === Terrain.Jungle) m.terrain[k] = Terrain.Grass;
   g.events.push({ type: 'trees', x: t[0], y: t[1], w: 1, h: 1 });
+}
+
+/**
+ * A visitor whose errand was interrupted (a chase, a brawl, the ship's bell, a call to arms) never reaches
+ * the counter to sign out, and would hold the seat forever: venues and bunks would slowly fill with ghosts
+ * until nobody could get a drink. Anyone no longer bound for or inside the building gives up their place.
+ */
+function sweepCustomers(g: Game): void {
+  for (const b of g.buildings.values()) {
+    if (!b.customers.length) continue;
+    b.customers = b.customers.filter((id) => {
+      const q = g.people.get(id);
+      return !!q && q.task.kind !== 'dead' && q.task.bld === b.id;
+    });
+  }
 }
 
 // ------------------------------------------------------------------------------------------- employment
