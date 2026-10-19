@@ -13,8 +13,11 @@ let next = 0;
 const steps = Math.round((years * 12 * MONTH) / 0.1);
 const tot: Record<string, number> = {}, totOut: Record<string, number> = {};
 let lastM = -1;
+const made: Record<string, number> = {};
 for (let i = 0; i < steps && !g.over; i++) {
-  g.step(); bot.step(); g.events.length = 0;
+  g.step(); bot.step();
+  for (const e of g.events) if (e.type === 'produced') made[e.good] = (made[e.good] ?? 0) + 1;
+  g.events.length = 0;
   if (g.monthIndex !== lastM) {
     lastM = g.monthIndex;
     for (const [k, v] of Object.entries(g.finance.lastIncome)) tot[k] = (tot[k] ?? 0) + v;
@@ -31,6 +34,7 @@ for (let i = 0; i < steps && !g.over; i++) {
     const jobs: Record<string, number> = {};
     for (const c of caps) if (c.job) { const b = g.buildings.get(c.job); if (b) jobs[b.def] = (jobs[b.def] ?? 0) + 1; }
     console.log(`   lumber ${g.lumber()} corn ${Math.round(g.goodTotal('corn'))} jobs ${Object.entries(jobs).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' ')}`);
+    console.log(`   made ${Object.entries(made).map(([k, v]) => `${k}:${v}`).join(' ')}`);
     console.log(`   unstaffed ${unstaffed.join(',')} | open ${[...g.ongoing].join(',')} | rel ${Object.entries(g.nations).map(([n, s]) => `${n}:${Math.round(s.relation)}${s.knows ? '!' : ''}`).join(' ')}`);
   }
 }
