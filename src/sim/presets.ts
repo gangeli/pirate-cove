@@ -43,8 +43,8 @@ export const PRESETS: Preset[] = [
 /**
  * Score multiplier for a set of conditions; harder conditions pay more. Calibrated from bot games
  * (scripts/tune.ts calibrate, default rung weighted double, novice/casual rungs as a check) so that the
- * same quality of play earns about the same final score on every preset: Calm Waters ~0.45, Fair Winds
- * ~0.70, Brethren 1.00, Marooned ~1.30, Hard Tack ~1.70. The length of the reign is not a difficulty:
+ * same quality of play earns about the same final score on every preset (pooled 16 seeds per cell): Calm ~0.45, Fair Winds
+ * ~0.61, Brethren 1.00, Marooned ~1.16, Hard Tack ~1.70. The length of the reign is not a difficulty:
  * medal cut-offs scale with it instead (score.ts medalThresholds).
  */
 export function difficultyOf(s: Settings): number {
@@ -55,7 +55,7 @@ export function difficultyOf(s: Settings): number {
   d *= s.vegetation < 0.5 ? 1 + (0.5 - s.vegetation) * 1.6 : 1 - (s.vegetation - 0.5) * 0.5;
   d *= 1 + (s.mountains - 0.5) * 0.3;
   d *= { 1200: 1.1, 2500: 1, 5000: 0.92 }[s.startGold as 1200 | 2500 | 5000] ?? 1;
-  d *= { none: 1.13, snow: 1, schooner: 0.78, sloop: 0.9 }[s.startShip ?? 'snow'];
+  d *= { none: 1.0, snow: 1, schooner: 0.68, sloop: 0.9 }[s.startShip ?? 'snow'];
   d *= { small: 1.1, medium: 1, large: 0.95 }[s.size];
   return Math.round(d * 100) / 100;
 }
