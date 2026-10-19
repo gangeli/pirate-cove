@@ -149,7 +149,9 @@ class BuildingModels {
       } else if (m.name.startsWith('glow')) {
         // glow:WxHxD - a box of embers or furnace mouth that flickers (see BuildingsView)
         const [w, h, d] = (m.name.split(':')[1] ?? '0.3x0.2x0.3').split('x').map(Number);
-        const gl = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), (M() as any).fire.clone());
+        // additive and soft, so it reads as heat in a dark mouth rather than an orange block
+        const fm = new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+        const gl = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), fm);
         gl.position.copy(p);
         gl.userData.glow = true;
         out.add(gl);
