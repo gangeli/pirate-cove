@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { assetUrl } from './textures';
+import { assetUrl, withKTX2 } from './textures';
 
 /**
  * Instanced, GPU-skinned crowds. Each character model's animation clips are baked into a float texture
@@ -56,7 +56,7 @@ export class CrowdModel {
   }
 
   async load(url: string): Promise<void> {
-    const gltf = await new GLTFLoader().loadAsync(url);
+    const gltf = await withKTX2(new GLTFLoader()).loadAsync(url);
     let skinned: THREE.SkinnedMesh | undefined;
     gltf.scene.traverse((o) => {
       if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinned = o as THREE.SkinnedMesh;

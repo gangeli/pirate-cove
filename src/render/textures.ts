@@ -43,6 +43,25 @@ export function createKTX2Loader(): KTX2Loader | null {
   }
 }
 
+let gltfKtx: KTX2Loader | null | undefined;
+/** let a GLTFLoader read KHR_texture_basisu (KTX2) textures; one transcoder pool shared by all model loaders */
+export function withKTX2<T extends { setKTX2Loader(l: KTX2Loader): unknown }>(gltfLoader: T): T {
+  if (gltfKtx === undefined) {
+    gltfKtx = createKTX2Loader();
+    if (gltfKtx) {
+      // drop each texture's transcoded copy from the JS heap once it is on the GPU
+      const load = gltfKtx.load.bind(gltfKtx);
+      gltfKtx.load = (url, onLoad, onProgress, onError) =>
+        load(url, (t) => {
+          releaseAfterUpload(t);
+          onLoad?.(t);
+        }, onProgress, onError);
+    }
+  }
+  if (gltfKtx) gltfLoader.setKTX2Loader(gltfKtx);
+  return gltfLoader;
+}
+
 let ktx: KTX2Loader | null | undefined;
 let ktxBusy = 0;
 let ktxIdle: ReturnType<typeof setTimeout> | null = null;
@@ -92,11 +111,25 @@ function adopt(t: THREE.Texture, c: THREE.CompressedTexture): void {
   tt.flipY = false; // the files are stored flipped already
   tt.unpackAlignment = 1;
   // after the upload the CPU copy is dead weight (these cache textures are never re-uploaded)
-  tt.onUpdate = () => {
-    tt.mipmaps = [];
-    tt.onUpdate = null as unknown as () => void;
-  };
+  releaseAfterUpload(tt);
   tt.needsUpdate = true;
+}
+
+/**
+ * Forget a compressed texture's mip data once it is on the GPU. Only when no further change follows within a few
+ * seconds (a caller adjusting colour space after loading bumps the version and needs the data for a re-upload).
+ */
+function releaseAfterUpload(t: THREE.Texture): void {
+  const prev = t.onUpdate as ((tex: THREE.Texture) => void) | null;
+  t.onUpdate = () => {
+    prev?.(t);
+    const v = t.version;
+    setTimeout(() => {
+      if (t.version !== v || !(t as THREE.CompressedTexture).isCompressedTexture) return;
+      t.mipmaps = [];
+      t.onUpdate = prev as unknown as () => void;
+    }, 4000);
+  };
 }
 
 export function loadTex(rel: string, srgb: boolean, repeat = true): THREE.Texture {

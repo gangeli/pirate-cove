@@ -3,7 +3,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { Game } from '../sim/game';
 import { SHIPS, type ShipType } from '../sim/data/ships';
 import type { World } from './world';
-import { assetUrl } from './textures';
+import { assetUrl, withKTX2 } from './textures';
+import { markSharedTree } from './dispose';
 import { M, flag } from './kit';
 import type { Nation } from '../sim/data/kings';
 
@@ -14,6 +15,47 @@ export const NAV_LENGTH = 9;
 
 /** model forward axis: hulls in the source files are modelled along -X (bow toward -X) */
 const BOW = -1;
+
+/** ship models load once per session and are shared by every game's ShipsView */
+let shipModels: Promise<Map<string, THREE.Object3D>> | null = null;
+function loadShipModels(): Promise<Map<string, THREE.Object3D>> {
+  return (shipModels ??= loadShipModelsNow());
+}
+
+async function loadShipModelsNow(): Promise<Map<string, THREE.Object3D>> {
+  const out = new Map<string, THREE.Object3D>();
+  const loader = withKTX2(new GLTFLoader());
+  await Promise.all(Object.entries(MODEL_FILES).map(async ([k, f]) => {
+    const gltf = await loader.loadAsync(assetUrl(`models/${f}.glb`));
+    const root = gltf.scene;
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        m.castShadow = true;
+        m.receiveShadow = true;
+        const mat = m.material as THREE.MeshStandardMaterial;
+        if (mat.transparent || mat.alphaMap) {
+          mat.alphaTest = 0.5;
+          mat.transparent = false;
+          mat.side = THREE.DoubleSide;
+        }
+      }
+    });
+    const bb = new THREE.Box3().setFromObject(root);
+    const size = bb.getSize(new THREE.Vector3());
+    const len = Math.max(size.x, size.z);
+    const wrap = new THREE.Group();
+    // waterline: about 28% up from the keel
+    root.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y - size.y * 0.13, -(bb.min.z + bb.max.z) / 2);
+    if (size.z > size.x) root.rotation.y = Math.PI / 2;
+    wrap.add(root);
+    wrap.scale.setScalar(1 / len);
+    wrap.userData.height = size.y / len;
+    markSharedTree(wrap); // cached for the whole session: never freed with a game's views
+    out.set(k, wrap);
+  }));
+  return out;
+}
 
 export class ShipsView {
   readonly group = new THREE.Group();
@@ -29,35 +71,7 @@ export class ShipsView {
   }
 
   private async load(): Promise<void> {
-    const loader = new GLTFLoader();
-    await Promise.all(Object.entries(MODEL_FILES).map(async ([k, f]) => {
-      const gltf = await loader.loadAsync(assetUrl(`models/${f}.glb`));
-      const root = gltf.scene;
-      root.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh) {
-          m.castShadow = true;
-          m.receiveShadow = true;
-          const mat = m.material as THREE.MeshStandardMaterial;
-          if (mat.transparent || mat.alphaMap) {
-            mat.alphaTest = 0.5;
-            mat.transparent = false;
-            mat.side = THREE.DoubleSide;
-          }
-        }
-      });
-      const bb = new THREE.Box3().setFromObject(root);
-      const size = bb.getSize(new THREE.Vector3());
-      const len = Math.max(size.x, size.z);
-      const wrap = new THREE.Group();
-      // waterline: about 28% up from the keel
-      root.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y - size.y * 0.13, -(bb.min.z + bb.max.z) / 2);
-      if (size.z > size.x) root.rotation.y = Math.PI / 2;
-      wrap.add(root);
-      wrap.scale.setScalar(1 / len);
-      wrap.userData.height = size.y / len;
-      this.src.set(k, wrap);
-    }));
+    this.src = await loadShipModels();
   }
 
   private instance(type: ShipType, nation?: Nation): THREE.Object3D {

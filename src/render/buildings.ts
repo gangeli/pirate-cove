@@ -114,17 +114,25 @@ interface View {
   height: number;
   /** static meshes on cached (shared) model geometry: drawn through the per-model instanced batches */
   batchable: THREE.Mesh[];
+  /** full-detail buildings: their LOD, the batchable meshes of each level and the level last drawn */
+  lod?: THREE.LOD;
+  levels?: THREE.Mesh[][];
+  lodLevel?: number;
 }
 
+/** ?nobatch=1 draws every building mesh on its own (debugging) */
+const NO_BATCH = typeof location !== 'undefined' && /[?&]nobatch=1/.test(location.search);
+
 /** a static model mesh can join an instanced batch: shared geometry, one material, nothing animated above it */
-function batchableMeshes(root: THREE.Object3D): THREE.Mesh[] {
+function batchableMeshes(root: THREE.Object3D, levelRoot = false): THREE.Mesh[] {
   const out: THREE.Mesh[] = [];
   root.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || (m as THREE.SkinnedMesh).isSkinnedMesh || Array.isArray(m.material)) return;
     if (!isShared(m.geometry) || m.geometry.morphAttributes.position) return;
     for (let p: THREE.Object3D | null = m; p && p !== root.parent; p = p.parent) {
-      if (!p.visible || p.userData.swing || p.userData.flag || p.userData.glow || (p as THREE.LOD).isLOD) return;
+      // (an LOD level's own visibility is the LOD's business)
+      if ((!p.visible && !(levelRoot && p === root)) || p.userData.swing || p.userData.flag || p.userData.glow || (p as THREE.LOD).isLOD) return;
     }
     out.push(m);
   });
@@ -221,7 +229,16 @@ export class BuildingsView {
     this.group.add(group);
     // finished buildings draw their model parts through shared instanced batches (sites under construction
     // carry per-building clipping materials, so they stay as they are)
-    if (!v.clip) v.batchable = batchableMeshes(model);
+    if (!v.clip && !NO_BATCH) {
+      v.batchable = batchableMeshes(model);
+      model.traverse((o) => {
+        if ((o as THREE.LOD).isLOD && !v.lod) v.lod = o as THREE.LOD;
+      });
+      if (v.lod) {
+        v.levels = v.lod.levels.map((l) => batchableMeshes(l.object, true));
+        v.lodLevel = -1;
+      }
+    }
     this.views.set(b.id, v);
     this.batchDirty = true;
   }
@@ -296,9 +313,11 @@ export class BuildingsView {
     this.batches = [];
     const lists = new Map<string, THREE.Mesh[]>();
     for (const v of this.views.values()) {
-      if (!v.batchable.length) continue;
+      if (!v.batchable.length && !v.levels) continue;
       v.group.updateMatrixWorld(true);
-      for (const m of v.batchable) {
+      if (v.levels) for (const l of v.levels) for (const m of l) m.visible = true;
+      const current = v.levels?.[v.lodLevel ?? -1] ?? [];
+      for (const m of v.batchable.length ? (current.length ? [...v.batchable, ...current] : v.batchable) : current) {
         m.visible = true;
         const mat = m.material as THREE.Material;
         const k = `${m.geometry.uuid}|${mat.uuid}|${m.castShadow ? 1 : 0}${m.receiveShadow ? 1 : 0}|${m.renderOrder}`;
@@ -337,6 +356,16 @@ export class BuildingsView {
       if (key !== v.key) {
         this.make(b);
         continue;
+      }
+      // full-detail buildings switch between near and far models: pick the level now (the renderer would pick the
+      // same one) so the batches already hold the right model this frame
+      if (v.lod && v.levels) {
+        v.lod.update(this.world.rig.camera);
+        const lv = v.lod.getCurrentLevel();
+        if (lv !== v.lodLevel) {
+          v.lodLevel = lv;
+          this.batchDirty = true;
+        }
       }
       // stream full detail only for buildings close enough to show it
       if (key.endsWith(':L') && v.group.position.distanceToSquared(this.world.rig.camera.position) < 45 * 45) {
