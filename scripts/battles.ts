@@ -5,7 +5,7 @@ import { PREY, SHIPS, type ShipType } from '../src/sim/data/ships';
 import { KINGS } from '../src/sim/data/kings';
 const res: Record<string, Record<string, number>> = {};
 const g = new Game({ seed: 100 }, KINGS[15]);
-for (const type of ["sloop","frigate"] as ShipType[]) {
+for (const type of ["snow","schooner","sloop","brigantine"] as ShipType[]) {
   for (const prey of PREY) {
     const key = `${type} vs ${prey.id}`;
     const tally: Record<string, number> = { win: 0, lost: 0, draw: 0, escape: 0, dead: 0 };

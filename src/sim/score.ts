@@ -1,4 +1,5 @@
 import type { Game } from './game';
+import { SHIPS } from './data/ships';
 
 export interface ScoreBreakdown {
   hoard: number;
@@ -13,16 +14,28 @@ export interface ScoreBreakdown {
   medal: 'gold' | 'silver' | 'bronze';
 }
 
-/** Sandbox score: sum of normalised factors, bonus factor weighted triple, times difficulty. */
+const SHIP_VALUE = { snow: 300, schooner: 450, sloop: 700, brigantine: 1000, frigate: 1800, galleon: 2200 } as const;
+
+/**
+ * Sandbox score: sum of normalised factors, bonus factor weighted triple, times difficulty.
+ * Happiness and head-count are averaged over the final year, and only crewed, captained ships count,
+ * so last-minute stunts (a festival on the final day, press-ganging every captive, a harbour full of
+ * empty hulls) do not pay.
+ */
 export function computeScore(g: Game): ScoreBreakdown {
   const pir = g.pirates();
-  const hap = pir.length ? pir.reduce((a, p) => a + p.happiness, 0) / pir.length : 0;
+  const hapNow = pir.length ? pir.reduce((a, p) => a + p.happiness, 0) / pir.length : 0;
+  const recent = g.history.slice(-12);
+  const hap = recent.length ? (recent.reduce((a, h) => a + h.happiness, 0) + hapNow) / (recent.length + 1) : hapNow;
+  const headcount = recent.length ? (recent.reduce((a, h) => a + h.pirates, 0) + pir.length) / (recent.length + 1) : pir.length;
+  const seaworthy = [...g.ships.values()].filter((s) => s.captain && g.people.has(s.captain) && s.crew.length >= Math.ceil(SHIPS[s.type].men / 2));
   const parts = {
     hoard: g.hoard * 1.0,
-    happiness: hap * 8000,
-    fleet: [...g.ships.values()].reduce((a, s) => a + ({ snow: 300, schooner: 450, sloop: 700, brigantine: 1000, frigate: 1800, galleon: 2200 }[s.type]), 0),
-    captains: pir.filter((p) => p.captain).length * 800,
-    pirates: pir.length * 40,
+    // only contentment above the baseline of a neglected island counts
+    happiness: Math.max(0, Math.min(1, (hap - 0.3) / 0.6)) * 8000,
+    fleet: seaworthy.reduce((a, s) => a + SHIP_VALUE[s.type], 0),
+    captains: seaworthy.length * 800,
+    pirates: headcount * 40,
   };
   const bonusKey = g.settings.bonus;
   const subtotal = parts.hoard + parts.happiness + parts.fleet + parts.captains + parts.pirates + (parts as any)[bonusKey] * 2;

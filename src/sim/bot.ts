@@ -5,7 +5,49 @@ import { SHIPS, type ShipType } from './data/ships';
 import { findSpot, buildRoadBetween, footprint, canPlace } from './placement';
 import { Terrain } from './map';
 import { NATIONS } from './data/kings';
-import { regionReachable } from './sea';
+import { regionReachable, regionDistance } from './sea';
+
+/** Strategy knobs. The defaults are a competent human's play; scripts/tune.ts searches over them. */
+export interface Policy {
+  /** months between economic decisions (a human checking in less often reacts later) */
+  cadence: number;
+  hoardRate: number;
+  /** added to the wealth-based price level (-2..2); prices are clamped to the three levels */
+  priceBias: number;
+  /** venue counts are multiplied by this */
+  entertainment: number;
+  /** chance a ready ship raids for captives instead of cruising, when labour is short */
+  raid: number;
+  /** treasury needed before commissioning another ship */
+  shipAt: number;
+  /** gold kept back once the essentials are built */
+  reserve: number;
+  /** build gallows / towers / scary decor when captives get restless */
+  fear: boolean;
+  /** pirate happiness below which a festival is thrown (if affordable) */
+  festivalAt: number;
+  /** relation below which peace is announced with a power that knows where we are */
+  peaceAt: number;
+  /** pursue patronage once at peace and harmonious */
+  patron: boolean;
+  /** spoils policy: 'auto' adapts to the mood */
+  spoils: 'auto' | 'miserly' | 'selfish' | 'generous' | 'bigspender';
+  /** how strongly captains avoid distant, patrolled waters (0 bold .. 2 timid) */
+  caution: number;
+  /** treasury needed before commissioning a frigate or galleon at the shipyard */
+  bigShipAt: number;
+  /** extra timber camps beyond the minimum (lumber is the early bottleneck) */
+  lumber: number;
+  /** fraction of decisions skipped at random (sloppiness) */
+  sloppy: number;
+  /** degenerate strategies probed for reward hacking */
+  exploit?: 'idle' | 'pressgang' | 'gouge' | 'nofun' | 'nofleet';
+}
+
+export const DEFAULT_POLICY: Policy = {
+  cadence: 0.5, hoardRate: 0.15, priceBias: 0, entertainment: 1, raid: 0.3, shipAt: 1600, reserve: 400, fear: true,
+  festivalAt: 0.4, peaceAt: -55, patron: false, spoils: 'auto', sloppy: 0, lumber: 0, caution: 0.5, bigShipAt: 3500,
+};
 
 /**
  * A scripted player used for automated playtesting and balance. It follows the strategy a competent
@@ -19,7 +61,10 @@ export class Bot {
   }
   private lastMonth = -1;
   private tick = 0;
-  constructor(private g: Game, private opts: { verbose?: boolean } = {}) {}
+  readonly p: Policy;
+  constructor(private g: Game, private opts: { verbose?: boolean; policy?: Partial<Policy> } = {}) {
+    this.p = { ...DEFAULT_POLICY, ...(opts.policy ?? {}) };
+  }
 
   private say(s: string): void {
     this.log.push(`${this.g.date}: ${s}`);
@@ -41,7 +86,7 @@ export class Bot {
     const d = BUILDING[def];
     const cost = g.costOf(d);
     // keep a reserve for captains and emergencies once the essentials are up
-    const reserve = g.yearsElapsed > 0.5 && cost.gold > 0 ? 400 : 0;
+    const reserve = g.yearsElapsed > 0.5 && cost.gold > 0 ? this.p.reserve : 0;
     if ((cost.gold > 0 && g.treasury - reserve < cost.gold) || g.lumber() < cost.lumber) return false;
     if (g.missingReqs(d).length) return false;
     const [cx, cy] = near ?? this.centre();
@@ -118,11 +163,16 @@ export class Bot {
     const g = this.g;
     this.tick++;
     // decisions twice a month; ships every few seconds
-    if (this.tick % 20 === 0) this.ships();
-    const half = Math.floor(g.time / (MONTH / 2));
-    if (half === this.lastMonth) return;
-    this.lastMonth = half;
+    if (this.p.exploit === 'idle') return;
+    if (this.tick % 20 === 0 && this.p.exploit !== 'nofleet') this.ships();
+    const slot = Math.floor(g.time / (MONTH * this.p.cadence));
+    if (slot === this.lastMonth) return;
+    this.lastMonth = slot;
+    if (this.p.sloppy && g.rng.chance(this.p.sloppy)) return;
     this.economy();
+    if (this.p.exploit === 'pressgang') {
+      for (const c of g.captives()) if (c.kind === 'captive' && !c.skilled) g.cmd({ type: 'edict', id: 'press_gang', target: c.id });
+    }
   }
 
   private economy(): void {
@@ -132,14 +182,14 @@ export class Bot {
     // pirates should pay for their fun
     const ashoreP = g.pirates().filter((p) => p.task.kind !== 'atsea');
     const wealth = ashoreP.length ? ashoreP.reduce((a, p) => a + p.gold, 0) / ashoreP.length : 0;
-    const level = wealth > 120 ? 2 : wealth > 35 ? 1 : 0;
+    const level = this.p.exploit === 'gouge' ? 2 : Math.max(0, Math.min(2, (wealth > 120 ? 2 : wealth > 35 ? 1 : 0) + this.p.priceBias));
     for (const b of g.buildings.values()) if (BUILDING[b.def].service && b.price !== level) g.cmd({ type: 'setPrice', id: b.id, price: level });
     // hoard
     if (!this.count('cave') && g.treasury > 400) this.build('cave');
-    if (this.count('cave', false) && g.hoardRate !== 0.15) g.cmd({ type: 'hoardRate', rate: 0.15 });
+    if (this.count('cave', false) && g.hoardRate !== this.p.hoardRate) g.cmd({ type: 'hoardRate', rate: this.p.hoardRate });
     // lumber
     const timber = this.count('timber_camp');
-    if (g.lumber() < 30 && timber < 2 + Math.floor(g.yearsElapsed)) this.build('timber_camp', this.forest());
+    if ((g.lumber() < 30 || timber < this.p.lumber) && timber < 2 + Math.floor(g.yearsElapsed) + this.p.lumber) this.build('timber_camp', this.forest());
     if (this.count('sawmill') < Math.ceil(timber / 2)) this.build('sawmill', this.forest());
     // food
     if (this.count('chuck_tent') < Math.ceil(cap / 26)) this.build('chuck_tent');
@@ -150,15 +200,17 @@ export class Bot {
     const freePlots = [...g.buildings.values()].filter((b) => b.def === 'housing_plot' && !b.owner).length;
     if (homeless > freePlots) this.build('housing_plot', this.dockSide());
     // entertainment (near docks)
-    if (this.count('dive') < Math.ceil(ashore / 16)) this.build('dive', this.dockSide());
-    if (this.count('wench_hut') < Math.ceil(ashore / 5)) this.build('wench_hut', this.dockSide());
-    if (this.count('animal_pit') < Math.ceil(ashore / 25)) this.build('animal_pit', this.dockSide());
-    if (pir > 15 && this.count('tavern') < Math.ceil(pir / 25)) this.build('tavern', this.dockSide());
-    if (pir > 18 && this.count('gambling_den') < Math.ceil(pir / 30)) this.build('gambling_den', this.dockSide());
-    if (pir > 20 && this.count('eatery') < Math.ceil(pir / 30)) this.build('eatery', this.dockSide());
-    if (pir > 25 && this.count('brothel') < 1) this.build('brothel', this.dockSide());
-    if (pir > 30 && this.count('inn') < 1 && g.treasury > 900) this.build('inn', this.dockSide());
-    if (pir > 30 && this.count('casino') < 1 && g.treasury > 900) this.build('casino', this.dockSide());
+    const E = this.p.exploit === 'nofun' ? 0 : this.p.entertainment;
+    const want = (n: number) => Math.ceil(n * E);
+    if (this.count('dive') < want(ashore / 16)) this.build('dive', this.dockSide());
+    if (this.count('wench_hut') < want(ashore / 5)) this.build('wench_hut', this.dockSide());
+    if (this.count('animal_pit') < want(ashore / 25)) this.build('animal_pit', this.dockSide());
+    if (pir > 15 && this.count('tavern') < want(pir / 25)) this.build('tavern', this.dockSide());
+    if (pir > 18 && this.count('gambling_den') < want(pir / 30)) this.build('gambling_den', this.dockSide());
+    if (pir > 20 && this.count('eatery') < want(pir / 30)) this.build('eatery', this.dockSide());
+    if (pir > 25 && this.count('brothel') < want(1)) this.build('brothel', this.dockSide());
+    if (pir > 30 && this.count('inn') < want(1) && g.treasury > 900) this.build('inn', this.dockSide());
+    if (pir > 30 && this.count('casino') < want(1) && g.treasury > 900) this.build('casino', this.dockSide());
     if (this.count('brewery') < 1 && g.yearsElapsed > 0.2) this.build('brewery');
     // ships' supplies
     if (this.count('ration_factory') < 1 + Math.floor(g.ships.size / 3)) this.build('ration_factory');
@@ -180,11 +232,12 @@ export class Bot {
       const t: ShipType = g.treasury > 900 ? 'sloop' : g.treasury > 300 ? 'schooner' : 'snow';
       if (g.cmd({ type: 'commission', yard: yard.id, ship: t }).ok) this.say(`commissioned a ${SHIPS[t].name} to rebuild the fleet`);
     }
-    if (yard && !yard.building_ship && docks > ships + queued && captainless === 0 && g.treasury > 1600) {
-      const want: ShipType = yard.def === 'shipyard' && g.treasury > 2500 ? 'brigantine' : g.treasury > 900 ? 'sloop' : g.treasury > 300 ? 'schooner' : 'snow';
+    if (yard && !yard.building_ship && docks > ships + queued && captainless === 0 && g.treasury > this.p.shipAt) {
+      const want: ShipType = yard.def === 'shipyard' && g.treasury > this.p.bigShipAt ? (g.lumber() >= 150 && g.rng.chance(0.4) ? 'galleon' : 'frigate')
+        : yard.def === 'shipyard' && g.treasury > 2000 ? 'brigantine' : g.treasury > 900 ? 'sloop' : g.treasury > 300 ? 'schooner' : 'snow';
       if (g.cmd({ type: 'commission', yard: yard.id, ship: want }).ok) this.say(`commissioned a ${SHIPS[want].name}`);
     }
-    if (g.yearsElapsed > 3 && !this.count('shipyard') && g.treasury > 1600) this.buildShore('shipyard');
+    if (g.yearsElapsed > 3 && !this.count('shipyard') && g.treasury > this.p.shipAt) this.buildShore('shipyard');
     // captains
     const capless = [...g.ships.values()].some((s) => !s.captain && s.status !== 'atsea');
     if (capless && g.treasury > g.edictAvailability('recruit_captain').cost + 300 && g.edictAvailability('recruit_captain').ok) {
@@ -192,7 +245,7 @@ export class Bot {
       this.say('recruited a captain');
     }
     // fear when captives run
-    if (g.effects.recentEscapes > 0.8 || g.avgResignation() < 0.4) {
+    if (this.p.fear && (g.effects.recentEscapes > 0.8 || g.avgResignation() < 0.4)) {
       if (!this.count('gallows')) this.build('gallows', this.workSide());
       else if (this.count('watch_tower') < 2 + g.yearsElapsed / 2) this.build('watch_tower', this.workSide());
       else if (this.count('very_scary_decor') < 6) this.build('very_scary_decor', this.workSide());
@@ -210,13 +263,20 @@ export class Bot {
     const sites = [...g.buildings.values()].filter((b) => b.built < 1).length;
     if (sites > 4 * this.count('construction_tent')) this.build('construction_tent');
     // festival when the mood sours and we're rich
-    if (g.avgHappiness() < 0.4 && g.treasury > 2500 && g.edictAvailability('festival').ok) g.cmd({ type: 'edict', id: 'festival' });
+    if (g.avgHappiness() < this.p.festivalAt && g.treasury > 2500 && g.edictAvailability('festival').ok) g.cmd({ type: 'edict', id: 'festival' });
     // ransom wealthy captives with good ransoms
     for (const p of g.people.values()) if (p.kind === 'wealthy' && p.ransom > 450) g.cmd({ type: 'edict', id: 'ransom', target: p.id });
     // peace with the most dangerous power
-    for (const n of NATIONS) if (g.nations[n].knows && g.nations[n].relation < -55 && g.edictAvailability('peace', n).ok && !g.ongoing.has(`peace:${n}`)) {
+    for (const n of NATIONS) if (g.nations[n].knows && g.nations[n].relation < this.p.peaceAt && g.edictAvailability('peace', n).ok && !g.ongoing.has(`peace:${n}`)) {
       g.cmd({ type: 'edict', id: 'peace', nation: n });
       this.say(`announced peace with ${n}`);
+    }
+    if (this.p.patron) {
+      for (const n of NATIONS) if (g.ongoing.has(`peace:${n}`) && g.edictAvailability('patron', n).ok) {
+        g.cmd({ type: 'edict', id: 'patron', nation: n });
+        this.say(`became a colony of ${n}`);
+        break;
+      }
     }
   }
 
@@ -309,21 +369,24 @@ export class Bot {
       const skilledWanted = !g.hasProfession('shipwright') ? 'shipwright' : !g.hasProfession('server') ? 'server' : !g.hasProfession('cook') ? 'cook' : !g.hasProfession('engineer') && g.yearsElapsed > 1 ? 'engineer' : null;
       if (skilledWanted && g.treasury > 600 && g.rng.chance(0.25)) {
         g.cmd({ type: 'shipOrders', ship: s.id, mission: 'kidnap', kidnapJob: skilledWanted as any });
-      } else if (g.captives().length < 26 + g.yearsElapsed * 6 && g.rng.chance(0.3)) {
+      } else if (g.captives().length < 26 + g.yearsElapsed * 6 && g.rng.chance(this.p.raid)) {
         g.cmd({ type: 'shipOrders', ship: s.id, mission: 'raid' });
       } else {
         // best reachable known region by merchant traffic minus navy
         let best = g.homeRegion, bs = -Infinity;
         for (const r of g.regions) {
           if (!regionReachable(g, s, r.id).ok) continue;
+          // further out is richer but patrolled; small ships stay near home, big ones go hunting
+          const far = Math.min(1, regionDistance(g, g.homeRegion, r.id) / 0.55);
           const merch = NATIONS.reduce((a, n) => a + r.merchant[n], 0);
-          const nav = NATIONS.reduce((a, n) => a + r.naval[n], 0) * (1 + r.heat * 0.3);
-          const sc = merch - nav * (d.cannons < 12 ? 1.4 : 0.7) + (r.tradeRoute ? 0.3 : 0) + g.rng.range(0, 0.3);
+          const nav = NATIONS.reduce((a, n) => a + r.naval[n], 0) * (0.35 + 0.9 * far) * (1 + r.heat * 0.3);
+          const big = d.cannons >= 12;
+          const sc = merch * (0.5 + far * (big ? 2.2 : 0.6)) - nav * (big ? 0.6 : 1.6) + (r.tradeRoute ? 0.4 : 0) - this.p.caution * far + g.rng.range(0, 0.3);
           if (sc > bs) (bs = sc), (best = r.id);
         }
         const unexplored = g.regions.find((r) => r.knowledge === 0 && regionReachable(g, s, r.id).ok);
         if (unexplored && g.rng.chance(0.2)) g.cmd({ type: 'shipOrders', ship: s.id, mission: 'explore', region: unexplored.id });
-        else g.cmd({ type: 'shipOrders', ship: s.id, mission: 'cruise', region: best, orders: s.cutlasses >= Math.min(4, d.cutlasses) || s.cannons < 2 ? 'board' : 'pound', spoils: g.avgHappiness() < 0.45 ? 'generous' : 'selfish' });
+        else g.cmd({ type: 'shipOrders', ship: s.id, mission: 'cruise', region: best, orders: s.cutlasses >= Math.min(4, d.cutlasses) || s.cannons < 2 ? 'board' : 'pound', spoils: this.p.spoils === 'auto' ? (g.avgHappiness() < 0.45 ? 'generous' : 'selfish') : this.p.spoils });
       }
       const r = g.cmd({ type: 'setSail', ship: s.id });
       if (r.ok) this.say(`${s.name} sails (${s.mission})`);

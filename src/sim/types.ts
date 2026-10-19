@@ -266,4 +266,8 @@ export interface Settings {
   bonus: 'hoard' | 'happiness' | 'fleet' | 'captains' | 'pirates';
   region: number;
   startGold: number;
+  /** varies the island shape when a seed's coast cannot host the starting dock */
+  /** the ship the colony starts with */
+  startShip?: 'none' | 'snow' | 'schooner' | 'sloop';
+  mapSalt?: number;
 }

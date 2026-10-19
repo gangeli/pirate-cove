@@ -21,3 +21,13 @@ describe('new game', () => {
     expect(g.month).toBe(1);
   });
 });
+
+describe('starting island', () => {
+  it('always has a dock and a ship, whatever the seed', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const g = new Game({ seed });
+      expect(g.findBuilding('dock'), `seed ${seed}`).toBeTruthy();
+      expect(g.ships.size, `seed ${seed}`).toBe(1);
+    }
+  });
+});

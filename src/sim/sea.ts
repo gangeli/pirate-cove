@@ -316,13 +316,21 @@ export function seaPath(g: Game, x: number, y: number): [number, number][] {
 /** a dock's own stores go straight aboard */
 function loadDockStores(g: Game, s: Ship): void {
   const dock = g.buildings.get(s.dock);
-  const have = dock?.inv.ration ?? 0;
-  const room = SHIPS[s.type].rations - s.rations;
-  if (dock && have > 0 && room > 0) {
-    const t = Math.min(have, room);
-    dock.inv.ration = have - t;
-    s.rations += t;
-  }
+  if (!dock) return;
+  const d = SHIPS[s.type];
+  const move = (good: 'ration' | 'cutlass' | 'musket' | 'cannon', key: 'rations' | 'cutlasses' | 'muskets' | 'cannons', cap: number) => {
+    const have = Math.floor(dock.inv[good] ?? 0);
+    const room = Math.floor(cap - s[key]);
+    if (have > 0 && room > 0) {
+      const t = Math.min(have, room);
+      dock.inv[good] = (dock.inv[good] ?? 0) - t;
+      s[key] += t;
+    }
+  };
+  move('ration', 'rations', d.rations);
+  move('cutlass', 'cutlasses', d.cutlasses);
+  move('musket', 'muskets', d.muskets);
+  move('cannon', 'cannons', d.cannons);
 }
 
 export function updateShips(g: Game, dt: number): void {
@@ -435,6 +443,25 @@ function voyageTick(g: Game, s: Ship, dt: number): void {
     mutiny(g, s);
     return;
   }
+  // weather: every fortnight at sea risks a squall; small hulls suffer most and can founder
+  if (Math.floor(v.t / (MONTH / 2)) !== Math.floor((v.t - dt) / (MONTH / 2))) {
+    const STORM = { snow: 0.085, schooner: 0.05, sloop: 0.04, brigantine: 0.03, frigate: 0.025, galleon: 0.025 } as const;
+    const FOUNDER = { snow: 0.6, schooner: 0.38, sloop: 0.22, brigantine: 0.12, frigate: 0.08, galleon: 0.06 } as const;
+    const FRAGILE = { snow: 1.8, schooner: 1.4, sloop: 1.1, brigantine: 0.8, frigate: 0.55, galleon: 0.5 } as const;
+    const seaman = cap?.skills.seamanship ?? 2;
+    const farOut = Math.min(1, regionDistance(g, g.homeRegion, s.region) / 0.55);
+    if (g.rng.chance(STORM[s.type] * (1.25 - seaman * 0.1) * (1 + farOut * 0.5))) {
+      s.hull -= g.rng.range(0.15, 0.45) * FRAGILE[s.type];
+      if (s.hull <= 0 || g.rng.chance(FOUNDER[s.type] * (1.2 - seaman * 0.08))) {
+        logV(g, s, 'A squall rolled her over. She went down in minutes.');
+        shipLost(g, s, 'storm', null);
+        return;
+      }
+      const washed = Math.min(crew.length, g.rng.chance(0.4 * FRAGILE[s.type]) ? g.rng.int(1, 2) : 0);
+      for (let i = 0; i < washed; i++) dieAtSea(g, s, crew.splice(g.rng.int(0, crew.length - 1), 1)[0]);
+      logV(g, s, `Caught in a squall: ${washed ? `${washed} men washed overboard, ` : ''}hull badly strained.`);
+    }
+  }
   const phaseOut = v.out;
   // on station
   if (v.t > phaseOut && !v.station) {
@@ -442,15 +469,16 @@ function voyageTick(g: Game, s: Ship, dt: number): void {
     onStation(g, s);
   }
   if (v.station && v.t > phaseOut) {
-    const returnNeed = v.back * v.rationRate * 1.6 + 1 + (v.lost ? MONTH * 0.5 * v.rationRate : 0);
-    const done = s.mission !== 'cruise' || s.rations <= returnNeed || s.hull < 0.45 || v.sunk || crew.length < Math.ceil(SHIPS[s.type].men / 3);
+    const returnNeed = v.back * v.rationRate * 1.3 + 1 + (v.lost ? MONTH * 0.5 * v.rationRate : 0);
+    const done = s.mission !== 'cruise' || s.rations <= returnNeed || s.hull < 0.5 || v.sunk || crew.length < Math.ceil((SHIPS[s.type].men + SHIPS[s.type].officers) * 0.6);
     if (s.mission === 'cruise' && !done) {
       v.nextEncounter -= dt;
       if (v.nextEncounter <= 0) {
         const r = g.regions[s.region];
         const traffic = NATIONS.reduce((a, n) => a + (g.ongoing.has(`prohibit_${n}`) ? 0 : r.merchant[n] + r.naval[n] * (1 + r.heat * 0.3)), 0) + r.pirates;
         const sea = (cap?.skills.seamanship ?? 2) / 5;
-        const rate = (0.6 + traffic * 0.8) * (1 + r.knowledge * 0.12) * (0.7 + sea * 0.6);
+        const far = Math.min(1, regionDistance(g, g.homeRegion, s.region) / 0.55);
+        const rate = (0.4 + traffic * 0.35) * (0.6 + 1.1 * far) * (1 + r.knowledge * 0.08) * (0.7 + sea * 0.6);
         v.nextEncounter = (MONTH / rate) * g.rng.range(0.5, 1.5);
         if (v.t - phaseOut > MONTH * 0.15) encounter(g, s);
       }
@@ -615,6 +643,9 @@ interface Side {
 
 function encounter(g: Game, s: Ship): void {
   const r = g.regions[s.region];
+  // distant waters are where the rich shipping lanes are, and where the navies patrol them
+  const far = Math.min(1, regionDistance(g, g.homeRegion, s.region) / 0.55);
+  const navyPresence = 0.35 + 0.9 * far;
   // pick nation & type weighted by traffic
   const opts: { nat: Nation | null; naval: boolean; w: number }[] = [];
   for (const n of NATIONS) {
@@ -623,7 +654,7 @@ function encounter(g: Game, s: Ship): void {
     if (pat === n) continue;
     if (g.ongoing.has(`peace:${n}`)) continue; // honour peace unless... (captains obey)
     opts.push({ nat: n, naval: false, w: r.merchant[n] });
-    opts.push({ nat: n, naval: true, w: r.naval[n] * (1 + r.heat * 0.4) });
+    opts.push({ nat: n, naval: true, w: r.naval[n] * navyPresence * (1 + r.heat * 0.4) });
   }
   opts.push({ nat: null, naval: false, w: r.pirates });
   const tot = opts.reduce((a, o) => a + o.w, 0);
@@ -633,11 +664,17 @@ function encounter(g: Game, s: Ship): void {
   for (const op of opts) if ((x -= op.w) <= 0) (o = op), (x = Infinity);
   let prey: PreyDef;
   if (o.nat === null) prey = PREY.find((p) => p.id === 'pirate')!;
-  else if (o.naval) prey = g.rng.pick(PREY.filter((p) => p.naval).concat(r.settlements.some((st) => st.type === 'military') ? [] : [PREY[4], PREY[4]]));
-  else {
-    const merch = PREY.filter((p) => !p.naval && p.id !== 'pirate');
+  else if (o.naval) {
+    const navalSloop = PREY.find((p) => p.id === 'naval_sloop')!;
+    prey = g.rng.pick(PREY.filter((p) => p.naval).concat(r.settlements.some((st) => st.type === 'military') ? [] : [navalSloop, navalSloop]));
+  } else {
+    const P = (id: string) => PREY.find((p) => p.id === id)!;
     const tradeBoost = r.tradeRoute || r.settlements.some((st) => st.type === 'trade');
-    prey = g.rng.chance(tradeBoost ? 0.45 : 0.2) ? g.rng.pick([merch[2], merch[3], merch[2]]) : g.rng.pick([merch[0], merch[1], merch[1]]);
+    // small fry close to home; fat merchantmen on the distant trade lanes
+    const rich = 0.04 + 0.5 * far + (tradeBoost ? 0.15 : 0);
+    const mid = 0.15 + 0.35 * far;
+    const x2 = g.rng.next();
+    prey = x2 < rich ? (g.rng.chance(0.3 + 0.3 * far) ? P('merchant_galleon') : P('fluyt')) : x2 < rich + mid ? P('brig') : g.rng.chance(0.6 - 0.3 * far) ? P('coaster') : P('fishing_schooner');
   }
   battle(g, s, prey, o.nat);
 }
@@ -672,9 +709,12 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
   let wePursue = (us.courage + (cap?.traits.courage ?? 5)) / 2 + (ourStr / theirStr - 1) * 4 > 3.5;
   if (g.has('suicidal')) wePursue = true;
   if (g.has('cowardly') && ourStr < theirStr * 1.3) wePursue = false;
-  if (!naval && prey.id !== 'pirate') wePursue = (wePursue && ourStr > theirStr * 0.75) || ourStr > theirStr * 1.1 || g.has('suicidal');
+  // merchants are worth chasing even when they're bigger: many strike their colours without a fight
+  if (!naval && prey.id !== 'pirate') wePursue = (wePursue && ourStr > theirStr * 0.55) || ourStr > theirStr * 1.1 || g.has('suicidal');
   const rg = g.regions[s.region];
-  const zeal = naval ? 0.3 + Math.min(0.5, rg.heat * 0.12) + us.notoriety * 0.03 : 0.5;
+  // navies hunt notorious, well-armed pirates; a little unknown snow is rarely worth the chase
+  const prize = Math.min(1.2, 0.35 + d.tons / 400 + s.cannons / 60);
+  const zeal = naval ? (0.25 + Math.min(0.45, rg.heat * 0.12) + us.notoriety * 0.03) * prize : 0.5;
   const theyPursue = (naval || prey.id === 'pirate') && theirStr > ourStr * 0.7 && g.rng.chance(zeal);
   if (!wePursue && !theyPursue) {
     logV(g, s, `Sighted a ${label}; both ships kept their distance.`);
@@ -686,6 +726,15 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
     if (roll < 0) {
       logV(g, s, wePursue ? `Gave chase to a ${label}, but she slipped away.` : `Fled from a ${label} and escaped.`);
       return;
+    }
+  }
+  // a merchant run down by pirates often strikes her colours rather than die for the owners' cargo
+  let struck = false;
+  if (wePursue && !naval && prey.id !== 'pirate') {
+    const p = 0.15 + (ourStr / theirStr - 0.6) * 0.6 + us.notoriety * 0.06 + (s.orders === 'board' ? 0.05 : 0) + (g.has('notoriety') ? 0.1 : 0);
+    if (g.rng.chance(Math.max(0.05, Math.min(0.9, p)))) {
+      struck = true;
+      logV(g, s, `The ${label} struck her colours without a fight!`);
     }
   }
   // battle rounds
@@ -700,7 +749,7 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
     side.crew -= n;
     return n;
   };
-  for (let round = 0; round < 14; round++) {
+  for (let round = 0; round < (struck ? 0 : 14); round++) {
     if (round === 0 || (!boarding && (s.orders !== 'board'))) {
       // gunnery exchange
       const ourHits = Math.min(us.cannons, us.fighting * 2) * (0.15 + us.gun * 0.05) * g.rng.range(0.6, 1.4);
@@ -716,7 +765,8 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
       us.hull -= theirHits * 2.2;
       ourDead += kill(us, theirHits * 0.15 + (naval && round > 0 ? Math.min(them.muskets, them.fighting) * (0.04 + them.musket * 0.02) : 0));
     }
-    if (!boarding && s.orders === 'board' && round > 0) {
+    // nobody sane boards a man-of-war full of marines unless they badly outnumber her
+    if (!boarding && s.orders === 'board' && round > 0 && (!naval || us.fighting > them.fighting * 1.6)) {
       // try to come alongside
       if (g.rng.chance(0.35 + us.seaman * 0.1)) {
         boarding = true;
@@ -744,10 +794,11 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
     themFled += loss(them, theirMorale);
     if (them.fighting <= 0 || them.hull <= 0 || us.fighting <= 0 || us.hull <= 0) break;
     // a beaten crew tries to break off (only possible before boarders are locked together)
-    const losing = us.fighting < startFighting * 0.45 || us.hull < d.tons * 0.35;
+    const losing = naval ? us.fighting < startFighting * 0.7 || us.hull < d.tons * 0.6 : us.fighting < startFighting * 0.45 || us.hull < d.tons * 0.35;
     if (losing && !g.has('suicidal') && (!boarding || g.rng.chance(0.3))) {
       const roll = us.speed * (0.8 + us.seaman * 0.1) * g.rng.range(0.7, 1.4) - them.speed * (0.8 + them.seaman * 0.08) * g.rng.range(0.7, 1.3);
-      if (roll > -6) {
+      // a damaged ship running from a man-of-war has to actually out-sail her
+      if (roll > (naval ? -1 - 5 * (us.hull / d.tons) : -6)) {
         fled = true;
         break;
       }
@@ -780,7 +831,7 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
     logV(g, s, `Outgunned by a ${label}, we cut and ran. Lost ${realDead} men.`);
     return;
   }
-  if (them.fighting > 0 && them.hull > 0) {
+  if (!struck && them.fighting > 0 && them.hull > 0) {
     logV(g, s, `Traded broadsides with a ${label}; both ships broke off. Lost ${realDead} men.`);
     return;
   }
@@ -829,13 +880,27 @@ export function battle(g: Game, s: Ship, prey: PreyDef, nat: Nation | null): voi
 
 function shipLost(g: Game, s: Ship, label: string, nat: Nation | null): void {
   const cap = g.people.get(s.captain);
-  for (const p of crewOf(g, s)) dieAtSea(g, s, p);
+  // some of the crew go down with her; the rest are taken prisoner and drift home months later
+  let saved = 0;
+  const home = MONTH * g.rng.range(3, 6);
+  for (const p of crewOf(g, s)) {
+    if (g.rng.chance(0.45)) {
+      s.crew = s.crew.filter((c) => c !== p.id);
+      p.ship = 0;
+      p.officer = false;
+      p.task = { kind: 'atsea', phase: 1, timer: home + g.rng.range(-MONTH * 0.5, MONTH * 0.5) };
+      saved++;
+    } else dieAtSea(g, s, p);
+  }
   g.stats.shipsSunk++;
+  const storm = label === 'storm';
+  const fate = saved ? `${saved} survivors ${storm ? 'clung to the wreckage and were picked up by a passing ship' : 'were taken prisoner'}` : 'All hands were lost';
+  const how = storm ? 'foundered in a storm' : `was sunk by a ${label}`;
   if (cap) {
     cap.ship = 0;
-    cap.task = { kind: 'atsea', phase: 1, timer: MONTH * g.rng.range(3, 6) };
-    g.msg('bad', 'Ship Lost!', `The ${s.name} was sunk by a ${label}. All hands lost. Captain ${cap.name} was taken prisoner, but swears to return.`, 'ship_sunk', undefined, true);
-  } else g.msg('bad', 'Ship Lost!', `The ${s.name} was sunk by a ${label}.`, 'ship_sunk', undefined, true);
+    cap.task = { kind: 'atsea', phase: 1, timer: home };
+    g.msg('bad', 'Ship Lost!', `The ${s.name} ${how}. ${fate}, along with Captain ${cap.name}, who swears to return.`, 'ship_sunk', undefined, true);
+  } else g.msg('bad', 'Ship Lost!', `The ${s.name} ${how}. ${fate}.`, 'ship_sunk', undefined, true);
   removeShip(g, s);
   if (nat) g.regions[s.region].heat += 1;
 }

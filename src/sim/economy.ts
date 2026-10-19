@@ -108,6 +108,11 @@ function haulWants(g: Game, b: Building): [Good, number][] {
     const have = b.inv[good] ?? 0;
     if (have < 8) out.push([good, 16 - have]);
   }
+  if (def.id === 'dock' && (!b.ship || g.ships.get(b.ship)?.status === 'atsea' || g.ships.get(b.ship)?.status === 'departing' || g.ships.get(b.ship)?.status === 'returning')) {
+    // between voyages the dock stockpiles a ship's worth of stores, ready for a quick turnaround
+    const stock: [Good, number][] = [['ration', 40], ['cutlass', 10], ['musket', 10], ['cannon', 12]];
+    for (const [good, cap] of stock) if ((b.inv[good] ?? 0) < cap * 0.6) out.push([good, Math.min(10, cap - (b.inv[good] ?? 0))]);
+  }
   if (def.id === 'dock' && b.ship) {
     const s = g.ships.get(b.ship);
     if (s && (s.status === 'docked' || s.status === 'repairing' || s.status === 'boarding')) {
@@ -186,7 +191,7 @@ export function haulStep(g: Game, p: Person): boolean {
   const def = BUILDING[home.def];
   if (def.id === 'dock' && home.ship) {
     const s = g.ships.get(home.ship);
-    if (s) {
+    if (s && (s.status === 'docked' || s.status === 'boarding' || s.status === 'repairing')) {
       if (good === 'ration') s.rations += amt;
       else if (good === 'cutlass') s.cutlasses += amt;
       else if (good === 'musket') s.muskets += amt;

@@ -5,6 +5,7 @@ import { markBlocked } from './game';
 import type { Building } from './types';
 import { createPerson, createCaptain, createShip } from './people';
 import { assignCrews } from './sea';
+import { SHIPS } from './data/ships';
 import { cropFertility } from './economy';
 import { ENTERTAINMENT_NAMES } from './names';
 
@@ -374,21 +375,44 @@ export function setupStartingIsland(g: Game): void {
   // road down to the beach first, so the dock can connect to it
   const beach = g.pf.nearestWalkable(ds.x, ds.y, 4);
   if (beach) buildRoadBetween(g, pd[0], pd[1], beach[0], beach[1]);
-  // find dock placement near the site
-  let dockPl: Placement | null = null;
-  for (let r = 0; r < 12 && !dockPl; r++)
-    for (let dy = -r; dy <= r && !dockPl; dy++)
-      for (let dx = -r; dx <= r && !dockPl; dx++)
-        for (let rot = 0; rot < 4 && !dockPl; rot++) {
-          const [w, h] = footprint(dockDef, rot);
-          const p = canPlace(g, dockDef, ds.x + dx - Math.floor(w / 2) + sea[0] * 2, ds.y + dy - Math.floor(h / 2) + sea[1] * 2, rot);
-          if (p.ok) dockPl = p;
-        }
+  // find a dock placement: the chosen site first, then every other site by distance from the palace.
+  // Place the dock before its access road so the road can never be laid across the dock's own footprint.
   let dock: Building | null = null;
-  if (dockPl) {
-    buildRoadBetween(g, pd[0], pd[1], dockPl.door![0], dockPl.door![1]);
-    dockPl = canPlace(g, dockDef, dockPl.x, dockPl.y, dockPl.rot);
-    if (dockPl.ok) dock = placeBuilding(g, dockDef, dockPl, true);
+  const sites = [ds, ...m.dockSites.filter((x) => x !== ds).sort((a2, b2) => Math.hypot(a2.x - pd[0], a2.y - pd[1]) - Math.hypot(b2.x - pd[0], b2.y - pd[1]))];
+  for (const site of sites.slice(0, 80)) {
+    const sv: [number, number] = [[0, -1], [1, 0], [0, 1], [-1, 0]][site.dir] as [number, number];
+    let dockPl: Placement | null = null;
+    for (let r = 0; r < 6 && !dockPl; r++)
+      for (let dy = -r; dy <= r && !dockPl; dy++)
+        for (let dx = -r; dx <= r && !dockPl; dx++)
+          for (let rot = 0; rot < 4 && !dockPl; rot++) {
+            const [w, h] = footprint(dockDef, rot);
+            const p = canPlace(g, dockDef, site.x + dx - Math.floor(w / 2) + sv[0] * 2, site.y + dy - Math.floor(h / 2) + sv[1] * 2, rot);
+            if (p.ok) dockPl = p;
+          }
+    if (!dockPl) continue;
+    dock = placeBuilding(g, dockDef, dockPl, true);
+    buildRoadBetween(g, pd[0], pd[1], dock.door[0], dock.door[1]);
+    break;
+  }
+  // last resort: run a road down to each candidate beach, then try again
+  for (const site of dock ? [] : sites.slice(0, 120)) {
+    const beach2 = g.pf.nearestWalkable(site.x, site.y, 5);
+    if (!beach2) continue;
+    buildRoadBetween(g, pd[0], pd[1], beach2[0], beach2[1]);
+    const sv: [number, number] = [[0, -1], [1, 0], [0, 1], [-1, 0]][site.dir] as [number, number];
+    for (let r = 0; r < 6 && !dock; r++)
+      for (let dy = -r; dy <= r && !dock; dy++)
+        for (let dx = -r; dx <= r && !dock; dx++)
+          for (let rot = 0; rot < 4 && !dock; rot++) {
+            const [w, h] = footprint(dockDef, rot);
+            const p = canPlace(g, dockDef, site.x + dx - Math.floor(w / 2) + sv[0] * 2, site.y + dy - Math.floor(h / 2) + sv[1] * 2, rot);
+            if (p.ok) {
+              dock = placeBuilding(g, dockDef, p, true);
+              buildRoadBetween(g, pd[0], pd[1], dock.door[0], dock.door[1]);
+            }
+          }
+    if (dock) break;
   }
   g.cheats.freebuild = false;
   // a main street out from the palace in two directions
@@ -460,13 +484,15 @@ export function setupStartingIsland(g: Game): void {
   }
   if (s.advantage === 'skeleton_island') for (let i = 0; i < 10; i++) g.graveyard.push({ name: `Old Bones ${i + 1}`, nat: 'eng' });
   for (let i = 0; i < nPirates; i++) createPerson(g, 'pirate', home[0] + g.rng.int(-4, 4), home[1] + g.rng.int(-4, 4));
-  if (dock) {
-    dock.inv.ration = 30;
-    const ship = createShip(g, 'sloop', dock);
-    ship.rations = 10;
-    ship.cannons = 16;
-    ship.cutlasses = 10;
-    ship.muskets = 6;
+  const startShip = g.settings.startShip ?? 'sloop';
+  if (dock) dock.inv.ration = 30;
+  if (dock && startShip !== 'none') {
+    const d = SHIPS[startShip];
+    const ship = createShip(g, startShip, dock);
+    ship.rations = d.rations;
+    ship.cannons = d.cannons;
+    ship.cutlasses = d.cutlasses;
+    ship.muskets = Math.round(d.muskets * 0.6);
     const cap = createCaptain(g, dock.door[0], dock.door[1]);
     ship.captain = cap.id;
     cap.ship = ship.id;

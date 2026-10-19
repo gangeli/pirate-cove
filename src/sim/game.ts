@@ -100,7 +100,7 @@ export class Game {
     const s = this.settings;
     this.rng = new Rng(s.seed * 7919 + 13);
     const size = s.size === 'small' ? 128 : s.size === 'large' ? 192 : 160;
-    this.map = new GameMap({ size, seed: s.seed, landFraction: 0.55, mountainousness: s.mountains, jungle: s.vegetation });
+    this.map = new GameMap({ size, seed: s.seed + (s.mapSalt ?? 0) * 1013, landFraction: 0.55, mountainousness: s.mountains, jungle: s.vegetation });
     this.pf = new PathFinder(this.map);
     this.aura = new AuraGrid(size);
     this.king = 'bio' in king
@@ -117,6 +117,11 @@ export class Game {
     this.captainPool = [];
     this.difficulty = this.computeDifficulty();
     setupStartingIsland(this);
+    // a rare coastline offers no berth for the starting ship: reshape the island and start again
+    if (!this.findBuilding('dock') && (s.mapSalt ?? 0) < 6) {
+      Object.assign(this, new Game({ ...settings, mapSalt: (s.mapSalt ?? 0) + 1 }, king));
+      return;
+    }
     this.aura.recompute(this);
   }
 

@@ -232,7 +232,14 @@ export function updatePeople(g: Game, dt: number): void {
       }
       continue;
     }
-    if (p.task.kind === 'atsea') continue;
+    if (p.task.kind === 'atsea') {
+      // prisoners of a lost ship (no ship, a timer) make their way home in the end
+      if (!p.ship && p.task.timer !== undefined) {
+        p.task.timer -= dt;
+        if (p.task.timer <= 0) returnFromCaptivity(g, p);
+      }
+      continue;
+    }
     decayNeeds(g, p, dt);
     if ((p.task.kind as string) === 'dead') continue;
     if (slowTick) {
@@ -947,4 +954,17 @@ export function housingPass(g: Game): void {
       }
     }
   }
+}
+
+/** a captured sailor escapes or is exchanged and turns up at the docks */
+function returnFromCaptivity(g: Game, p: Person): void {
+  const at = g.findBuilding('dock') ?? g.findBuilding('palace');
+  if (!at) return;
+  p.task = { kind: 'idle' };
+  p.x = at.door[0] + 0.5;
+  p.y = at.door[1] + 0.5;
+  p.needs.rest = Math.min(p.needs.rest, 0.2);
+  p.needs.feast = Math.min(p.needs.feast, 0.2);
+  g.events.push({ type: 'disembark', id: p.id });
+  if (p.captain) g.msg('good', 'Captain Returns', `${p.name} has escaped captivity and is back on the island, looking for a new ship.`, undefined, { x: p.x, y: p.y });
 }
