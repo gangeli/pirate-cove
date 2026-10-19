@@ -66,10 +66,11 @@ interface Found {
   materials: Set<THREE.Material>;
   textures: Set<THREE.Texture>;
   disposables: Set<{ dispose(): void }>;
+  objects: Set<THREE.Object3D>;
 }
 
 function collect(roots: (THREE.Object3D | null | undefined)[], renderer?: THREE.WebGLRenderer): Found {
-  const f: Found = { geometries: new Set(), materials: new Set(), textures: new Set(), disposables: new Set() };
+  const f: Found = { geometries: new Set(), materials: new Set(), textures: new Set(), disposables: new Set(), objects: new Set() };
   const addMat = (m: THREE.Material | THREE.Material[] | null | undefined) => {
     if (!m) return;
     for (const x of Array.isArray(m) ? m : [m]) if (x && !f.materials.has(x)) {
@@ -79,6 +80,7 @@ function collect(roots: (THREE.Object3D | null | undefined)[], renderer?: THREE.
   };
   for (const root of roots) {
     root?.traverse((o) => {
+      f.objects.add(o);
       const mesh = o as THREE.Mesh;
       if (mesh.geometry) f.geometries.add(mesh.geometry);
       addMat(mesh.material);
@@ -90,6 +92,21 @@ function collect(roots: (THREE.Object3D | null | undefined)[], renderer?: THREE.
       addTex(bg, f.textures);
       addTex(env, f.textures);
     });
+  }
+  return f;
+}
+
+/**
+ * What `keep` still uses. Walking a big live graph per call would make a burst of rebuilds (every building of a
+ * type when its full model arrives) quadratic, so the walk is shared by all calls in one synchronous run.
+ */
+const keepCache = new Map<THREE.Object3D, Found>();
+function keepSet(keep: THREE.Object3D, renderer?: THREE.WebGLRenderer): Found {
+  let f = keepCache.get(keep);
+  if (!f) {
+    f = collect([keep], renderer);
+    if (!keepCache.size) queueMicrotask(() => keepCache.clear());
+    keepCache.set(keep, f);
   }
   return f;
 }
@@ -112,7 +129,7 @@ export function disposeObject(
   markKnownCaches();
   const list = Array.isArray(roots) ? roots : [roots];
   const f = collect(list, opts.renderer);
-  const keep = opts.keep ? collect([opts.keep], opts.renderer) : null;
+  const keep = opts.keep ? keepSet(opts.keep, opts.renderer) : null;
   const ok = (x: object, k?: Set<object>) => !shared.has(x) && !k?.has(x) && !((x as THREE.Texture).isTexture && isCachedTexture(x as THREE.Texture));
   const st: DisposeStats = { geometries: 0, materials: 0, textures: 0 };
   for (const g of f.geometries) if (ok(g, keep?.geometries)) {
@@ -128,16 +145,8 @@ export function disposeObject(
     m.dispose();
     st.materials++;
   }
-  for (const d of f.disposables) if (!keep || !keepHasObject(opts.keep!, d)) d.dispose();
+  for (const d of f.disposables) if (!keep || !keep.objects.has(d as unknown as THREE.Object3D)) d.dispose();
   return st;
-}
-
-function keepHasObject(root: THREE.Object3D, o: object): boolean {
-  let hit = false;
-  root.traverse((x) => {
-    if (x === o) hit = true;
-  });
-  return hit;
 }
 
 /** dispose an EffectComposer with its passes and render targets */

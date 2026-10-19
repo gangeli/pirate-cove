@@ -230,6 +230,7 @@ function registerServiceWorker(): void {
       console.warn('service worker', e);
       return;
     }
+    if (!reg) return; // blocked (some embedded/automated browsers resolve without a registration)
     const watch = (w: ServiceWorker | null) =>
       w?.addEventListener('statechange', () => {
         if (w.state === 'installed' && sw.controller) showUpdate();

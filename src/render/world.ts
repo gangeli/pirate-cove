@@ -7,6 +7,7 @@ import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { FastAO, ScaledBloom } from './post';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import type { Game } from '../sim/game';
 import { TerrainMesh } from './terrain';
 import { Water } from './water';
@@ -256,7 +257,12 @@ export class World {
     const rt = new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, samples: 0, depthTexture: q.ao && q.aoDepthNormals ? new THREE.DepthTexture(W, H) : null });
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.rig.camera));
-    if (q.ao) this.composer.addPass(new FastAO(this.scene, this.rig.camera, W, H, q.aoScale, q.aoSamples, 0.85, q.aoScale < 1 ? 8 : 16, q.aoDepthNormals));
+    if (q.ao && /[?&]aoold=1/.test(location.search)) {
+      const ao = new GTAOPass(this.scene, this.rig.camera, size.x, size.y);
+      ao.blendIntensity = 0.85;
+      (ao as any).updateGtaoMaterial({ radius: 1.2, distanceExponent: 1.6, thickness: 2, scale: 1, samples: 12 });
+      this.composer.addPass(ao);
+    } else if (q.ao) this.composer.addPass(new FastAO(this.scene, this.rig.camera, W, H, q.aoScale, q.aoSamples, 0.85, q.aoScale < 1 ? 8 : 16, q.aoDepthNormals));
     if (q.bloom) this.composer.addPass(new ScaledBloom(new THREE.Vector2(W, H), 0.18, 0.5, 0.92, q.bloomScale));
     this.composer.addPass(new OutputPass());
     if (q.aa === 'smaa') this.composer.addPass(new SMAAPass(W, H));

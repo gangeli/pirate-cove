@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 
 /**
- * Shared texture cache. Tiling material maps (tex/*) ship as GPU-compressed KTX2 (Basis UASTC, full resolution), transcoded to whatever the GPU takes (ASTC / ETC2 / BC7 / DXT): 4-8x less video
- * memory than the RGBA8 the JPGs expand to. The JPGs stay as the fallback (no worker/wasm, failed fetch,
+ * Shared texture cache. Tiling material maps (tex/*) ship as GPU-compressed KTX2 (Basis UASTC, full
+ * resolution), transcoded to whatever the GPU takes (ASTC / BC7, else ETC2 / DXT): a quarter of the video memory
+ * of the RGBA8 the JPGs expand to. The JPGs stay as the fallback (no worker/wasm, failed fetch,
  * or ?nocomp). Textures returned here are cache-owned and never disposed with a scene (see dispose.ts).
  */
 const loader = new THREE.TextureLoader();

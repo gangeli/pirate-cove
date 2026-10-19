@@ -112,6 +112,23 @@ interface View {
   glows: THREE.Mesh[];
   hull?: THREE.Object3D;
   height: number;
+  /** static meshes on cached (shared) model geometry: drawn through the per-model instanced batches */
+  batchable: THREE.Mesh[];
+}
+
+/** a static model mesh can join an instanced batch: shared geometry, one material, nothing animated above it */
+function batchableMeshes(root: THREE.Object3D): THREE.Mesh[] {
+  const out: THREE.Mesh[] = [];
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (m as THREE.InstancedMesh).isInstancedMesh || (m as THREE.SkinnedMesh).isSkinnedMesh || Array.isArray(m.material)) return;
+    if (!isShared(m.geometry) || m.geometry.morphAttributes.position) return;
+    for (let p: THREE.Object3D | null = m; p && p !== root.parent; p = p.parent) {
+      if (!p.visible || p.userData.swing || p.userData.flag || p.userData.glow || (p as THREE.LOD).isLOD) return;
+    }
+    out.push(m);
+  });
+  return out;
 }
 
 export class BuildingsView {
@@ -166,7 +183,7 @@ export class BuildingsView {
     group.position.set(cx, gy, cz);
     model.rotation.y = -b.rot * (Math.PI / 2);
     group.userData.buildingId = b.id;
-    const v: View = { group, model, key: this.keyOf(b), flags: [], swings: [], smoke: [], glows: [], height: 1 };
+    const v: View = { group, model, key: this.keyOf(b), flags: [], swings: [], smoke: [], glows: [], height: 1, batchable: [] };
     model.traverse((o) => {
       if (o.userData.flag) {
         const f = o as THREE.Mesh;
@@ -202,11 +219,16 @@ export class BuildingsView {
     }
     if (model.userData.hull) (model.userData as any).hullPos = model.userData.hull;
     this.group.add(group);
+    // finished buildings draw their model parts through shared instanced batches (sites under construction
+    // carry per-building clipping materials, so they stay as they are)
+    if (!v.clip) v.batchable = batchableMeshes(model);
     this.views.set(b.id, v);
+    this.batchDirty = true;
   }
 
   /** take a view out of the scene and free what only it used */
   private drop(v: View): void {
+    this.batchDirty = true;
     this.group.remove(v.group);
     if (v.hull) v.group.remove(v.hull); // the ships view owns hull frames
     disposeObject(v.group, { keep: this.group, renderer: this.world.renderer });
@@ -255,6 +277,56 @@ export class BuildingsView {
     return 0;
   }
 
+  // ------------------------------------------------------------------------------------------------- batching
+  /**
+   * The same building models appear many times (a dozen huts, twenty housing plots), and each model is 10-25
+   * meshes, one per material. Every (geometry, material) pair used by two or more finished buildings is drawn
+   * as one InstancedMesh instead (in the main and the shadow pass); the per-building meshes stay in place but
+   * hidden, so picking, removal and rebuilding work as before. Same geometry, materials and transforms: same image.
+   */
+  private batches: THREE.InstancedMesh[] = [];
+  private batchDirty = true;
+
+  private rebuildBatches(): void {
+    this.batchDirty = false;
+    for (const im of this.batches) {
+      this.group.remove(im);
+      im.dispose();
+    }
+    this.batches = [];
+    const lists = new Map<string, THREE.Mesh[]>();
+    for (const v of this.views.values()) {
+      if (!v.batchable.length) continue;
+      v.group.updateMatrixWorld(true);
+      for (const m of v.batchable) {
+        m.visible = true;
+        const mat = m.material as THREE.Material;
+        const k = `${m.geometry.uuid}|${mat.uuid}|${m.castShadow ? 1 : 0}${m.receiveShadow ? 1 : 0}|${m.renderOrder}`;
+        let l = lists.get(k);
+        if (!l) lists.set(k, (l = []));
+        l.push(m);
+      }
+    }
+    const inv = new THREE.Matrix4().copy(this.group.matrixWorld).invert();
+    const mm = new THREE.Matrix4();
+    for (const l of lists.values()) {
+      if (l.length < 2) continue;
+      const m0 = l[0];
+      const im = new THREE.InstancedMesh(m0.geometry, m0.material as THREE.Material, l.length);
+      l.forEach((m, i) => {
+        im.setMatrixAt(i, mm.multiplyMatrices(inv, m.matrixWorld));
+        m.visible = false;
+      });
+      im.castShadow = m0.castShadow;
+      im.receiveShadow = m0.receiveShadow;
+      im.renderOrder = m0.renderOrder;
+      im.computeBoundingSphere();
+      im.raycast = () => {}; // picking goes through the (hidden) per-building meshes
+      this.group.add(im);
+      this.batches.push(im);
+    }
+  }
+
   update(dt: number): void {
     this.t += dt;
     const g = this.game;
@@ -296,5 +368,6 @@ export class BuildingsView {
       }
     }
     void SHIPS;
+    if (this.batchDirty) this.rebuildBatches();
   }
 }

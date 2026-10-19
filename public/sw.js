@@ -21,6 +21,8 @@ const SHELL_CACHE = `bc-shell-${VERSION}`;
 const ASSET_CACHE = 'bc-assets';
 const HASH_HEADER = 'x-bc-hash';
 const SCOPE = self.registration.scope;
+/** how long a navigation waits for the network before falling back to the cached shell */
+const NAV_TIMEOUT = 4000;
 
 /** path (relative to the scope) -> hash, for both precached and lazily cached files */
 const shell = new Map((BUILD ? BUILD.shell : []).map(([p, h]) => [p, h]));
@@ -152,10 +154,16 @@ self.addEventListener('fetch', (e) => {
 
   if (req.mode === 'navigate') {
     // network-first: a fresh index.html points at the newest bundles once the new worker is in
+    // (with a time limit: on a dead or crawling connection the cached shell is served instead)
     e.respondWith(
-      fetch(req)
-        .then((res) => (res.ok ? res : offlinePage().then((r) => r || res)))
-        .catch(() => offlinePage().then((r) => r || Response.error())),
+      (async () => {
+        const net = fetch(req).catch(() => null);
+        const first = await Promise.race([net, new Promise((r) => setTimeout(() => r('slow'), NAV_TIMEOUT))]);
+        if (first && first !== 'slow' && first.ok) return first;
+        const cached = await offlinePage();
+        if (cached) return cached;
+        return (first !== 'slow' && first) || (await net) || Response.error();
+      })(),
     );
     return;
   }
