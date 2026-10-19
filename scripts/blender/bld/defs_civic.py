@@ -952,7 +952,7 @@ def surgery(k):
     clapboard(k, w, d, h, 'oldplanks', [Op('front', -0.55, 'door', h=0.8), Op('front', 0.35, 'shop', w=0.8, h=0.46, y=0.38),
                                          Op('left', 0.0, 'window'), Op('back', 0.2, 'window')])
     k.face('front', w, d)
-    shopfront(k, 0.35, 0.8, 0.46, 0.38, ['bottle', 'green', 'flask', 'pot', 'albarello', 'bottle'], t=0.07, shelves=2, shutter='top')
+    shopfront(k, 0.35, 0.8, 0.46, 0.38, ['bottle', 'green', 'flask', 'pot', 'albarello', 'bottle'], t=0.07, shelves=2, shutter='side')
     if not k.lod:
         # a bone saw, a jar of leeches and a rolled leather of knives on the counter
         k.cbox('iron', 0.2, 0.05, 0.004, 0.2, 0.37, 0.07, rx=math.pi / 2)
@@ -2099,7 +2099,7 @@ def anarchy_decor(k):
     chest(k, 0.22, -0.02, -0.5, True, 0.95)
     crate(k, -0.25, 0, -0.22, 0.26, 0.4)
     cask(k, -0.24, -0.23, 0.6, y=0.26)
-    sack(k, 0.3, -0.27, 0.8, 0.6)
+    sack(k, 0.32, -0.25, 0.55, 0.6)
     k.push(-0.06, 0.1, 0.3, 0.3, 0.0, 0.0)
     chest(k, 0.0, 0.0, 0.0, False, 0.75)
     k.pop()

@@ -51,7 +51,7 @@ export const EDICTS: EdictDef[] = [
   { id: 'raise_dead', name: 'Raise Dead', tab: 'captive', cost: 100, target: 'none', needs: 'graveyard', desc: 'Raise a dead pirate as a tireless skeleton hauler.' },
   // diplomacy
   { id: 'jolly_roger', name: 'Raise the Jolly Roger', tab: 'diplomacy', cost: 0, ongoing: true, target: 'none', needs: 'fort', desc: 'Declare independence from all Powers. No peace, no patron, no protection.' },
-  { id: 'peace', name: 'Announce Peace Policy', tab: 'diplomacy', cost: 0, ongoing: true, target: 'nation', desc: 'Promise not to attack a Power\'s ships. Relations improve every month. Break it and pay.' },
+  { id: 'peace', name: 'Announce Peace Policy', tab: 'diplomacy', cost: 0, ongoing: true, target: 'nation', desc: 'Promise not to attack a Power\'s ships or towns. Relations improve every month. Break it, or withdraw it, and pay.' },
   { id: 'open_cove', name: "Open Smuggler's Cove", tab: 'diplomacy', cost: 0, ongoing: true, target: 'nation', needs: 'smugglers_cove', desc: 'Trade surplus goods with a Power. They will learn where you are.' },
   { id: 'patron', name: 'Declare Patron', tab: 'diplomacy', cost: 0, ongoing: true, target: 'nation', desc: 'Become a colony of a Power at peace with you. No-one dares invade.' },
   { id: 'marque', name: 'Letters of Marque', tab: 'diplomacy', cost: 1000, ongoing: true, target: 'nation', desc: 'Legal privateering against your patron\'s enemy.' },

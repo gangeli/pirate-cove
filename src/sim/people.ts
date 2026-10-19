@@ -47,7 +47,8 @@ export function createPerson(g: Game, kind: Kind, x: number, y: number, opts: { 
   }
   if (kind === 'captive' && opts.skilled) {
     p.jobSkill[opts.skilled] = r.range(3, 5);
-    p.ransom = SKILLED_ONLY.includes(opts.skilled) ? r.int(250, 450) : r.int(120, 250);
+    // a craftsman's family pays about what it cost to snatch him: kidnapping to ransom is no business
+    p.ransom = SKILLED_ONLY.includes(opts.skilled) ? r.int(180, 360) : r.int(100, 220);
   }
   if (kind === 'wealthy') {
     p.ransom = r.int(150, 400);

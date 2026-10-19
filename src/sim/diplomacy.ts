@@ -118,7 +118,10 @@ export function monthlyDiplomacy(g: Game): void {
     }
   }
   // patron emergency funding
-  if (pat && g.treasury < 100 && g.rng.chance(0.3)) {
+  // (a colony in trouble gets a bail-out, but not a pension: at most once a year)
+  const lastGift = g.effects.patronGift ?? -Infinity;
+  if (pat && g.treasury < 100 && g.time - lastGift > MONTH * 12 && g.rng.chance(0.3)) {
+    g.effects.patronGift = g.time;
     g.earn(600, 'patron');
     g.msg('good', 'Emergency Funding', `Your patron, ${NATION_NAMES[pat]}, sends 600 gold to keep their colony afloat.`, 'patron_gift');
   }

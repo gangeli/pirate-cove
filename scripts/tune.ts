@@ -66,6 +66,7 @@ if (mode === 'compare') {
     ['x:nofleet', { exploit: 'nofleet' }],
     ['x:raidonly', { exploit: 'raidonly' }],
     ['x:enddump', { exploit: 'enddump' }],
+    ['x:festspam', { exploit: 'festspam' }],
     ['x:hoard25', { hoardRate: 0.25 }],
     ['x:hoard05', { hoardRate: 0.05 }],
   ];

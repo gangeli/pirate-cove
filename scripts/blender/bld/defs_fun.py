@@ -4,7 +4,6 @@ import math
 from mathutils import Vector, Matrix, noise
 from defs import building
 from arch import *
-from arch import _barrel_tile
 
 
 # ------------------------------------------------------------------------------------------- shared helpers
@@ -12,7 +11,15 @@ from arch import _barrel_tile
 def quads2(k, mat, verts, faces, uvscale=0.9):
     """a double-sided sheet (canvas, drapes, hammocks)"""
     n = len(verts)
-    k.mesh(mat, list(verts) + [Vector(v) for v in verts], list(faces) + [tuple(i + n for i in f[::-1]) for f in faces], uvscale=uvscale)
+    # the back sheet sits a hair behind the front one so the two never shade each other in the bake
+    vn = [Vector() for _ in verts]
+    for f in faces:
+        p = [Vector(verts[i]) for i in f]
+        fn = (p[1] - p[0]).cross(p[-1] - p[0])
+        for i in f:
+            vn[i] += fn
+    back = [Vector(v) - (m.normalized() * 0.006 if m.length > 1e-9 else Vector()) for v, m in zip(verts, vn)]
+    k.mesh(mat, list(verts) + back, list(faces) + [tuple(i + n for i in f[::-1]) for f in faces], uvscale=uvscale)
 
 
 def lathe(k, mat, prof, x=0.0, y=0.0, z=0.0, seg=10, sx=1.0, sz=1.0, local=None, uvscale=1.0, cap=True):
@@ -1027,8 +1034,8 @@ def wench_hut(k):
     # hammock slung from the porch post to a post at the side
     k.cyl('bark', 0.03, 0.028, 0.75, 0.78, 0, -0.55, seg=7)
     hammock(k, (w / 2 - 0.02, 0.68, zf + 0.46), (0.78, 0.68, -0.55), w=0.2, sag=0.2, mat='canvas')
-    hm = Vector((w / 2 - 0.02, 0.68, zf + 0.46)).lerp(Vector((0.78, 0.68, -0.55)), 0.45)
-    k.box('red', 0.12, 0.04, 0.12, hm.x, 0.68 - 0.2 * math.sin(math.pi * 0.45) - 0.02, hm.z, ry=0.6)  # a cushion in it
+    hm = Vector((w / 2 - 0.02, 0.68, zf + 0.46)).lerp(Vector((0.78, 0.68, -0.55)), 0.5)
+    k.box('red', 0.12, 0.04, 0.12, hm.x, 0.68 - 0.2 - 0.02, hm.z, ry=0.2)  # a cushion in it
     # the masseuse's tub, a stool, oils, and towels drying on a line
     wash_tub(k, -0.62, -0.6 + 0.0, 0.17)
     stool(k, -0.3, -0.75, 0.2)
@@ -1443,7 +1450,6 @@ def well(k, x, z, r=0.26):
 
 def hay(k, x, z, rx_, rz_, h):
     """a loose heap of hay"""
-    from arch import _slope_grid
     seg = 6 if k.lod else 12
     rings = 3 if k.lod else 5
     verts, faces = [], []
@@ -1793,8 +1799,9 @@ def courtesan(k):
     # entablature round the top
     k.box('plaster', 2.3, 0.14, 0.14, 0, H, 0.98)
     for s in (-1, 1):
-        k.box('plaster', 0.14, 0.14, 1.95, s * 1.05, H, 0.05)
-    k.box('stone', 2.42, 0.05, 2.32, 0, H + 0.14, 0.05, uvscale=2.0)
+        k.box('plaster', 0.14, 0.14, 2.2, s * 1.05, H, -0.09)
+    k.box('plaster', 2.3, 0.14, 0.14, 0, H, -1.12)
+    k.box('stone', 2.42, 0.05, 2.46, 0, H + 0.14, -0.08, uvscale=2.0)
     # drapes between the front columns, tied back to each column
     for (a, b) in ((-1.05, -0.38), (-0.38, 0.38), (0.38, 1.05)):
         g = b - a - 0.12
@@ -1830,10 +1837,10 @@ def courtesan(k):
         k.beam('iron', V(x, H, 0.9), V(x, H - 0.12, 0.9), 0.008, round_=True, seg=4)
         small_lantern(k, x, H - 0.12, 0.9, 1.2)
     # the roof: tiles on a boarded deck
-    k.push(0, 0, 0.26)
-    tile_gable(k, 2.24, 1.6, 0.62, over=0.2, y=H + 0.19, gable='plaster', tile_len=0.22, tile_w=0.15)
+    k.push(0, 0, -0.08)
+    tile_gable(k, 2.24, 2.3, 0.78, over=0.18, y=H + 0.19, gable='plaster', tile_len=0.22, tile_w=0.15)
     for sx in (-1, 1):
-        quads2(k, 'plaster', [V(sx * 1.125, H + 0.19, -0.8), V(sx * 1.125, H + 0.19, 0.8), V(sx * 1.125, H + 0.19 + 0.6, 0.0)], [(0, 1, 2)])
+        quads2(k, 'plaster', [V(sx * 1.125, H + 0.19, -1.15), V(sx * 1.125, H + 0.19, 1.15), V(sx * 1.125, H + 0.19 + 0.76, 0.0)], [(0, 1, 2)])
     k.pop()
     k.pop()
     # garden: palms in tubs, a parrot on its perch, shrubs at the corners

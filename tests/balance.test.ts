@@ -50,6 +50,16 @@ describe('scoring', () => {
   });
 });
 
+describe('treasury', () => {
+  it('upkeep and wages an empty treasury cannot pay go unpaid, not into debt', () => {
+    const g = new Game({ seed: 11 }, KIDD);
+    g.treasury = 5;
+    g.run(MONTH * 1.05);
+    expect(g.treasury).toBeGreaterThanOrEqual(0);
+    expect(g.effects.neglect ?? 0).toBeGreaterThan(0);
+  });
+});
+
 describe('ships and captains', () => {
   it("a captain's fee follows the class of ship waiting for him", () => {
     const g = new Game({ seed: 8 }, MARY);

@@ -37,7 +37,7 @@ export type Command =
   | { type: 'shipOrders'; ship: number; mission?: Mission; orders?: Orders; spoils?: Spoils; region?: number; kidnapJob?: Job; foster?: Nation }
   | { type: 'setSail'; ship: number; force?: boolean }
   | { type: 'scuttle'; ship: number }
-  | { type: 'buyBlackMarket'; ship: number }
+  | { type: 'buyBlackMarket'; ship: number; budget?: number }
   | { type: 'edict'; id: string; target?: number; nation?: Nation; arg?: string; repeal?: boolean }
   | { type: 'hoardRate'; rate: number }
   | { type: 'blockSlot'; id: number; delta: number }
@@ -84,7 +84,7 @@ export class Game {
   graveyard: { name: string; nat: Nation }[] = [];
   captainPool: string[] = [];
   /** edict temporary effects */
-  effects: { festivalUntil: number; skeletonsRaised: number; recentEscapes: number; recentKills: number } = { festivalUntil: 0, skeletonsRaised: 0, recentEscapes: 0, recentKills: 0 };
+  effects: { festivalUntil: number; skeletonsRaised: number; recentEscapes: number; recentKills: number; patronGift?: number; neglect?: number } = { festivalUntil: 0, skeletonsRaised: 0, recentEscapes: 0, recentKills: 0 };
   blackMarketMarkup: Partial<Record<Good, number>> = {};
   /** listeners for renderer/audio */
   events: { type: string; [k: string]: any }[] = [];
@@ -465,7 +465,7 @@ export class Game {
         return { ok: true };
       }
       case 'buyBlackMarket':
-        return buyBlackMarket(this, c.ship);
+        return buyBlackMarket(this, c.ship, c.budget);
       case 'edict':
         return issueEdict(this, c.id, c.target, c.nation, c.arg, c.repeal);
       case 'hoardRate':
@@ -591,7 +591,8 @@ export function markBlocked(g: Game, b: Building): void {
   for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) if (g.map.inBounds(x, y)) g.pf.blocked[g.map.idx(x, y)] = def.water === 'dock' ? 0 : 1;
 }
 
-function buyBlackMarket(g: Game, shipId: number): CmdResult {
+/** buy stores and arms for a ship in port, cheapest needs first, spending at most `budget` (default: everything) */
+function buyBlackMarket(g: Game, shipId: number, budget = Infinity): CmdResult {
   const bm = g.findBuilding('black_market');
   if (!bm) return { ok: false, reason: 'You need a Black Market.' };
   const s = g.ships.get(shipId);
@@ -605,7 +606,7 @@ function buyBlackMarket(g: Game, shipId: number): CmdResult {
     let n = 0;
     while (n < need) {
       const price = Math.round(base * (1 + (g.blackMarketMarkup[good] ?? 0)) * disc);
-      if (g.treasury - cost < price) break;
+      if (g.treasury - cost < price || cost + price > budget) break;
       cost += price;
       g.blackMarketMarkup[good] = (g.blackMarketMarkup[good] ?? 0) + 0.05;
       n++;

@@ -273,6 +273,8 @@ export function updateEconomy(g: Game, dt: number): void {
     let e = (eff.get(b.id) ?? 0) / slots;
     if (overseer.has(b.id)) e *= 1.25;
     if (g.ongoing.has('curfew')) e *= 1.1;
+    // works whose upkeep went unpaid last month run short of tools, nails and lamp oil
+    if (g.effects.neglect) e *= 1 - 0.3 * g.effects.neglect;
     b.staff += (Math.min(1, b.workers.length / slots) - b.staff) * Math.min(1, dt / 30);
     if (e <= 0) continue;
     const cap = storageOf(def);
@@ -510,7 +512,8 @@ function employ(g: Game): void {
 // ------------------------------------------------------------------------------------------- monthly
 
 export function monthlyEconomy(g: Game): void {
-  let upkeep = 0, wages = 0;
+  let upkeep = 0, due = 0;
+  const payroll: [Person, number][] = [];
   for (const b of g.buildings.values()) {
     b.lastIncome = b.income;
     b.income = 0;
@@ -523,12 +526,23 @@ export function monthlyEconomy(g: Game): void {
     for (const id of staffPirates) {
       const p = g.people.get(id);
       if (!p) continue;
-      p.gold += b.wage;
-      p.earned += b.wage;
-      wages += b.wage;
+      payroll.push([p, b.wage]);
+      due += b.wage;
     }
   }
-  g.spend(upkeep, 'maintenance');
+  // an empty treasury can't pay: what it can't cover goes unpaid rather than into debt. Unpaid upkeep
+  // lets the works run down (see updateEconomy) and unpaid overseers and guards go without
+  const bill = upkeep + due;
+  const ratio = bill > 0 ? Math.max(0, Math.min(1, g.treasury / bill)) : 1;
+  g.effects.neglect = 1 - ratio;
+  let wages = 0;
+  for (const [p, w] of payroll) {
+    const paid = w * ratio;
+    p.gold += paid;
+    p.earned += paid;
+    wages += paid;
+  }
+  g.spend(upkeep * ratio, 'maintenance');
   g.spend(wages, 'wages');
   housingPass(g);
   assignCrewsMonthly(g);
@@ -571,6 +585,15 @@ export function monthlyEconomy(g: Game): void {
   g.effects.recentKills *= 0.6;
   // word of a free pirate haven spreads: would-be buccaneers drift in when the island is merry
   immigration(g);
+  // an island with no ship and nobody to build one would be stuck for good: sooner or later a stranded
+  // shipwright turns up looking for work
+  if (!g.ships.size && !g.hasProfession('shipwright') && g.rng.chance(0.2)) {
+    const at = g.findBuilding('dock') ?? g.findBuilding('palace');
+    if (at) {
+      createPerson(g, 'captive', at.door[0], at.door[1], { skilled: 'shipwright' });
+      g.msg('good', 'A Shipwright Washes Up', 'A shipwright, marooned by his own crew, has staggered ashore. He will build you a hull if you give him a boatyard.', undefined, { x: at.door[0], y: at.door[1] });
+    }
+  }
   // shipwreck advantage: castaways
   if (g.settings.advantage === 'shipwreck' && g.rng.chance(0.25)) castaways(g);
 }

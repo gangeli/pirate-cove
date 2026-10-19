@@ -51,7 +51,7 @@ export interface Policy {
   /** treasury above which a planner skims the maximum into the hoard */
   flushAt: number;
   /** degenerate strategies probed for reward hacking */
-  exploit?: 'idle' | 'pressgang' | 'gouge' | 'nofun' | 'nofleet' | 'raidonly' | 'enddump';
+  exploit?: 'idle' | 'pressgang' | 'gouge' | 'nofun' | 'nofleet' | 'raidonly' | 'enddump' | 'festspam';
 }
 
 export const DEFAULT_POLICY: Policy = {
@@ -221,6 +221,8 @@ export class Bot {
       for (const c of g.captives()) if (c.kind === 'captive' && !c.skilled) g.cmd({ type: 'edict', id: 'press_gang', target: c.id });
     }
     if (this.p.exploit === 'enddump') this.endDump();
+    // the final year: every coin into festivals, to buy the happiness average
+    if (this.p.exploit === 'festspam' && g.yearsElapsed > g.settings.years - 1 && g.edictAvailability('festival').ok) g.cmd({ type: 'edict', id: 'festival' });
   }
 
   // ------------------------------------------------------------------------------------------- labour
@@ -321,7 +323,10 @@ export class Bot {
     // food
     const kitchens = this.count('brewery') + this.count('ration_factory');
     if (this.count('chuck_tent') < Math.ceil(cap / 26)) this.build('chuck_tent');
-    if (this.count('corn_farm') < Math.ceil(cap / 16) + Math.floor(kitchens / 2) && g.goodTotal('corn') < 60) this.build('corn_farm', undefined, this.fertile());
+    // a captive eats about a corn and a half a month; a farm grows enough for twenty or so
+    const hungry = g.captives().filter((c) => c.kind === 'captive' && c.needs.food < 0.2).length;
+    const farms = Math.ceil(cap / 13) + Math.floor(kitchens / 2) + (this.p.plan && hungry > cap * 0.1 ? 1 : 0);
+    if (this.count('corn_farm') < farms && g.goodTotal('corn') < 60) this.build('corn_farm', undefined, this.fertile());
     if (this.count('bunkhouse') * 5 < cap * 0.6) this.build('bunkhouse');
     // housing
     const homeless = g.pirates().filter((p) => !p.home && !p.captain).length - (this.p.plan && g.lumber() < 20 ? 3 : 0);
@@ -342,9 +347,14 @@ export class Bot {
       const short = g.goodTotal('ration') < 20 && g.ships.size > 0;
       for (const b of g.buildings.values()) if (b.def === 'ration_factory' && b.priority !== (short ? 5 : 4)) g.cmd({ type: 'setPriority', id: b.id, priority: short ? 5 : 4 });
     }
-    if (this.count('iron_mine') < 1 && g.yearsElapsed > 0.5) this.staffed('iron_mine', this.oreSpot());
-    if (this.count('iron_mine') && this.count('blast_furnace') < 1) this.staffed('blast_furnace', this.oreSpot());
-    if (this.count('blast_furnace') && this.count('blacksmithy') < 1) this.staffed('blacksmithy');
+    // the forge arms the fleet: once there is a shipyard (whose hulls come without guns) a planner builds
+    // the iron chain whoever it takes, and gives it first pick of the hands
+    const forge = this.p.plan && (this.count('shipyard', false) > 0 || g.yearsElapsed > 2);
+    const arm = (def: string, near?: [number, number]) => (forge ? this.build(def, near) : this.staffed(def, near));
+    if (this.count('iron_mine') < 1 && g.yearsElapsed > 0.5) arm('iron_mine', this.oreSpot());
+    if (this.count('iron_mine') && this.count('blast_furnace') < 1) arm('blast_furnace', this.oreSpot());
+    if (this.count('blast_furnace') && this.count('blacksmithy') < 1) arm('blacksmithy');
+    if (forge) for (const b of g.buildings.values()) if ((b.def === 'iron_mine' || b.def === 'blast_furnace' || b.def === 'blacksmithy' || b.def === 'cannon_foundry') && b.priority !== 4) g.cmd({ type: 'setPriority', id: b.id, priority: 4 });
     if (this.count('blast_furnace') && this.count('gunsmithy') < 1) this.staffed('gunsmithy');
     if (this.count('blast_furnace') && this.count('cannon_foundry') < 1) this.staffed('cannon_foundry');
     // the export trade
@@ -381,9 +391,12 @@ export class Bot {
     // ransom wealthy captives with good ransoms
     for (const p of g.people.values()) if (p.kind === 'wealthy' && (p.ransom > 450 || (this.p.plan && g.treasury < 500))) g.cmd({ type: 'edict', id: 'ransom', target: p.id });
     if (this.p.plan) this.ransomSurplus();
-    // peace with the most dangerous power (a planner acts before they are hostile)
+    // peace with the most dangerous power. A planner acts before they are hostile, but always leaves one
+    // power to prey on (peace with everyone leaves the captains nothing to take) unless it threatens war
     const peaceAt = this.p.plan ? Math.max(this.p.peaceAt, -25) : this.p.peaceAt;
+    const prey = this.p.plan ? this.preyNation() : null;
     for (const n of NATIONS) if (g.nations[n].knows && g.nations[n].relation < peaceAt && g.edictAvailability('peace', n).ok && !g.ongoing.has(`peace:${n}`)) {
+      if (n === prey && g.nations[n].relation > -60) continue;
       g.cmd({ type: 'edict', id: 'peace', nation: n });
       this.say(`announced peace with ${n}`);
     }
@@ -415,6 +428,15 @@ export class Bot {
       else if (this.count('protective_cannon') < 4 + ashoreP.length / 6) this.build('protective_cannon', homes);
     }
     if (ana < 0.6 && this.count('anarchy_decor') < 4 + ashoreP.length / 8) this.build('anarchy_decor', homes);
+  }
+
+  /** the power whose shipping is richest in the waters we know: the one a planner keeps hunting */
+  private preyNation(): Nation {
+    const g = this.g;
+    const t: Record<Nation, number> = { eng: 0, fra: 0, spa: 0 };
+    for (const r of g.regions) if (r.knowledge > 0) for (const n of NATIONS) t[n] += r.merchant[n];
+    const partner = NATIONS.find((n) => g.ongoing.has(`open_cove:${n}`));
+    return [...NATIONS].filter((n) => n !== partner).sort((a, b) => t[b] - t[a])[0];
   }
 
   /** the middle of the pirates' housing */
@@ -590,12 +612,12 @@ export class Bot {
     const stores = [...g.ships.values()].reduce((a, x) => a + SHIPS[x.type].rations, 0);
     if (this.count('ration_factory') < 1 + Math.floor(stores / 35)) this.staffed('ration_factory');
     // a black market arms warships the foundry can't, at a price
-    if (this.hasWarship() && !this.count('black_market') && g.treasury > 2500) this.staffed('black_market', this.dockSide());
-    if (g.findBuilding('black_market')) for (const x of g.ships.values()) {
-      const d = SHIPS[x.type];
-      if (d.cannons > 8 && x.captain && (x.status === 'docked' || x.status === 'boarding') && x.cannons < d.cannons * 0.6 && g.treasury > 3000 + this.p.reserve) {
-        if (g.cmd({ type: 'buyBlackMarket', ship: x.id }).ok) this.say(`armed the ${x.name} at the black market`);
-      }
+    const unarmed = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons > 8 && x.captain && (x.status === 'docked' || x.status === 'boarding') && x.cannons < SHIPS[x.type].cannons * 0.4);
+    if ((unarmed.length || (this.hasWarship() && g.treasury > 2500)) && !this.count('black_market') && g.treasury > 600) this.build('black_market', this.dockSide());
+    // a warship with no guns sits in port earning nothing: buy her enough to sail, within a budget
+    if (g.findBuilding('black_market')) for (const x of unarmed) {
+      const budget = Math.min(g.treasury - this.p.reserve, 400 + SHIPS[x.type].tons * 6);
+      if (budget > 200 && g.cmd({ type: 'buyBlackMarket', ship: x.id, budget }).ok) this.say(`armed the ${x.name} at the black market`);
     }
   }
 
@@ -822,6 +844,9 @@ export class Bot {
     // (nobody sane cruises without guns or blades either)
     const precious = !this.hasWarship() || (s.cannons < 2 && s.cutlasses < 2);
     if (unexplored && (precious || g.rng.chance(0.6))) return 'explore';
+    // ...unless the treasury is running dry and she is the only hope of plunder
+    const armed = s.cannons >= 2 || s.cutlasses >= 2;
+    if (precious && armed && g.treasury < 400 && !this.hasWarship()) return 'cruise';
     if (precious) return caps < capTarget * 1.5 && !raiding ? 'raid' : 'stay';
     return 'cruise';
   }

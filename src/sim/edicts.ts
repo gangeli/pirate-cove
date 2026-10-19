@@ -114,6 +114,11 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
   if (repeal) {
     if (!g.ongoing.has(key)) return { ok: false, reason: 'Not in force.' };
     g.ongoing.delete(key);
+    // withdrawing a peace promise is as good as a declaration of war: they will not trust another soon
+    if (id === 'peace' && nation) {
+      g.nations[nation].relation = Math.max(-100, g.nations[nation].relation - 15);
+      g.nations[nation].peaceBroken = g.time;
+    }
     g.aura.dirty = true;
     g.msg('info', 'Edict Repealed', `${e.name}${nation ? ` (${NATION_NAMES[nation]})` : ''} has been repealed.`);
     return { ok: true };
