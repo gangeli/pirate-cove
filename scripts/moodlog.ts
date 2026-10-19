@@ -1,4 +1,4 @@
-// Why are pirates unhappy? One bot game, yearly mood breakdown.  npx tsx scripts/moodlog.ts [seed] [years] [preset]
+// Why are pirates unhappy? One bot game, mood breakdown every 6 months.  npx tsx scripts/moodlog.ts [seed] [years] [preset] ['<policy json>']
 import { Game, MONTH } from '../src/sim/game';
 import { Bot } from '../src/sim/bot';
 import { KINGS } from '../src/sim/data/kings';
@@ -7,7 +7,7 @@ import { pirateFactors } from '../src/sim/people';
 const seed = +(process.argv[2] ?? 101), years = +(process.argv[3] ?? 6);
 const pr = PRESETS.find((p) => p.id === (process.argv[4] ?? 'brethren'))!;
 const g = new Game({ seed, region: 6, ...pr.settings, years }, KINGS.find((k) => k.id === 'kidd')!);
-const bot = new Bot(g, {});
+const bot = new Bot(g, { policy: process.argv[5] ? JSON.parse(process.argv[5]) : {} });
 let next = 0;
 const steps = Math.round((years * 12 * MONTH) / 0.1);
 for (let i = 0; i < steps && !g.over; i++) {

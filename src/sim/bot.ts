@@ -4,7 +4,7 @@ import { BUILDING, JOB_SEX, SKILLED_ONLY, defaultPriority, type Job } from './da
 import { SHIPS, CAPTAIN_COST, type ShipType } from './data/ships';
 import type { Person, Ship } from './types';
 import { pirateFactors } from './people';
-import { findSpot, buildRoadBetween, footprint, canPlace } from './placement';
+import { findSpot, buildRoadBetween, footprint, canPlace, wouldWallOff } from './placement';
 import { Terrain } from './map';
 import { NATIONS, type Nation } from './data/kings';
 import { regionReachable, regionDistance, judgement } from './sea';
@@ -99,6 +99,7 @@ export class Bot {
     this.skips[k] = (this.skips[k] ?? 0) + 1;
   }
   private lastMonth = -1;
+  private lastParty = -Infinity;
   private tick = 0;
   readonly p: Policy;
   constructor(private g: Game, private opts: { verbose?: boolean; policy?: Partial<Policy> } = {}) {
@@ -136,7 +137,7 @@ export class Bot {
     }
     let [cx, cy] = near ?? this.centre();
     for (let attempt = 0; attempt < 4; attempt++) {
-      const pl = findSpot(g, d, cx, cy, attempt < 2 ? 34 : 14, (p) => !pred || pred(p.x, p.y));
+      const pl = findSpot(g, d, cx, cy, attempt < 2 ? 34 : 14, (p) => (!pred || pred(p.x, p.y)) && !wouldWallOff(g, d, p));
       if (pl) {
         const r = g.cmd({ type: 'build', def, x: pl.x, y: pl.y, rot: pl.rot });
         if (r.ok) {
@@ -329,9 +330,7 @@ export class Bot {
     const ashoreP = g.pirates().filter((p) => p.task.kind !== 'atsea');
     const ashore = ashoreP.length;
     // pirates should pay for their fun, but not more than they have
-    // (a planner reads the typical purse, not the average one a few rich captains inflate)
-    const purses = ashoreP.map((p) => p.gold).sort((a, b) => a - b);
-    const wealth = !ashore ? 0 : this.p.plan ? purses[ashore >> 1] : purses.reduce((a, b) => a + b, 0) / ashore;
+    const wealth = ashore ? ashoreP.reduce((a, p) => a + p.gold, 0) / ashore : 0;
     const level = this.p.exploit === 'gouge' ? 2 : Math.max(0, Math.min(2, (wealth > 120 ? 2 : wealth > 35 ? 1 : 0) + this.p.priceBias));
     for (const b of g.buildings.values()) if (BUILDING[b.def].service && b.price !== level) g.cmd({ type: 'setPrice', id: b.id, price: level });
     // hoard
@@ -433,9 +432,11 @@ export class Bot {
     // mutiny in the air: a planner heads off a coup with a party and free grog while it builds more fun
     if (this.p.plan && ashore >= 6) {
       const red = ashoreP.filter((p) => p.happiness < 0.3).length / ashore;
-      if (red > 0.35 || g.unrest.coupMonths > 0) {
-        for (const id of ['festival', 'free_rum', 'free_beer']) if (g.edictAvailability(id).ok && g.treasury > g.edictAvailability(id).cost + 200) {
+      // (once a month at most: a party a fortnight would empty the treasury the fleet needs)
+      if ((red > 0.35 || g.unrest.coupMonths > 0) && g.time - this.lastParty > MONTH) {
+        for (const id of ['free_rum', 'free_beer', 'festival']) if (g.edictAvailability(id).ok && g.treasury > g.edictAvailability(id).cost + (g.unrest.coupMonths > 1 ? 0 : 800)) {
           g.cmd({ type: 'edict', id });
+          this.lastParty = g.time;
           this.say(`${id} to calm the crews`);
           break;
         }
@@ -444,6 +445,20 @@ export class Bot {
     // ransom wealthy captives with good ransoms
     for (const p of g.people.values()) if (p.kind === 'wealthy' && (p.ransom > 450 || (this.p.plan && g.treasury < 500))) g.cmd({ type: 'edict', id: 'ransom', target: p.id });
     if (this.p.plan) this.ransomSurplus();
+    // ships idle for want of hands while the stockade is full: a few of the captive men are pressed into
+    // the crews (a handful at a time, while the pirates are content enough to take them in)
+    if (this.p.plan) {
+      const shortHanded = [...g.ships.values()].some((s) => s.captain && s.status === 'docked' && s.crew.length < Math.ceil(SHIPS[s.type].men / 2));
+      if ((shortHanded || pir < 30) && cap > Math.max(40, pir * 1.2) && g.avgHappiness() > 0.5) {
+        let n = 0;
+        for (const c of g.captives()) {
+          if (n >= 2) break;
+          if (c.kind !== 'captive' || c.skilled || c.sex !== 'M' || c.rebel) continue;
+          if (g.cmd({ type: 'edict', id: 'press_gang', target: c.id }).ok) n++;
+        }
+        if (n) this.say(`pressed ${n} captives into the crews`);
+      }
+    }
     // peace with the most dangerous power. A planner acts before they are hostile, but always leaves one
     // power to prey on (peace with everyone leaves the captains nothing to take) unless it threatens war
     const peaceAt = this.p.plan ? Math.max(this.p.peaceAt, -25) : this.p.peaceAt;
@@ -717,7 +732,7 @@ export class Bot {
     if (g.treasury < cost.gold || g.lumber() < cost.lumber || g.missingReqs(d).length) return false;
     const [cx, cy] = this.dockSide();
     for (let k = 0; k < 2; k++) {
-      const pl = findSpot(g, d, cx, cy, 45);
+      const pl = findSpot(g, d, cx, cy, 45, (p) => !wouldWallOff(g, d, p));
       if (pl && g.cmd({ type: 'build', def, x: pl.x, y: pl.y, rot: pl.rot }).ok) {
         this.say(`built ${d.name}`);
         return true;
@@ -888,7 +903,8 @@ export class Bot {
     // the trader comes first when money is short: a smuggler's cove is the cheapest income there is.
     // Other kidnappings cost 250 that the next warship and her captain may need more.
     const bootstrap = target === 'trader' || target === 'shipwright';
-    const canKidnap = !!target && g.treasury > 250 + (bootstrap ? 100 : this.savingFor() + (this.hasWarship() ? 0 : 600));
+    // (craftsmen other than a trader wait until the first warship is paid for)
+    const canKidnap = !!target && (bootstrap ? g.treasury > 350 : this.hasWarship() && g.treasury > 250 + this.savingFor());
     if (!small) {
       // a warship's place is at sea. She runs errands only when there is no small hull to run them and
       // the island is desperate: no hands at all, or no trader to open a cove

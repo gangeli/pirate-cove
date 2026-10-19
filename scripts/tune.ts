@@ -1,6 +1,11 @@
 // Parallel bot experiments.
 //   npx tsx scripts/tune.ts compare [seeds] [years]        -> skill ladder + exploit policies
 //   npx tsx scripts/tune.ts search [iters] [seeds] [years]  -> random/coordinate search over Policy knobs
+//   npx tsx scripts/tune.ts starts [seeds] [years]          -> each starting ship on the default island
+//   npx tsx scripts/tune.ts calibrate [seeds] [years]       -> every preset x skill rung; calibrated multipliers
+// Env: J=<parallel games> (keep it at 2 on a shared machine), PRESET=<id> (compare on a preset's island),
+//      ONLY=<names> (compare rungs/policies), RUNGS=<names> (calibrate rungs), SEED0=<first seed>,
+//      RAW=<file.jsonl> (append every game's full result), POLICY=<json> (an extra 'tuned' rung).
 import { spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { DEFAULT_POLICY, LADDER, type Policy } from '../src/sim/bot';

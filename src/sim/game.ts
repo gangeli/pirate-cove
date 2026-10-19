@@ -118,12 +118,36 @@ export class Game {
     this.captainPool = [];
     this.difficulty = this.computeDifficulty();
     setupStartingIsland(this);
-    // a rare coastline offers no berth for the starting ship: reshape the island and start again
-    if (!this.findBuilding('dock') && (s.mapSalt ?? 0) < 6) {
+    // a rare coastline offers no berth for the starting ship, or hems the palace into a cove too small to
+    // build in: reshape the island and start again
+    if ((!this.findBuilding('dock') || this.roomAroundPalace() < 1000) && (s.mapSalt ?? 0) < 6) {
       Object.assign(this, new Game({ ...settings, mapSalt: (s.mapSalt ?? 0) + 1 }, king));
       return;
     }
     this.aura.recompute(this);
+  }
+
+  /** walkable tiles reachable from the palace door */
+  private roomAroundPalace(): number {
+    const pal = this.findBuilding('palace');
+    if (!pal) return 0;
+    const n = this.map.size;
+    const s0 = pal.door[1] * n + pal.door[0];
+    const seen = new Uint8Array(n * n);
+    const q = [s0];
+    seen[s0] = 1;
+    let c = 0;
+    while (q.length) {
+      const k = q.pop()!;
+      c++;
+      const x = k % n;
+      for (const nk of [x + 1 < n ? k + 1 : -1, x > 0 ? k - 1 : -1, k + n, k - n]) {
+        if (nk < 0 || nk >= n * n || seen[nk] || this.pf.cost(nk) === Infinity) continue;
+        seen[nk] = 1;
+        q.push(nk);
+      }
+    }
+    return c;
   }
 
   // ------------------------------------------------------------------ time
