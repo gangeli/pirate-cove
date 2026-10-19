@@ -39,10 +39,10 @@ for (const preset of presets) {
   await p.goto(base);
   await p.waitForSelector('.menu .item[data-act="new"]', { timeout: 300000 });
   const tMenu = Date.now() - t0;
-  await p.click('.menu .item[data-act="new"]');
-  await p.click(`.preset[data-act="preset:${preset}"]`);
+  await p.click('.menu .item[data-act="new"]', { timeout: 300000 });
+  await p.click(`.preset[data-act="preset:${preset}"]`, { timeout: 300000 });
   const t1 = Date.now();
-  await p.click('.setup [data-act="start"]');
+  await p.click('.setup [data-act="start"]', { timeout: 300000 });
   let s = null;
   let shotLoading = false;
   for (let i = 0; i < 240; i++) {
@@ -55,6 +55,8 @@ for (const preset of presets) {
     await p.waitForTimeout(500);
   }
   const tStart = Date.now() - t1;
+  // the test browser renders in software, which brings up the "no graphics acceleration" notice: dismiss it
+  await p.evaluate(() => document.querySelector('.gpu-notice button')?.click());
   await p.waitForTimeout(1500);
   await shot(p, `start_${preset}`);
   log(`[new game ${preset}] menu ${tMenu}ms, start ${tStart}ms, state ${JSON.stringify(s)}${p.errors.length ? '\n   ERRORS: ' + p.errors.slice(0, 6).join('\n   ') : ''}`);
