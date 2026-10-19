@@ -38,5 +38,6 @@ for (let i = 0; i < steps && !g.over; i++) {
     console.log(`   unstaffed ${unstaffed.join(',')} | open ${[...g.ongoing].join(',')} | rel ${Object.entries(g.nations).map(([n, s]) => `${n}:${Math.round(s.relation)}${s.knows ? '!' : ''}`).join(' ')}`);
   }
 }
+console.log('causes', JSON.stringify((g.stats as any).causes), 'stats', JSON.stringify(g.stats).slice(0, 200));
 console.log('end', g.over?.reason ?? 'alive', g.over?.score.total ?? '', 'years', g.yearsElapsed.toFixed(1), 'skips', JSON.stringify(bot.skips));
 if (process.env.LOG) console.log(bot.log.join('\n'));

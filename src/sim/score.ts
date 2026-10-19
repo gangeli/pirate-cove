@@ -1,5 +1,6 @@
 import type { Game } from './game';
 import { SHIPS } from './data/ships';
+import { YEAR } from './time';
 
 export interface ScoreBreakdown {
   hoard: number;
@@ -18,9 +19,10 @@ const SHIP_VALUE = { snow: 300, schooner: 450, sloop: 700, brigantine: 1000, fri
 
 /**
  * Sandbox score: sum of normalised factors, bonus factor weighted triple, times difficulty.
- * Happiness and head-count are averaged over the final year, and only crewed, captained ships count,
- * so last-minute stunts (a festival on the final day, press-ganging every captive, a harbour full of
- * empty hulls) do not pay.
+ * Happiness and head-count are averaged over the final year, only crewed, captained ships that have
+ * sailed in the final year count, and debts come out of the hoard, so last-minute stunts (a festival on
+ * the final day, press-ganging every captive, a harbour full of fresh hulls, spending on credit) do
+ * not pay.
  */
 export function computeScore(g: Game): ScoreBreakdown {
   const pir = g.pirates();
@@ -28,7 +30,9 @@ export function computeScore(g: Game): ScoreBreakdown {
   const recent = g.history.slice(-12);
   const hap = recent.length ? (recent.reduce((a, h) => a + h.happiness, 0) + hapNow) / (recent.length + 1) : hapNow;
   const headcount = recent.length ? (recent.reduce((a, h) => a + h.pirates, 0) + pir.length) / (recent.length + 1) : pir.length;
-  const seaworthy = [...g.ships.values()].filter((s) => s.captain && g.people.has(s.captain) && s.crew.length >= Math.ceil(SHIPS[s.type].men / 2));
+  // a ship counts only if she is captained, crewed, and has put to sea within the last year: a harbour
+  // full of hulls launched for the final reckoning is not a fleet
+  const seaworthy = [...g.ships.values()].filter((s) => s.captain && g.people.has(s.captain) && s.crew.length >= Math.ceil(SHIPS[s.type].men / 2) && s.sailed !== undefined && g.time - s.sailed < YEAR);
   const parts = {
     // debts are settled out of the hoard at the final reckoning, so spending on credit gains nothing
     hoard: g.hoard + Math.min(0, g.treasury),
@@ -40,7 +44,7 @@ export function computeScore(g: Game): ScoreBreakdown {
   };
   const bonusKey = g.settings.bonus;
   const subtotal = parts.hoard + parts.happiness + parts.fleet + parts.captains + parts.pirates + (parts as any)[bonusKey] * 2;
-  const total = Math.round(subtotal * g.difficulty);
+  const total = Math.max(0, Math.round(subtotal * g.difficulty));
   return {
     ...Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, Math.round(v)])) as any,
     bonusKey, subtotal: Math.round(subtotal), difficulty: g.difficulty, total,

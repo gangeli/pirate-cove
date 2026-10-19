@@ -160,6 +160,16 @@ export function commissionShip(g: Game, yardId: number, type: ShipType): CmdResu
   return { ok: true };
 }
 
+/**
+ * A small hull leaves the boatyard with a few swivel guns and boarding axes; a man-of-war's great guns
+ * must come from the foundry or the black market.
+ */
+export function launchStores(type: ShipType): { cannons: number; cutlasses: number } {
+  const d = SHIPS[type];
+  const light = d.yard === 'boatyard';
+  return { cannons: light ? Math.floor(d.cannons * 0.5) : 0, cutlasses: light ? Math.floor(d.cutlasses * 0.5) : 0 };
+}
+
 function updateYards(g: Game, dt: number): void {
   for (const y of g.buildings.values()) {
     if (!y.building_ship || y.built < 1) continue;
@@ -175,13 +185,10 @@ function updateYards(g: Game, dt: number): void {
         .sort((a, b) => Math.hypot(a.x - y.x, a.y - y.y) - Math.hypot(b.x - y.x, b.y - y.y))[0];
       if (!dock) continue; // wait for a free dock
       const s = createShip(g, y.building_ship.type, dock);
-      // a small hull leaves the boatyard with a few swivel guns and boarding axes; a man-of-war's great
-      // guns must come from the foundry or the black market
-      const d = SHIPS[s.type];
-      const light = d.yard === 'boatyard';
+      const st = launchStores(s.type);
       s.rations = 0;
-      s.cutlasses = light ? Math.floor(d.cutlasses * 0.5) : 0;
-      s.cannons = light ? Math.floor(d.cannons * 0.5) : 0;
+      s.cutlasses = st.cutlasses;
+      s.cannons = st.cannons;
       y.building_ship = undefined;
       g.msg('ship', 'Ship Launched!', `The ${SHIPS[s.type].name} ${s.name} slides down the slipway and ties up at the dock. She needs a captain!`, 'ship_launched', { x: dock.x, y: dock.y });
       assignCrews(g);
@@ -269,6 +276,7 @@ function depart(g: Game, s: Ship, force: boolean): void {
     loot: { gold: 0, captives: 0, skilled: [], wealthy: 0, recruits: 0, cannons: 0 }, lost: false, sunk: false, nextEncounter: 0,
   };
   s.status = 'departing';
+  s.sailed = g.time;
   s.log = [];
   s.voyagePath = seaPath(g, s.vx, s.vy);
   s.pathI = 0;
@@ -526,14 +534,19 @@ function onStation(g: Game, s: Ship): void {
   }
   if (s.mission === 'raid') {
     // choose best known settlement nearby, else farmsteads anywhere near home
-    const cands = g.regions.flatMap((reg) => reg.settlements.filter((x) => x.found || reg.id === g.homeRegion || reg.neighbors.includes(g.homeRegion)).map((x) => ({ x, reg })));
+    // like any captain, a raiding party honours a peace promise and spares the patron's towns
+    const spared = (n: Nation) => g.ongoing.has(`peace:${n}`) || patronOf(g) === n;
+    const cands = g.regions.flatMap((reg) => reg.settlements.filter((x) => !spared(x.nat) && (x.found || reg.id === g.homeRegion || reg.neighbors.includes(g.homeRegion))).map((x) => ({ x, reg })));
     const pick = cands.length ? g.rng.pick(cands) : null;
     const type = pick?.x.type ?? 'farmstead';
-    const nat = pick?.x.nat ?? g.rng.pick(NATIONS);
+    const fair = NATIONS.filter((n) => !spared(n));
+    const nat = pick?.x.nat ?? g.rng.pick(fair.length ? fair : NATIONS);
     const caught = { farmstead: [3, 6], trade: [5, 10], military: [8, 15] }[type];
     const crew = crewOf(g, s);
     const party = Math.min(1, (crew.length + 1) / (SHIPS[s.type].men + SHIPS[s.type].officers));
-    const n = Math.max(1, Math.round(g.rng.int(caught[0], caught[1]) * (0.4 + 0.6 * party)));
+    // a bigger landing party rounds up more of the townsfolk
+    const size = 1 + 0.08 * (SHIPS[s.type].men - 3);
+    const n = Math.max(1, Math.round(g.rng.int(caught[0], caught[1]) * (0.4 + 0.6 * party) * size));
     const deaths = type === 'military' ? g.rng.int(0, 2) : type === 'trade' ? g.rng.int(0, 1) : 0;
     for (let i = 0; i < deaths && crew.length; i++) {
       const victim = crew.splice(g.rng.int(0, crew.length - 1), 1)[0];
@@ -543,6 +556,7 @@ function onStation(g: Game, s: Ship): void {
     s.enemyNat = nat;
     if (pick) pick.x.raided++;
     piracyAgainst(g, nat, type === 'military' ? 8 : 4);
+    if (g.ongoing.has(`peace:${nat}`)) breakPeace(g, nat);
     logV(g, s, `Raided ${pick ? pick.x.name : 'a farmstead'} (${NATION_ADJ[nat]}). Seized ${n} captives${deaths ? `; lost ${deaths} men` : ''}.`);
   }
   if (s.mission === 'kidnap') {

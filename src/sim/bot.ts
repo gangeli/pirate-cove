@@ -48,6 +48,8 @@ export interface Policy {
   trade: boolean;
   /** send small ships to kidnap the craftsmen the island lacks (else only the odd random snatch) */
   kidnap: boolean;
+  /** treasury above which a planner skims the maximum into the hoard */
+  flushAt: number;
   /** degenerate strategies probed for reward hacking */
   exploit?: 'idle' | 'pressgang' | 'gouge' | 'nofun' | 'nofleet' | 'raidonly' | 'enddump';
 }
@@ -55,7 +57,7 @@ export interface Policy {
 export const DEFAULT_POLICY: Policy = {
   cadence: 0.5, hoardRate: 0.15, priceBias: 0, entertainment: 1, raid: 0.3, shipAt: 1600, reserve: 400, fear: true,
   festivalAt: 0.4, peaceAt: -55, patron: false, spoils: 'auto', sloppy: 0, lumber: 0, caution: 0.5, bigShipAt: 3500,
-  plan: true, trade: true, kidnap: true,
+  plan: true, trade: true, kidnap: true, flushAt: 4000,
 };
 
 /** The skill ladder used for balance: each rung is a recognisable kind of player. */
@@ -76,7 +78,7 @@ const VENUES: Record<'feast' | 'drink' | 'company' | 'gamble', string[]> = {
 };
 
 /** investments that pay for themselves: a planner spends the reserve on them */
-const INVEST = new Set(['smugglers_cove', 'cave']);
+const INVEST = new Set(['smugglers_cove', 'cave', 'brewery']);
 
 /** buildings never held back to save timber for a hull */
 const ESSENTIAL = new Set(['timber_camp', 'sawmill', 'chuck_tent', 'corn_farm', 'bunkhouse', 'dock', 'boatyard', 'cave', 'housing_plot', 'construction_tent']);
@@ -128,7 +130,7 @@ export class Bot {
     if (this.p.plan && cost.gold > 0) reserve = Math.max(reserve, this.captainFee());
     if ((cost.gold > 0 && g.treasury - reserve < cost.gold) || g.lumber() < cost.lumber) return false;
     if (g.missingReqs(d).length) return false;
-    if (!ESSENTIAL.has(def) && g.lumber() - cost.lumber < this.lumberHold()) {
+    if (!ESSENTIAL.has(def) && !(this.p.plan && INVEST.has(def)) && g.lumber() - cost.lumber < this.lumberHold()) {
       this.skip('lumber hold');
       return false;
     }
@@ -302,22 +304,27 @@ export class Bot {
     for (const b of g.buildings.values()) if (BUILDING[b.def].service && b.price !== level) g.cmd({ type: 'setPrice', id: b.id, price: level });
     // hoard
     if (!this.count('cave') && g.treasury > 400) this.build('cave');
-    if (this.count('cave', false) && g.hoardRate !== this.p.hoardRate) g.cmd({ type: 'hoardRate', rate: this.p.hoardRate });
+    // a planner skims harder once the treasury is flush: gold left in it at the end is worth nothing
+    const rate = this.p.plan && g.treasury > this.p.flushAt ? Math.max(this.p.hoardRate, 0.25) : this.p.hoardRate;
+    if (this.count('cave', false) && g.hoardRate !== rate) g.cmd({ type: 'hoardRate', rate });
     // a good player sees to the fleet first: plunder pays for everything else
     if (this.p.plan) this.fleet();
     // lumber
     const timber = this.count('timber_camp');
-    if ((g.lumber() < 30 || timber < this.p.lumber) && timber < 2 + Math.floor(g.yearsElapsed) + this.p.lumber) {
+    // a planner on a thin forest needs more camps for the same timber
+    const scarce = this.p.plan && g.lumber() < 30 ? 2 + Math.round((0.5 - g.settings.vegetation) * 6) : 0;
+    if ((g.lumber() < 30 || timber < this.p.lumber) && timber < 2 + Math.floor(g.yearsElapsed) + this.p.lumber + Math.max(0, scarce)) {
       if (!this.p.plan || this.canStaff('timber_camp', 0.6) || g.lumber() < 15) this.build('timber_camp', this.forest());
     }
-    if (this.count('sawmill') < Math.ceil(timber / 2)) this.build('sawmill', this.forest());
+    // one sawmill keeps up with several camps; a planner doesn't staff idle saws
+    if (this.count('sawmill') < (this.p.plan ? 1 + Math.floor(timber / 5) : Math.ceil(timber / 2))) this.build('sawmill', this.forest());
     // food
     const kitchens = this.count('brewery') + this.count('ration_factory');
     if (this.count('chuck_tent') < Math.ceil(cap / 26)) this.build('chuck_tent');
     if (this.count('corn_farm') < Math.ceil(cap / 16) + Math.floor(kitchens / 2) && g.goodTotal('corn') < 60) this.build('corn_farm', undefined, this.fertile());
     if (this.count('bunkhouse') * 5 < cap * 0.6) this.build('bunkhouse');
     // housing
-    const homeless = g.pirates().filter((p) => !p.home && !p.captain).length;
+    const homeless = g.pirates().filter((p) => !p.home && !p.captain).length - (this.p.plan && g.lumber() < 20 ? 3 : 0);
     const freePlots = [...g.buildings.values()].filter((b) => b.def === 'housing_plot' && !b.owner).length;
     if (homeless > freePlots) this.build('housing_plot', this.dockSide());
     // entertainment
@@ -325,7 +332,16 @@ export class Bot {
     else this.entertainmentByRote(ashore, pir);
     if (this.count('brewery') < 1 && g.yearsElapsed > 0.2) this.staffed('brewery');
     // ships' supplies
-    if (this.count('ration_factory') < 1 + Math.floor(g.ships.size / 3)) this.staffed('ration_factory');
+    if (this.count('ration_factory') < 1 + Math.floor(g.ships.size / 3)) {
+      // no sea stores means no voyages at all: the first ration factory is built whoever it takes
+      if (this.p.plan && !this.count('ration_factory')) this.build('ration_factory');
+      else this.staffed('ration_factory');
+    }
+    if (this.p.plan) {
+      // when the fleet is short of stores the kitchens get first pick of the cooks
+      const short = g.goodTotal('ration') < 20 && g.ships.size > 0;
+      for (const b of g.buildings.values()) if (b.def === 'ration_factory' && b.priority !== (short ? 5 : 4)) g.cmd({ type: 'setPriority', id: b.id, priority: short ? 5 : 4 });
+    }
     if (this.count('iron_mine') < 1 && g.yearsElapsed > 0.5) this.staffed('iron_mine', this.oreSpot());
     if (this.count('iron_mine') && this.count('blast_furnace') < 1) this.staffed('blast_furnace', this.oreSpot());
     if (this.count('blast_furnace') && this.count('blacksmithy') < 1) this.staffed('blacksmithy');
@@ -363,9 +379,11 @@ export class Bot {
     // festival when the mood sours and we're rich
     if (g.avgHappiness() < this.p.festivalAt && g.treasury > 2500 && g.edictAvailability('festival').ok) g.cmd({ type: 'edict', id: 'festival' });
     // ransom wealthy captives with good ransoms
-    for (const p of g.people.values()) if (p.kind === 'wealthy' && p.ransom > 450) g.cmd({ type: 'edict', id: 'ransom', target: p.id });
-    // peace with the most dangerous power
-    for (const n of NATIONS) if (g.nations[n].knows && g.nations[n].relation < this.p.peaceAt && g.edictAvailability('peace', n).ok && !g.ongoing.has(`peace:${n}`)) {
+    for (const p of g.people.values()) if (p.kind === 'wealthy' && (p.ransom > 450 || (this.p.plan && g.treasury < 500))) g.cmd({ type: 'edict', id: 'ransom', target: p.id });
+    if (this.p.plan) this.ransomSurplus();
+    // peace with the most dangerous power (a planner acts before they are hostile)
+    const peaceAt = this.p.plan ? Math.max(this.p.peaceAt, -25) : this.p.peaceAt;
+    for (const n of NATIONS) if (g.nations[n].knows && g.nations[n].relation < peaceAt && g.edictAvailability('peace', n).ok && !g.ongoing.has(`peace:${n}`)) {
       g.cmd({ type: 'edict', id: 'peace', nation: n });
       this.say(`announced peace with ${n}`);
     }
@@ -457,6 +475,30 @@ export class Bot {
     }
   }
 
+  /**
+   * Skilled captives the island has no post for are worth more to their families: a planner sells back
+   * the spares (keeping one of each trade, and everyone a building needs), more readily when money is short.
+   */
+  private ransomSurplus(): void {
+    const g = this.g;
+    const posts: Partial<Record<string, number>> = {};
+    for (const b of g.buildings.values()) for (const sl of BUILDING[b.def].workers) posts[sl.job] = (posts[sl.job] ?? 0) + sl.count;
+    const byJob = new Map<string, Person[]>();
+    for (const p of g.people.values()) if (p.kind === 'captive' && p.skilled && p.task.kind !== 'dead' && !p.rebel) {
+      const l = byJob.get(p.profession) ?? [];
+      l.push(p);
+      byJob.set(p.profession, l);
+    }
+    const poor = g.treasury < 800;
+    for (const [job, list] of byJob) {
+      // skilled-only trades fill their posts; common trades (cooks, farmers...) can be done by anyone
+      const keep = Math.max(1, SKILLED_ONLY.includes(job as Job) ? posts[job] ?? 0 : poor ? 1 : 2);
+      if (list.length <= keep) continue;
+      list.sort((a, b) => a.ransom - b.ransom);
+      for (const p of list.slice(keep)) if (p.ransom > (poor ? 100 : 250)) g.cmd({ type: 'edict', id: 'ransom', target: p.id });
+    }
+  }
+
   // ------------------------------------------------------------------------------------------- trade
 
   /** cheapest-to-annoy power: the one we're friendliest with, preferring one that already knows us */
@@ -521,6 +563,11 @@ export class Bot {
     const warships = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons > 8).length;
     if (this.p.plan && boatyard && !boatyard.building_ship && !warships && !queued && docks > ships && g.treasury > SHIPS.sloop.gold + this.feeFor('sloop') + 250 && g.lumber() >= SHIPS.sloop.lumber) {
       if (g.cmd({ type: 'commission', yard: boatyard.id, ship: 'sloop' }).ok) this.say('commissioned a Sloop');
+    }
+    // a warship shouldn't run errands: keep a cheap snow for raids and kidnappings
+    const smalls = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons <= 8).length;
+    if (this.p.plan && boatyard && !boatyard.building_ship && warships && !smalls && !queued && docks > ships && captainless === 0 && g.treasury > this.feeFor('snow') + 400 && g.lumber() >= SHIPS.snow.lumber + 10) {
+      if (g.cmd({ type: 'commission', yard: boatyard.id, ship: 'snow' }).ok) this.say('commissioned a Snow for errands');
     }
     if (docks > ships + queued && captainless === 0 && g.treasury > this.p.shipAt && roomForCrew) {
       if (shipyard && !shipyard.building_ship && g.treasury > 500 + this.feeFor('brigantine')) {
@@ -701,6 +748,10 @@ export class Bot {
         continue;
       }
       const mission = this.p.plan ? this.planMission(s) : this.roteMission(s);
+      if (mission === 'stay') {
+        this.skip('stay');
+        continue;
+      }
       if (mission === 'kidnap') g.cmd({ type: 'shipOrders', ship: s.id, mission: 'kidnap', kidnapJob: this.kidnapTarget()! });
       else if (mission === 'raid') g.cmd({ type: 'shipOrders', ship: s.id, mission: 'raid' });
       else if (mission === 'explore') g.cmd({ type: 'shipOrders', ship: s.id, mission: 'explore', region: g.regions.find((r) => r.knowledge === 0 && regionReachable(g, s, r.id).ok)!.id });
@@ -736,27 +787,42 @@ export class Bot {
    * short, fetch the craftsmen the island lacks, and chart the seas; they cruise only when idle. Real
    * warships cruise, unless one is the island's only ship and the colony is starved of hands.
    */
-  private planMission(s: Ship): 'kidnap' | 'raid' | 'explore' | 'cruise' {
+  private planMission(s: Ship): 'kidnap' | 'raid' | 'explore' | 'cruise' | 'stay' {
     const g = this.g;
     if (this.p.exploit === 'raidonly') return 'raid';
     const small = SHIPS[s.type].cannons <= 8;
     const errandBoys = [...g.ships.values()].filter((x) => SHIPS[x.type].cannons <= 8 && x.captain).length;
-    const errands = small || errandBoys === 0;
     const { free } = this.labour();
     const capTarget = 30 + g.yearsElapsed * 10;
-    const raiding = [...g.ships.values()].filter((x) => x !== s && x.status !== 'docked' && x.mission === 'raid').length;
-    if (errands && free < (small ? 5 : 2) && g.captives().length < capTarget && raiding === 0) return 'raid';
-    // a kidnapping costs 250: only when the treasury can spare it after the next ship and captain
+    const caps = g.captives().length;
+    const raidingNow = [...g.ships.values()].filter((x) => x !== s && x.status !== 'docked' && x.mission === 'raid').length;
+    // raiding a power that knows where we are and already hates us invites an invasion
+    const safe = NATIONS.some((n) => !g.ongoing.has(`peace:${n}`) && (!g.nations[n].knows || g.nations[n].relation > -35));
+    const raiding = safe ? raidingNow : 1;
     const target = this.kidnapTarget();
-    // the trader comes first when money is short: a smuggler's cove is the cheapest income there is
+    // the trader comes first when money is short: a smuggler's cove is the cheapest income there is.
+    // Other kidnappings cost 250 that the next warship and her captain may need more.
     const bootstrap = target === 'trader' || target === 'shipwright';
-    if (errands && target && g.treasury > 250 + (bootstrap ? 100 : this.savingFor() + (this.hasWarship() ? 0 : 600))) return 'kidnap';
-    if (errands && free < 8 && g.captives().length < capTarget && raiding === 0 && small) return 'raid';
+    const canKidnap = !!target && g.treasury > 250 + (bootstrap ? 100 : this.savingFor() + (this.hasWarship() ? 0 : 600));
+    if (!small) {
+      // a warship's place is at sea. She runs errands only when there is no small hull to run them and
+      // the island is desperate: no hands at all, or no trader to open a cove
+      if (!errandBoys && free < 2 && caps < capTarget && !raiding) return 'raid';
+      if (!errandBoys && canKidnap && bootstrap) return 'kidnap';
+      if (free < 2 && g.treasury > this.p.flushAt && caps < capTarget && !raiding) return 'raid';
+      if (s.cannons < 2 && s.cutlasses < 2) return 'stay';
+      return g.regions.some((r) => r.knowledge === 0 && regionReachable(g, s, r.id).ok) && g.rng.chance(0.08) ? 'explore' : 'cruise';
+    }
+    // small hulls are the island's errand boys: hands while labour is short, craftsmen to order, charts
+    if (free < 5 && caps < capTarget && !raiding) return 'raid';
+    if (canKidnap) return 'kidnap';
+    if (free < 8 && caps < capTarget && !raiding) return 'raid';
     const unexplored = g.regions.some((r) => r.knowledge === 0 && regionReachable(g, s, r.id).ok);
-    const unarmed = s.cannons < 2 && s.cutlasses < 2;
-    if (unexplored && (unarmed || (small ? g.rng.chance(0.6) : g.rng.chance(0.08)))) return 'explore';
-    // nobody sane cruises without guns or blades
-    if (unarmed) return 'raid';
+    // she is the island's lifeline until there's a warship, and never risks herself on a cruise till then
+    // (nobody sane cruises without guns or blades either)
+    const precious = !this.hasWarship() || (s.cannons < 2 && s.cutlasses < 2);
+    if (unexplored && (precious || g.rng.chance(0.6))) return 'explore';
+    if (precious) return caps < capTarget * 1.5 && !raiding ? 'raid' : 'stay';
     return 'cruise';
   }
 

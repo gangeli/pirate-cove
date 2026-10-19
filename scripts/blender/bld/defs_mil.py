@@ -513,7 +513,7 @@ def block_facing(k, rects, mat='stone', rh=0.125, depth=0.035, z=0.0, lmin=0.16,
                 bw = min(x1 - x, lmin + k.r() * (lmax - lmin))
                 if x1 - (x + bw) < 0.06:
                     bw = x1 - x
-                mm = mat if k.r() > 0.04 else ('stone' if mat != 'stone' else 'stoneDark')
+                mm = mat if k.r() > 0.025 else ('stone' if mat != 'stone' else 'stoneDark')
                 k.box(mm, bw - 0.012, hh - 0.014, depth + k.r() * 0.012 * jitter, x + bw / 2, y0 + r * hh + 0.007, z + depth / 2 - 0.01,
                       ry=(k.r() - 0.5) * 0.02 * jitter, rz=(k.r() - 0.5) * 0.015 * jitter, uvscale=2.0)
                 x += bw
@@ -901,7 +901,6 @@ def barrel_vault_house(k, w, d, h, mat='stone'):
         k.mesh(mat, [V(x, y, s * (d / 2 + 0.005)) for (x, y) in sec], [tuple(range(len(sec)))[::(1 if s > 0 else -1)]], uvscale=2.0)
     for s in (-1, 1):
         for zz in (-d / 4, d / 4):
-            prism(k, mat, [(0.0, 0.0), (0.2, 0.0), (0.06, h * 0.9), (0.0, h * 0.95)], -0.07, 0.07, uvscale=2.0) if False else None
             k.push(s * w / 2, 0, zz, s * math.pi / 2)
             prism(k, mat, [(0.0, 0.0), (0.2, 0.0), (0.05, h * 0.9), (0.0, h * 0.95)], -0.07, 0.07, uvscale=2.0)
             k.pop()
@@ -967,7 +966,6 @@ def fort(k):
         k.cyl('stone', 0.05, 0.04, 0.12, s * (gw / 2 + 0.2), walk + par + 0.28, 0.02, seg=8)
         sphere(k, 'iron', 0.045, s * (gw / 2 + 0.2), walk + par + 0.45, 0.02, seg=8, rings=5)
     k.box('stone', gw + 0.56, 0.1, 0.1, 0, walk + par + 0.1, 0.02, uvscale=2.0)
-    prism(k, 'stone', [(0.07, 0.0), (-0.03, 0.0), (-0.03, 0.3), (0.07, 0.3)], -0.001, 0.001) if False else None
     k.mesh('stone', [V(-0.42, walk + par + 0.2, 0.06), V(0.42, walk + par + 0.2, 0.06), V(0.0, walk + par + 0.45, 0.06),
                      V(-0.42, walk + par + 0.2, -0.02), V(0.42, walk + par + 0.2, -0.02), V(0.0, walk + par + 0.45, -0.02)],
            [(0, 1, 2), (5, 4, 3), (1, 4, 5, 2), (3, 0, 2, 5), (0, 3, 4, 1)], uvscale=2.0)
@@ -1219,7 +1217,6 @@ def anchor(k):
     # chain from the ring down to a heap on the block
     chain(k, [V(0, 1.12, 0.06), V(0.05, 0.9, 0.13), V(0.14, 0.55, 0.17), V(0.2, 0.25, 0.18), V(0.24, 0.135, 0.12)], link=0.036, wire=0.009)
     chain(k, [V(0.24, 0.135, 0.12), V(0.18, 0.15, 0.0), V(0.24, 0.16, -0.12), V(0.12, 0.17, -0.06), V(0.2, 0.18, 0.08)], link=0.036, wire=0.009)
-    rope_coil(k, -0.18, 0.15, 0.08) if False else None
     return {'ao': 512}
 
 
@@ -1283,7 +1280,6 @@ def rack(k, x, z, ry=0.0, w=0.8, kind='musket', n=5):
 
 def ships_wheel(k, x, y, z, ry=0.0, r=0.2):
     k.push(x, y, z, ry)
-    k.box('darkwood', 0.12, 0.0001 + y * 0 + 0.36, 0.1, 0, -0.36 + 0.0, 0.04 - 0.08) if False else None
     k.push(0, 0, 0, 0, math.pi / 2)
     k.torus('wood', r, 0.016, 0, 0, 0, seg=20, rseg=4)
     k.torus('wood', r * 0.45, 0.012, 0, 0, 0, seg=14, rseg=4)
@@ -1332,7 +1328,7 @@ def armillary(k, x, z, h=0.75):
         k.push(0, c, 0, 0, rx_, rz_)
         k.torus('brass', 0.13, 0.007 if not k.lod else 0.014, 0, 0, 0, seg=20, rseg=3)
         k.pop()
-    k.beam('brass', V(0, c - 0.17, 0), V(0, c + 0.17, 0), 0.008, round_=True, seg=5) if False else k.beam('brass', V(0.0, c - 0.16, -0.06), V(0.0, c + 0.16, 0.06), 0.008, round_=True, seg=5)
+    k.beam('brass', V(0.0, c - 0.16, -0.06), V(0.0, c + 0.16, 0.06), 0.008, round_=True, seg=5)
     sphere(k, 'brass', 0.03, 0, c, 0, seg=8, rings=5)
     k.pop()
 
@@ -1416,7 +1412,6 @@ def school_gunnery(k):
     k.cyl('water', 0.06, 0.06, 0.004, 0.6, 0.12, 0.0, seg=10)
     # the target: a canvas screen on a timber frame, ringed and holed, an earth butt behind
     tx = 2.2
-    earth_bank(k, -1.25, 1.25, tx + 0.35, 0.75, 0.6, seed=3.0) if False else None
     k.push(tx + 0.42, 0, 0, math.pi / 2)
     earth_bank(k, -1.2, 1.2, 0.0, 0.7, 0.55, seed=3.0)
     k.pop()
@@ -1472,7 +1467,6 @@ def school_marksman(k):
         sandbag(k, x + 0.12, 0.56, 0.55, -0.3)
     musket(k, V(-0.45, 0.6, 0.35), V(0.02, 0.0, 1.0), up=(0, 1, 0))
     k.pop()
-    hanging_sign(k, -1.4, 1.0, 1.2, 'MARKSMEN') if False else None
     k.push(-1.25, 0, 1.25)
     k.cyl('bark', 0.035, 0.03, 1.15, 0, 0, 0, seg=7)
     hanging_sign(k, 0, 1.08, 0.0, 'MARKSMEN')
@@ -1675,8 +1669,6 @@ def school_seaman(k):
     for i in range(8):
         x0 = -0.78 + i * 0.195
         k.beam('canvas', V(x0, yy - 0.04, 0.16), V(x0 + 0.2, yy - 0.04, 0.16), 0.1 - abs(i - 3.5) * 0.008, round_=True, seg=8)
-        if not k.lod and i % 2 == 0:
-            k.torus('rope', 0.06, 0.008, x0 + 0.1, yy - 0.03, 0.13, rx=0.0, seg=8, rseg=3) if False else None
     k.beam('wood', V(-0.6, ty + 0.65, 0.06), V(0.6, ty + 0.65, 0.06), 0.04, round_=True, seg=8)
     # foot ropes under the yard
     if not k.lod:
@@ -1762,7 +1754,7 @@ def school_nav(k):
     k.beam('iron', V(-0.12, 0.98, 0), V(0.12, 0.98, 0), 0.01)
     k.beam('iron', V(0, 0.98, -0.12), V(0, 0.98, 0.12), 0.01)
     k.cbox('iron', 0.24, 0.07, 0.006, 0.04, 1.06, 0)
-    k.cyl('iron', 0.02, 0.0, 0.05, -0.1, 1.04, 0, seg=4, rz=math.pi / 2) if False else k.cbox('iron', 0.04, 0.04, 0.006, -0.1, 1.06, 0, rz=math.pi / 4)
+    k.cbox('iron', 0.04, 0.04, 0.006, -0.1, 1.06, 0, rz=math.pi / 4)
     k.pop()
     chimney(k, -w / 2 + 0.35, -d / 2 + 0.3, h - 0.1, 0.85, 0.24)
     k.pop()
@@ -1807,22 +1799,45 @@ def observatory(k):
     and a long brass telescope trained out of the slot; a stair door, slit windows and a flag"""
     r0, r1, H = 0.86, 0.78, 2.05
     lathe(k, 'stoneDark', [(r0 - 0.02, 0.0), (r1 - 0.02, H)], seg=24, cap0=False)
-    # coursed blocks round the drum
+    # coursed blocks of uneven height and length round the drum
+    wins = ((math.pi / 2, 1.3), (-0.6, 0.9), (3.6, 1.1), (-2.2, 1.55))
     if not k.lod:
-        rows = round(H / 0.14)
-        for j in range(rows):
-            y = j * H / rows
-            r = r0 + (r1 - r0) * (y + 0.07) / H
-            n = max(12, round(2 * math.pi * r / 0.26))
-            off = (j % 2) * 0.5
-            for i in range(n):
-                a = (i + off + (k.r() - 0.5) * 0.15) / n * math.tau
-                # leave the door and windows open
-                if abs(((a - math.pi / 2 + math.pi) % math.tau) - math.pi) < 0.2 and y < 0.85:
+        y = 0.0
+        while y < H - 0.05:
+            rh = min(H - y, 0.12 + k.r() * 0.06)
+            r = r0 + (r1 - r0) * (y + rh / 2) / H
+            a0 = k.r() * 0.3
+            spans = []
+            if y < 0.86:
+                spans.append((math.pi / 2 - 0.3, math.pi / 2 + 0.3))
+            for (wa, wy) in wins:
+                if wy - 0.06 < y + rh / 2 < wy + 0.32:
+                    spans.append((wa - 0.09, wa + 0.09))
+            spans = sorted(((p - a0) % math.tau + a0, (p - a0) % math.tau + a0 + (q - p)) for (p, q) in spans)
+            a, end = a0, a0 + math.tau
+            # a span that wraps past the end also blocks the start
+            if spans and spans[-1][1] > end:
+                a = a0 + (spans[-1][1] - end)
+            while a < end - 0.02:
+                inside = [sp for sp in spans if sp[0] - 1e-4 <= a < sp[1]]
+                if inside:
+                    a = inside[0][1]
                     continue
-                if any(abs(((a - wa + math.pi) % math.tau) - math.pi) < 0.07 and wy - 0.05 < y < wy + 0.3 for (wa, wy) in ((math.pi / 2, 1.3), (-0.6, 0.9), (3.6, 1.1), (-2.2, 1.55))):
+                bl = min(end - a, (0.18 + k.r() * 0.2) / r)
+                nxt = [sp[0] for sp in spans if sp[0] > a]
+                lim = min(nxt) if nxt else end
+                if lim - (a + bl) < 0.1 / r:
+                    bl = lim - a
+                bl = min(bl, lim - a)
+                if bl < 0.02:
+                    a = lim
                     continue
-                k.cbox('stone' if k.r() > 0.15 else 'coral', 2 * math.pi * r / n - 0.014, H / rows - 0.014, 0.06, math.cos(a) * r, y + H / rows / 2, math.sin(a) * r, ry=-a + math.pi / 2, uvscale=2.0)
+                am = a + bl / 2
+                a += bl
+                m = 'stone' if k.r() > 0.12 else 'coral'
+                k.cbox(m, 2 * math.sin(bl / 2) * r - 0.012, rh - 0.014, 0.06 + k.r() * 0.015, math.cos(am) * r, y + rh / 2, math.sin(am) * r,
+                       ry=-am + math.pi / 2, rx=(k.r() - 0.5) * 0.03, uvscale=2.0)
+            y += rh
     # door with a stone surround and steps
     k.push(0, 0, r0 - 0.03)
     door(k, 0, w=0.4, h=0.78, depth=0.06, mat='planksDark')
@@ -1832,12 +1847,15 @@ def observatory(k):
     k.box('stone', 0.66, 0.1, 0.08, 0, 0.8, 0.0, uvscale=2.0)
     k.pop()
     steps(k, 0, r0 + 0.12, 0.6, 0.12, 1, 'stone')
-    for (wa, wy) in ((math.pi / 2, 1.3), (-0.6, 0.9), (3.6, 1.1), (-2.2, 1.55)):
+    for (wa, wy) in wins:
         r = r0 + (r1 - r0) * (wy + 0.12) / H
         k.push(math.cos(wa) * r, wy, math.sin(wa) * r, -wa + math.pi / 2)
-        k.box('black', 0.07, 0.26, 0.04, 0, 0, 0.0)
-        k.box('stone', 0.16, 0.05, 0.1, 0, -0.03, 0.02, uvscale=2.0)
-        k.box('stone', 0.16, 0.05, 0.1, 0, 0.26, 0.02, uvscale=2.0)
+        k.box('window', 0.1, 0.26, 0.01, 0, 0, 0.0)
+        k.box('darkwood', 0.015, 0.26, 0.02, 0, 0, 0.005)
+        for s_ in (-1, 1):
+            k.box('stone', 0.05, 0.36, 0.1, s_ * 0.075, -0.05, 0.005, uvscale=2.0)
+        k.box('stone', 0.22, 0.06, 0.12, 0, -0.07, 0.012, uvscale=2.0)
+        k.box('stone', 0.22, 0.07, 0.11, 0, 0.26, 0.008, uvscale=2.0)
         k.pop()
     # corbel table and parapet walk
     nc = 20 if not k.lod else 10
@@ -1845,12 +1863,15 @@ def observatory(k):
         a = i / nc * math.tau
         k.cbox('stone', 0.08, 0.12, 0.12, math.cos(a) * (r1 + 0.04), H - 0.04, math.sin(a) * (r1 + 0.04), ry=-a + math.pi / 2, uvscale=2.0)
     lathe(k, 'stone', [(r1 + 0.13, H + 0.02), (r1 + 0.13, H + 0.09)], seg=24)
-    lathe(k, 'stoneDark', [(r1 + 0.12, H + 0.09), (r1 + 0.12, H + 0.32)], seg=24, cap0=False, cap1=False)
+    lathe(k, 'stone', [(r1 + 0.12, H + 0.09), (r1 + 0.12, H + 0.32)], seg=24, cap0=False, cap1=False, uvscale=2.0)
+    lathe(k, 'stoneDark', [(r0 + 0.07, 0.0), (r0 + 0.06, 0.08), (r0 + 0.02, 0.14)], seg=24, cap0=False, cap1=False, uvscale=2.0)
     lathe(k, 'stoneDark', [(r1 + 0.03, H + 0.32), (r1 + 0.03, H + 0.09)], seg=24, cap0=False, cap1=False)
     lathe(k, 'stone', [(r1 + 0.02, H + 0.32), (r1 + 0.15, H + 0.32), (r1 + 0.15, H + 0.36), (r1 + 0.02, H + 0.36)], seg=24, cap0=False, cap1=False)
     # dome: ribbed boards with an open shutter slot facing +z/+x
-    dy = H + 0.1
-    R = 0.66
+    lathe(k, 'plaster', [(0.7, H + 0.08), (0.7, H + 0.36)], seg=24, cap0=False, cap1=False)
+    k.cyl('darkwood', 0.73, 0.73, 0.05, 0, H + 0.34, 0, seg=24)
+    dy = H + 0.39
+    R = 0.7
     slot = (math.radians(30), math.radians(52))  # azimuth window of the slot
     segs = 32 if not k.lod else 16
     rings = 10 if not k.lod else 5
@@ -1869,7 +1890,6 @@ def observatory(k):
             faces.append((p, p + segs + 1, p + segs + 2, p + 1))
     k.mesh('plaster', verts, faces, uvscale=1.0)
     k.mesh('black', [v * 0.985 + V(0, dy * 0.015, 0) for v in verts], [f[::-1] for f in faces], uvscale=1.0)
-    k.cyl('stone', R + 0.03, R + 0.03, 0.08, 0, dy - 0.04, 0, seg=segs)
     # ribs and the slot shutters
     for i in range(0, 16 if not k.lod else 0):
         a = i / 16 * math.tau
@@ -1892,7 +1912,7 @@ def observatory(k):
     sphere(k, 'brass', 0.04, 0, dy + R + 0.1, 0, seg=8, rings=5)
     # the telescope on its pier, aimed out of the slot
     am = (slot[0] + slot[1]) / 2
-    k.cyl('stone', 0.1, 0.1, 0.45, 0, dy - 0.1, 0, seg=10)
+    k.cyl('stone', 0.1, 0.1, dy + 0.35 - H, 0, H, 0, seg=10)
     k.push(0, dy + 0.38, 0, math.pi / 2 - am, 0)
     k.push(0, 0, 0, 0, math.pi / 2 - 0.55)
     k.cyl('brass', 0.055, 0.065, 1.05, 0, -0.25, 0, seg=12)

@@ -8,7 +8,7 @@ import type { Good } from './data/goods';
 import { NATIONS, type Nation, KINGS, type KingDef } from './data/kings';
 import type { Building, KingState, Message, NationState, Person, Region, Settings, Ship } from './types';
 import { canPlace, placeBuilding, removeBuilding, placeRoad, removeRoad, setupStartingIsland, type Placement } from './placement';
-import { updatePeople, createPerson, killPerson } from './people';
+import { updatePeople, createPerson, killPerson, rebellionMonthly } from './people';
 import { updateEconomy, monthlyEconomy, lumberTotal, consumeLumber, goodTotal } from './economy';
 import { updateShips, makeRegions, launchShip, commissionShip, assignCrews } from './sea';
 import { monthlyDiplomacy, updateInvasion, launchInvasion } from './diplomacy';
@@ -80,7 +80,7 @@ export class Game {
   finance = { income: {} as Record<string, number>, expense: {} as Record<string, number>, lastIncome: {} as Record<string, number>, lastExpense: {} as Record<string, number> };
   stats = { plundered: 0, captured: 0, shipsSunk: 0, escapes: 0, escapeKills: 0, deaths: 0, piratesDied: 0, recruits: 0 };
   /** coup/rebellion warnings */
-  unrest = { coupWarn: 0, rebellion: false, coupMonths: 0 };
+  unrest: { coupWarn: number; rebellion: boolean; coupMonths: number; rebelSince?: number } = { coupWarn: 0, rebellion: false, coupMonths: 0 };
   graveyard: { name: string; nat: Nation }[] = [];
   captainPool: string[] = [];
   /** edict temporary effects */
@@ -180,6 +180,7 @@ export class Game {
     this.finance.expense = {};
     monthlyEconomy(this);
     monthlyDiplomacy(this);
+    rebellionMonthly(this);
     this.aura.dirty = true;
     const pir = this.pirates();
     const cap = this.captives();

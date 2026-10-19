@@ -415,6 +415,7 @@ function startEscape(g: Game, p: Person): void {
 function startRebellion(g: Game, leader: Person): void {
   if (g.unrest.rebellion) return;
   g.unrest.rebellion = true;
+  g.unrest.rebelSince = g.time;
   const rebels: Person[] = [];
   for (const q of g.people.values()) {
     if (q.kind !== 'captive' || q.task.kind === 'dead') continue;
@@ -546,6 +547,14 @@ export function serviceBand(b: Building): [number, number] {
 }
 
 function thinkPirate(g: Game, p: Person): void {
+  // rebels or marines close by: any pirate with fight in him goes for them
+  if (g.unrest.rebellion && p.mood !== 'disgruntled') {
+    const foe = nearestFoe(g, p, 15);
+    if (foe) {
+      p.task = { kind: 'fight', target: foe.id, timer: 30, phase: 1 };
+      return;
+    }
+  }
   // enraged: attack someone nearby
   if (p.mood === 'enraged') {
     let victim: Person | null = null, vd = Infinity;
@@ -954,6 +963,25 @@ export function housingPass(g: Game): void {
       }
     }
   }
+}
+
+/**
+ * A revolt that fails to storm the palace burns out: once the ringleaders are dead or a month has passed,
+ * the survivors throw down their tools and go back to work (cowed, for now), and the island can rise again.
+ */
+export function rebellionMonthly(g: Game): void {
+  if (!g.unrest.rebellion) return;
+  const rebels = [...g.people.values()].filter((q) => q.rebel && q.task.kind !== 'dead');
+  if (rebels.length && g.time - (g.unrest.rebelSince ?? 0) < MONTH) return;
+  for (const q of rebels) {
+    q.rebel = false;
+    q.resignation = Math.max(q.resignation, 0.5);
+    q.escapeCooldown = MONTH;
+    q.task = { kind: 'idle' };
+    q.path = null;
+  }
+  g.unrest.rebellion = false;
+  g.msg('good', 'Revolt Crushed', rebels.length ? `The revolt has collapsed. ${rebels.length} sullen rebels have gone back to work.` : 'The last of the rebels are dead. The revolt is over.', 'rebellion_over');
 }
 
 /** a captured sailor escapes or is exchanged and turns up at the docks */

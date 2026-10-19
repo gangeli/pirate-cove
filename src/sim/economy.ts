@@ -13,6 +13,8 @@ import { Terrain } from './map';
 export const PROD_SPEED = 5;
 /** how much a hauler can carry per trip */
 export const HAUL_LOAD = 20;
+/** stock a producer keeps back from the smuggler's cove for the island's own use */
+const COVE_KEEP = 8;
 
 // ------------------------------------------------------------------------------------------- fertility
 
@@ -133,7 +135,7 @@ function findSource(g: Game, b: Building, good: Good, smuggler = false): Buildin
     const have = s.inv[good] ?? 0;
     const def = BUILDING[s.def];
     if (!producesGood(def, good)) continue;
-    if (have < (smuggler ? 15 : 1)) continue;
+    if (have < (smuggler ? COVE_KEEP + 4 : 1)) continue;
     const d = Math.abs(s.door[0] - b.door[0]) + Math.abs(s.door[1] - b.door[1]) - Math.min(have, 20) * 2;
     if (d < bd) (bd = d), (best = s);
   }
@@ -147,7 +149,7 @@ export function haulerTask(g: Game, b: Building, p: Person): Task | null {
   if (def.id === 'smugglers_cove') {
     wants = [];
     const open = NATIONS.some((n) => g.ongoing.has(`open_cove:${n}`));
-    if (open) for (const k in SMUGGLER_PRICE) wants.push([k as Good, 6]);
+    if (open) for (const k in SMUGGLER_PRICE) wants.push([k as Good, HAUL_LOAD]);
   }
   // rotate which want gets served
   const offs = g.rng.int(0, Math.max(0, wants.length - 1));
@@ -155,7 +157,9 @@ export function haulerTask(g: Game, b: Building, p: Person): Task | null {
     const [good, n] = wants[(i + offs) % wants.length];
     const src = findSource(g, b, good, def.id === 'smugglers_cove');
     if (!src) continue;
-    return { kind: 'haul', bld: b.id, src: src.id, good, amount: Math.max(1, Math.min(n, HAUL_LOAD)), tx: src.door[0], ty: src.door[1], timer: 2 };
+    // the smugglers take only the surplus, leaving the island's own taverns and docks their stock
+    const surplus = def.id === 'smugglers_cove' ? Math.floor((src.inv[good] ?? 0) - COVE_KEEP) : n;
+    return { kind: 'haul', bld: b.id, src: src.id, good, amount: Math.max(1, Math.min(n, surplus, HAUL_LOAD)), tx: src.door[0], ty: src.door[1], timer: 2 };
   }
   // nothing to do: wait at home building
   return { kind: 'work', bld: b.id, tx: b.door[0], ty: b.door[1], timer: 8 };
@@ -541,6 +545,24 @@ export function monthlyEconomy(g: Game): void {
     if (nb >= 2 && m.trees[k] < 3) {
       m.trees[k]++;
       g.events.push({ type: 'trees', x, y, w: 1, h: 1 });
+    }
+  }
+  // the lumberjacks' clearings grow back fast in the tropics: saplings take root around every timber camp,
+  // so a camp on even a thin wood keeps working (slowly) instead of felling its patch bare for good
+  for (const b of g.buildings.values()) {
+    if (b.def !== 'timber_camp' || b.built < 1) continue;
+    const cx = b.x + (b.w >> 1), cy = b.y + (b.h >> 1);
+    for (let i = 0; i < 8; i++) {
+      const x = cx + g.rng.int(-9, 9), y = cy + g.rng.int(-9, 9);
+      if (!m.inBounds(x, y)) continue;
+      const k = m.idx(x, y);
+      if (m.occupied[k] || m.path[k] || (m.terrain[k] !== Terrain.Grass && m.terrain[k] !== Terrain.Jungle) || m.trees[k] >= 3) continue;
+      let nb = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (m.inBounds(x + dx, y + dy)) nb += m.trees[m.idx(x + dx, y + dy)] ? 1 : 0;
+      if (nb >= 1 || g.rng.chance(0.25)) {
+        m.trees[k]++;
+        g.events.push({ type: 'trees', x, y, w: 1, h: 1 });
+      }
     }
   }
   // black market prices relax

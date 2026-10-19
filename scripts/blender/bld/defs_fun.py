@@ -164,14 +164,15 @@ def drape(k, mat, x, ytop, z, w, h, ry=0.0, folds=5, depth=0.025, gather=0.0, si
         t = j / ny
         # tie-back: the cloth narrows toward the tie and flares below it
         if gather > 0:
-            tie = 1 - gather * math.exp(-((t - 0.62) / 0.22) ** 2)
+            lo = 1 - gather
+            tie = 1 - (1 - lo) * (t / 0.62) if t <= 0.62 else lo + (1 - lo) * 0.45 * (t - 0.62) / 0.38
         else:
             tie = 1.0
         for i in range(nx + 1):
             u = i / nx
             xx = (u - (0.5 if side == 0 else (0 if side > 0 else 1))) * w
             xx = xx * tie
-            zz = depth * math.sin(u * folds * math.pi * 2) * (0.6 + 0.4 * t)
+            zz = depth * math.sin(u * folds * math.pi * 2) * (0.6 + 0.4 * t) * (0.5 + 0.5 * tie)
             verts.append(V(xx * (1 if side >= 0 else 1), -h * t, zz))
     for j in range(ny):
         for i in range(nx):
@@ -1600,4 +1601,396 @@ def inn(k):
         lantern(k, 0, 0.82, 0.0) if s > 0 else None
         k.pop()
     hanging_sign(k, -0.72, 0.95, gz + 0.12, 'THE_INN')
+    return {'ao': 1024}
+
+
+# ------------------------------------------------------------------------------------------- the casino
+
+def arcade(k, xs, ys, top, z, t=0.16, mat='plaster', impost='stone', seg=10):
+    """a rendered arcade: piers centred at xs (pier width pw) carrying round arches springing at ys, walling up
+    to top; front face at z + t/2 (current frame)"""
+    pw = 0.16
+    if k.lod:
+        seg = 4
+    for a, b in zip(xs, xs[1:]):
+        x0, x1 = a + pw / 2, b - pw / 2
+        r, c = (x1 - x0) / 2, (x0 + x1) / 2
+        arc = [V(c - math.cos(math.pi * i / seg) * r, ys + math.sin(math.pi * i / seg) * r, 0) for i in range(seg + 1)]
+        verts, faces = [], []
+        for p in arc:
+            verts += [V(p.x, p.y, z + t / 2), V(p.x, top, z + t / 2), V(p.x, p.y, z - t / 2), V(p.x, top, z - t / 2)]
+        for i in range(seg):
+            q, n = 4 * i, 4 * (i + 1)
+            faces.append((q, n, n + 1, q + 1))          # front spandrel
+            faces.append((q + 2, q + 3, n + 3, n + 2))  # back spandrel
+            faces.append((q, q + 2, n + 2, n))          # soffit
+        k.mesh(mat, verts, faces, uvscale=0.5)
+        # keystone and archivolt
+        if not k.lod:
+            for i in range(seg + 1):
+                ang = math.pi * i / seg
+                k.cbox(impost, 0.05 if i != seg // 2 else 0.09, 0.07 if i != seg // 2 else 0.12, 0.02, c - math.cos(ang) * (r + 0.03), ys + math.sin(ang) * (r + 0.03), z + t / 2 + 0.01,
+                       rz=ang - math.pi / 2, uvscale=2.0)
+    for x in xs:
+        k.box(mat, pw, ys, t, x, 0, z, wuv=True)
+        k.box(impost, pw + 0.05, 0.05, t + 0.04, x, ys - 0.05, z, uvscale=2.0)
+        k.box(impost, pw + 0.06, 0.08, t + 0.05, x, 0, z, uvscale=2.0)
+    k.box(impost, xs[-1] - xs[0] + pw + 0.06, 0.06, t + 0.06, (xs[0] + xs[-1]) / 2, top - 0.06, z, uvscale=2.0)
+
+
+def cupola(k, x, y, z, s=0.5, mat='plaster', roof='terracotta'):
+    """a little belvedere on the ridge: a rendered drum with open arches under a pyramid of tiles"""
+    k.box(mat, s, 0.28, s, x, y, z, wuv=True)
+    k.box('stone', s + 0.06, 0.04, s + 0.06, x, y + 0.28, z, uvscale=2.0)
+    k.box('black', s - 0.12, 0.26, s - 0.12, x, y + 0.32, z)
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            k.box(mat, 0.07, 0.26, 0.07, x + sx * (s / 2 - 0.035), y + 0.32, z + sz * (s / 2 - 0.035))
+    k.box('stone', s + 0.08, 0.04, s + 0.08, x, y + 0.58, z, uvscale=2.0)
+    yb = y + 0.62
+    hs = s / 2 + 0.07
+    pv = [V(x - hs, yb, z - hs), V(x + hs, yb, z - hs), V(x + hs, yb, z + hs), V(x - hs, yb, z + hs), V(x, yb + 0.32, z)]
+    convex(k, roof, pv, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4), (0, 1, 2, 3)], uvscale=2.0)
+    if not k.lod:
+        for i in range(4):
+            a = i * math.pi / 2
+            k.beam('terracotta', V(x, yb + 0.33, z), V(x + math.cos(a + math.pi / 4) * hs * 1.41, yb + 0.01, z + math.sin(a + math.pi / 4) * hs * 1.41), 0.04, round_=True, seg=6)
+    lathe(k, 'brass', [(0.03, 0), (0.035, 0.03), (0.0, 0.08)], x, yb + 0.31, z, seg=8)
+    flagpole(k, x, z, 0.8, base=yb + 0.36)
+
+
+@building('casino')
+def casino(k):
+    """Casino: the grandest house in the cove - a two-storey rendered palazzo with an arcaded loggia, a terrace
+    over it with a turned balustrade, French doors under striped awnings, a tiled roof with a belvedere flying
+    the black flag, guns at the steps and lanterns in every arch"""
+    w, d, h1, h2, zb, p_ = 4.2, 1.9, 1.05, 0.95, -0.8, 0.16
+    k.push(0, 0, zb)
+    plinth_lo(k, w + 0.06, d + 0.06, p_)
+    k.push(0, p_, 0)
+    ops1 = [Op('front', 0.0, 'double', w=0.7, h=0.9), Op('front', -0.8, 'window', h=0.55, y=0.25, shutters=False), Op('front', 0.8, 'window', h=0.55, y=0.25, shutters=False),
+            Op('front', -1.6, 'window', h=0.55, y=0.25, shutters=False), Op('front', 1.6, 'window', h=0.55, y=0.25, shutters=False),
+            Op('left', -0.4, 'window'), Op('left', 0.4, 'window'), Op('right', -0.4, 'window'), Op('right', 0.4, 'window'),
+            Op('back', -1.2, 'window', shutters=False), Op('back', 0.0, 'door', h=0.85), Op('back', 1.2, 'window', shutters=False)]
+    W_plastered(k, w, d, h1, 'plasterYellow', ops1)
+    win_curtains(k, w, d, ops1, 0.0, 0.063, 'red')
+    k.box('stone', w + 0.08, 0.09, d + 0.08, 0, h1 - 0.02, 0, uvscale=2.0)
+    k.push(0, h1 + 0.07, 0)
+    fx = (-1.4, 0.0, 1.4)
+    ops2 = [Op('front', x, 'open', w=0.44, h=0.74, y=0.0) for x in fx] + [Op('front', -0.7, 'window', h=0.45, y=0.3), Op('front', 0.7, 'window', h=0.45, y=0.3),
+            Op('left', 0.0, 'window'), Op('right', 0.0, 'window'), Op('back', -1.2, 'window', shutters=False), Op('back', 0.0, 'window', shutters=False), Op('back', 1.2, 'window', shutters=False)]
+    W_plastered(k, w, d, h2, 'plasterYellow', ops2)
+    win_curtains(k, w, d, ops2, 0.0, 0.063, 'red')
+    k.face('front', w, d)
+    for x in fx:
+        doorway(k, x, 0.44, 0.74, 0.063, drape_mat='red')
+    k.pop()
+    # rooms behind the French doors
+    k.box('plasterPink', w - 0.3, h2 - 0.05, 0.02, 0, 0.0, d / 2 - 0.5)
+    # cornice, roof, chimneys and the belvedere
+    k.box('stone', w + 0.1, 0.07, d + 0.1, 0, h2 - 0.07, 0, uvscale=2.0)
+    tile_gable(k, w, d, 0.78, over=0.18, y=h2, gable='plasterYellow', tile_len=0.24, tile_w=0.16)
+    chimney(k, -w / 2 + 0.35, -0.3, h2 - 0.1, 1.05, 0.3)
+    chimney(k, w / 2 - 0.35, -0.3, h2 - 0.1, 1.05, 0.3)
+    cupola(k, 0.0, h2 + 0.55, 0.0, 0.5, 'plasterYellow')
+    k.pop()
+    k.pop()
+    k.pop()
+    zf = zb + d / 2
+    # the loggia: arcade, paved floor, terrace above with a balustrade
+    ld = 0.62
+    xs = [-w / 2 + 0.08 + i * (w - 0.16) / 5 for i in range(6)]
+    top = p_ + h1 + 0.07
+    k.box('stone', w + 0.16, p_, ld + 0.08, 0, 0, zf + ld / 2, uvscale=2.0)
+    arcade(k, xs, p_ + 0.62, top, zf + ld - 0.08, t=0.16, mat='plasterYellow')
+    for x in xs:
+        k.box('plasterYellow', 0.12, top - p_, 0.08, x, p_, zf + 0.04)
+    for s in (-1, 1):
+        k.push(s * (w / 2 + 0.0), 0, zf + ld / 2 - 0.02, s * math.pi / 2)
+        arcade(k, [-ld / 2 + 0.06, ld / 2 - 0.1], p_ + 0.62, top, 0.0, t=0.14, mat='plasterYellow')
+        k.pop()
+    k.box('plasterYellow', w + 0.1, 0.07, ld, 0, top - 0.07, zf + ld / 2)
+    k.box('stone', w + 0.16, 0.05, ld + 0.06, 0, top, zf + ld / 2, uvscale=2.0)
+    balustrade(k, -w / 2 + 0.06, w / 2 - 0.06, zf + ld - 0.05, top + 0.05, 0.3, 'stone', 0.1, post_mat='plaster', r=0.014)
+    for s in (-1, 1):
+        balustrade_z(k, zf + 0.05, zf + ld - 0.08, s * (w / 2 - 0.02), top + 0.05, 0.3, 'stone', 0.1, post_mat='plaster', r=0.014)
+        for zz in (zf + ld - 0.05,):
+            k.box('stone', 0.12, 0.38, 0.12, s * (w / 2 - 0.02), top + 0.03, zz, uvscale=2.0)
+            lathe(k, 'terracotta', [(0.04, 0), (0.07, 0.04), (0.08, 0.1), (0.075, 0.12)], s * (w / 2 - 0.02), top + 0.41, zz, seg=10)
+            k.cyl('leaf', 0.07, 0.09, 0.08, s * (w / 2 - 0.02), top + 0.5, zz, seg=8)
+    # striped awnings over the French doors
+    for x in fx:
+        awning(k, 'canvasRed', x - 0.32, x + 0.32, top + 0.8, zf + 0.02, top + 0.64, zf + 0.34, sag=0.02, valance=0.06, poles=False, nx=6, nz=3)
+        for s in (-1, 1):
+            k.beam('iron', V(x + s * 0.3, top + 0.52, zf + 0.01), V(x + s * 0.3, top + 0.64, zf + 0.34), 0.012)
+    # lanterns hung in the arches
+    for a, b in zip(xs, xs[1:]):
+        c = (a + b) / 2
+        k.beam('iron', V(c, p_ + 0.62 + 0.3, zf + ld - 0.08), V(c, p_ + 0.62 + 0.2, zf + ld - 0.08), 0.008, round_=True, seg=4)
+        small_lantern(k, c, p_ + 0.62 + 0.2, zf + ld - 0.08, 1.2)
+    # steps, guns either side, palms, the sign
+    steps(k, 0, zf + ld + 0.12, 1.0, p_, 2, 'stone')
+    for s in (-1, 1):
+        gun(k, s * 1.05, zf + ld + 0.32, ry=0.0)
+        for (dx, dy, dz) in ((0.2, 0.035, 0.6), (0.27, 0.035, 0.6), (0.235, 0.09, 0.6)):
+            lathe(k, 'iron', [(0.0, -0.035), (0.03, -0.025), (0.035, 0.0), (0.03, 0.025), (0.0, 0.035)], s * (1.05 + dx), dy, zf + ld + dz, seg=8)
+        potted_palm(k, s * 1.85, zf + ld + 0.3, 1.2)
+        lantern_post(k, s * 0.62, zf + ld + 0.55, 1.0, ry=0.0)
+    hanging_sign(k, xs[-1] + 0.05, top - 0.2, zf + ld, 'CASINO')
+    return {'ao': 1024}
+
+
+# ------------------------------------------------------------------------------------------- courtesan & spa
+
+def column(k, x, z, h, r=0.06, mat='plaster', base='stone'):
+    """a rendered Tuscan column: plinth block, torus base, tapered shaft, capital and abacus"""
+    k.box(base, r * 2.8, 0.05, r * 2.8, x, 0, z, uvscale=2.0)
+    k.cyl(base, r * 1.3, r * 1.2, 0.04, x, 0.05, z, seg=12)
+    k.cyl(mat, r, r * 0.85, h - 0.17, x, 0.09, z, seg=12)
+    k.cyl(base, r * 0.95, r * 1.3, 0.05, x, h - 0.1, z, seg=12)
+    k.box(base, r * 2.8, 0.05, r * 2.8, x, h - 0.05, z, uvscale=2.0)
+
+
+def daybed(k, x, z, ry=0.0, cover='red'):
+    k.push(x, 0, z, ry)
+    k.box('darkwood', 0.62, 0.16, 0.3, 0, 0.04, 0)
+    for (ax, az) in ((-0.28, -0.12), (0.28, -0.12), (-0.28, 0.12), (0.28, 0.12)):
+        k.cyl('darkwood', 0.018, 0.014, 0.05, ax, 0, az, seg=6)
+    k.box('darkwood', 0.04, 0.2, 0.3, -0.31, 0.12, 0)
+    k.box(cover, 0.6, 0.05, 0.28, 0, 0.2, 0)
+    k.cbox('plasterYellow', 0.12, 0.08, 0.2, -0.22, 0.28, 0, rz=0.4)
+    k.cbox('canvasPurple', 0.1, 0.07, 0.16, -0.12, 0.27, 0.04, rz=0.3, ry=0.3)
+    k.pop()
+
+
+@building('courtesan')
+def courtesan(k):
+    """Courtesan & Spa: a little rendered pavilion on a stone podium - a colonnade hung with drapes before a
+    private chamber, a raised marble bath, a daybed with cushions, an incense brazier, palms and a parrot"""
+    P = 0.18
+    k.push(0, 0, -0.05)
+    plinth_lo(k, 2.5, 2.4, P)
+    k.pop()
+    steps(k, 0, 1.2, 0.9, P, 2, 'stone')
+    H = 1.15
+    k.push(0, P, 0)
+    # the private chamber at the back
+    cw, cd, cz = 2.0, 0.72, -0.82
+    k.push(0, 0, cz)
+    ops = [Op('front', 0.0, 'open', w=0.5, h=0.85, y=0.0), Op('front', -0.62, 'window', h=0.4, y=0.32), Op('front', 0.62, 'window', h=0.4, y=0.32),
+           Op('back', 0.0, 'window', shutters=False), Op('left', 0.0, 'window', w=0.24, shutters=False), Op('right', 0.0, 'window', w=0.24, shutters=False)]
+    W_plastered(k, cw, cd, H, 'plasterBlue', ops, quoins=None)
+    win_curtains(k, cw, cd, ops, 0.0, 0.063, 'red')
+    k.face('front', cw, cd)
+    doorway(k, 0.0, 0.5, 0.85, 0.063, drape_mat='canvasPurple')
+    k.pop()
+    k.box('red', 0.8, 0.1, 0.4, 0.0, 0.0, -0.08)  # a bed glimpsed inside
+    k.pop()
+    # the colonnade
+    cols = [(-1.05, 0.98), (-0.38, 0.98), (0.38, 0.98), (1.05, 0.98), (-1.05, 0.28), (1.05, 0.28), (-1.05, -0.45), (1.05, -0.45)]
+    for (x, z) in cols:
+        column(k, x, z, H)
+    # entablature round the top
+    k.box('plaster', 2.3, 0.14, 0.14, 0, H, 0.98)
+    for s in (-1, 1):
+        k.box('plaster', 0.14, 0.14, 1.95, s * 1.05, H, 0.05)
+    k.box('stone', 2.42, 0.05, 2.32, 0, H + 0.14, 0.05, uvscale=2.0)
+    # drapes between the front columns, tied back to each column
+    for (a, b) in ((-1.05, -0.38), (-0.38, 0.38), (0.38, 1.05)):
+        g = b - a - 0.12
+        m = 'canvas'
+        drape(k, m, a + 0.06, H - 0.01, 0.94, g * 0.48, H - 0.06, folds=3, gather=0.6, side=1)
+        drape(k, m, b - 0.06, H - 0.01, 0.94, g * 0.48, H - 0.06, folds=3, gather=0.6, side=-1)
+        k.beam('brass', V(a + 0.07, H - 0.02, 0.94), V(b - 0.07, H - 0.02, 0.94), 0.012, round_=True, seg=5)
+    k.box('stoneDark', 2.2, 0.01, 1.4, 0, 0.0, 0.25)
+    # raised bath with water and a lion-head spout
+    bx, bz = 0.25, 0.42
+    for (x0, z0, ww, dd) in ((bx, bz - 0.3, 1.0, 0.1), (bx, bz + 0.3, 1.0, 0.1), (bx - 0.45, bz, 0.1, 0.5), (bx + 0.45, bz, 0.1, 0.5)):
+        k.box('stone', ww, 0.2, dd, x0, 0, z0, uvscale=2.0)
+        k.box('plaster', ww + 0.04, 0.035, dd + 0.04, x0, 0.2, z0)
+    k.box('water', 0.8, 0.16, 0.5, bx, 0.0, bz)
+    if not k.lod:
+        for i in range(3):
+            k.cyl('bone', 0.02, 0.02, 0.006, bx - 0.2 + i * 0.15, 0.16, bz + (i - 1) * 0.08, seg=8)  # petals floating
+    k.box('canvas', 0.3, 0.025, 0.2, bx + 0.25, 0.235, bz - 0.3, ry=0.1)  # towel on the rim
+    # daybed, an incense brazier, a little table with wine
+    daybed(k, -0.72, 0.4, math.pi / 2 + 0.1)
+    k.cyl('brass', 0.07, 0.05, 0.03, -0.62, 0.0, 0.85, seg=10)
+    k.cyl('brass', 0.015, 0.015, 0.3, -0.62, 0.03, 0.85, seg=6)
+    lathe(k, 'brass', [(0.0, 0.0), (0.07, 0.02), (0.08, 0.06), (0.06, 0.07)], -0.62, 0.33, 0.85, seg=10, cap=False)
+    k.cyl('fire', 0.05, 0.05, 0.01, -0.62, 0.38, 0.85, seg=8)
+    k.marker('smoke', -0.62, 0.45, 0.85)
+    k.cyl('darkwood', 0.12, 0.12, 0.025, -0.35, 0.3, -0.05, seg=12)
+    k.cyl('darkwood', 0.02, 0.02, 0.3, -0.35, 0.0, -0.05, seg=6)
+    bottle(k, -0.38, 0.325, -0.05, 'red')
+    for i in range(2):
+        lathe(k, 'brass', [(0.012, 0), (0.012, 0.04), (0.03, 0.07), (0.032, 0.09)], -0.3 + i * 0.05, 0.325, -0.02 + i * 0.04, seg=8, cap=False)
+    # lanterns hung from the entablature
+    for x in (-0.72, 0.72):
+        k.beam('iron', V(x, H, 0.9), V(x, H - 0.12, 0.9), 0.008, round_=True, seg=4)
+        small_lantern(k, x, H - 0.12, 0.9, 1.2)
+    # the roof: tiles on a boarded deck
+    k.push(0, 0, 0.26)
+    tile_gable(k, 2.24, 1.6, 0.62, over=0.2, y=H + 0.19, gable='plaster', tile_len=0.22, tile_w=0.15)
+    for sx in (-1, 1):
+        quads2(k, 'plaster', [V(sx * 1.125, H + 0.19, -0.8), V(sx * 1.125, H + 0.19, 0.8), V(sx * 1.125, H + 0.19 + 0.6, 0.0)], [(0, 1, 2)])
+    k.pop()
+    k.pop()
+    # garden: palms in tubs, a parrot on its perch, shrubs at the corners
+    potted_palm(k, -0.95, 1.2, 1.1)
+    potted_palm(k, 0.95, 1.2, 1.1)
+    parrot_perch(k, 1.25, 0.95, 0.72)
+    potted_palm(k, -1.22, -1.22, 0.9)
+    potted_palm(k, 1.22, -1.22, 0.9)
+    return {'ao': 1024}
+
+
+# ------------------------------------------------------------------------------------------- the hotel
+
+def fountain(k, x, z, r=0.32):
+    """a round stone basin with a baluster-stemmed bowl and a jet of water"""
+    n = 8 if k.lod else 16
+    for i in range(n):
+        a = i / n * math.tau
+        k.cbox('stone', 2 * math.pi * r / n + 0.01, 0.2, 0.08, x + math.cos(a) * r, 0.1, z + math.sin(a) * r, ry=-a + math.pi / 2, uvscale=2.0)
+    k.cyl('stone', r + 0.02, r + 0.02, 0.03, x, 0.2, z, seg=n)
+    k.cyl('water', r - 0.03, r - 0.03, 0.16, x, 0.0, z, seg=n)
+    lathe(k, 'stone', [(0.07, 0.0), (0.05, 0.08), (0.08, 0.2), (0.04, 0.32), (0.06, 0.36), (0.16, 0.42), (0.17, 0.45), (0.0, 0.46)], x, 0.16, z, seg=12)
+    k.cyl('water', 0.14, 0.14, 0.005, x, 0.605, z, seg=12)
+    k.cyl('water', 0.012, 0.004, 0.14, x, 0.61, z, seg=6)
+
+
+@building('hotel')
+def hotel(k):
+    """Hotel: a large colonial lodging house where rich captives wait out their ransom in comfort - two rendered
+    storeys wrapped on three sides by deep galleries under one great tiled roof, louvred doors onto the
+    galleries, discreetly barred windows at the back, a walled front garden with a fountain and palms"""
+    P = 0.16
+    w, d, h1, h2 = 4.4, 2.6, 1.0, 0.95
+    g = 0.6
+    z0 = -0.9                    # block centre
+    zf = z0 + d / 2              # block front face
+    gz = zf + g                  # gallery front line
+    xo = w / 2 + g               # gallery side line
+    zbk = z0 - d / 2
+    yu = P + h1 + 0.04           # upper gallery floor
+    ytop = P + h1 + h2 + 0.06    # eaves plate
+    zc = (zbk + gz) / 2
+    k.push(0, 0, zc)
+    plinth_lo(k, 2 * xo + 0.08, gz - zbk + 0.08, P)
+    k.pop()
+    k.push(0, P, z0)
+    ops1 = [Op('front', 0.0, 'double', w=0.7, h=0.9)] + [Op('front', x, 'door', w=0.4, h=0.82) for x in (-1.6, 1.6)] + \
+           [Op('front', x, 'window', h=0.5, y=0.25) for x in (-0.85, 0.85)] + \
+           [Op('left', z, 'window', h=0.5, y=0.25) for z in (-0.6, 0.6)] + [Op('right', z, 'window', h=0.5, y=0.25) for z in (-0.6, 0.6)] + \
+           [Op('back', x, 'window', bars=True, shutters=False) for x in (-1.4, 0.0, 1.4)]
+    W_plastered(k, w, d, h1, 'plasterBlue', ops1)
+    k.box('stone', w + 0.06, 0.07, d + 0.06, 0, h1 - 0.02, 0, uvscale=2.0)
+    k.push(0, h1 + 0.05, 0)
+    ops2 = [Op('front', x, 'door', w=0.4, h=0.78) for x in (-1.6, -0.55, 0.55, 1.6)] + \
+           [Op('left', z, 'door', w=0.4, h=0.78) for z in (-0.6, 0.6)] + [Op('right', z, 'door', w=0.4, h=0.78) for z in (-0.6, 0.6)] + \
+           [Op('back', x, 'window', bars=True, shutters=False) for x in (-1.4, 0.0, 1.4)]
+    W_plastered(k, w, d, h2, 'plasterBlue', ops2)
+    k.pop()
+    k.pop()
+    # galleries on three sides: posts, an upper deck with a balustrade, braces under the eaves
+    fx = [-xo + 0.05 + i * (2 * xo - 0.1) / 6 for i in range(7)]
+    sz = [gz - 0.05 - i * (gz - zbk - 0.1) / 4 for i in range(5)]
+    posts = [(x, gz - 0.05) for x in fx] + [(s * (xo - 0.05), z) for s in (-1, 1) for z in sz[1:]]
+    for (x, z) in posts:
+        k.box('stone', 0.14, 0.05, 0.14, x, P, z, uvscale=2.0)
+        k.box('darkwood', 0.08, ytop - P, 0.08, x, P, z)
+        if not k.lod:
+            k.box('darkwood', 0.12, 0.04, 0.12, x, yu - 0.08, z)
+    # upper decks (front, and down each side)
+    k.box('darkwood', 2 * xo, 0.09, 0.09, 0, yu - 0.12, gz - 0.05)
+    k.push(0, 0, zf + g / 2)
+    deck(k, 2 * xo - 0.04, g, yu, 'planks', along='x', joists=False)
+    k.pop()
+    for s in (-1, 1):
+        k.box('darkwood', 0.09, 0.09, gz - zbk, s * (xo - 0.05), yu - 0.12, (gz + zbk) / 2)
+        k.push(s * (w / 2 + g / 2), 0, (zf + zbk) / 2)
+        deck(k, g, d, yu, 'planks', along='z', joists=False)
+        k.pop()
+    # soffits under the upper decks
+    k.box('planksDark', 2 * xo - 0.04, 0.02, g, 0, yu - 0.065, zf + g / 2)
+    for s in (-1, 1):
+        k.box('planksDark', g, 0.02, d, s * (w / 2 + g / 2), yu - 0.065, z0)
+    balustrade(k, -xo + 0.05, xo - 0.05, gz - 0.05, yu, 0.32, 'darkwood', 0.1)
+    for s in (-1, 1):
+        balustrade_z(k, zbk + 0.05, gz - 0.05, s * (xo - 0.05), yu, 0.32, 'darkwood', 0.1)
+    # eaves plate and braces
+    k.box('darkwood', 2 * xo + 0.04, 0.09, 0.09, 0, ytop - 0.09, gz - 0.05)
+    for s in (-1, 1):
+        k.box('darkwood', 0.09, 0.09, gz - zbk, s * (xo - 0.05), ytop - 0.09, (gz + zbk) / 2)
+    if not k.lod:
+        for (x, z) in posts:
+            if abs(z - (gz - 0.05)) < 1e-3:
+                for s in (-1, 1):
+                    if abs(x + s * 0.2) < xo:
+                        k.beam('darkwood', V(x, ytop - 0.32, z), V(x + s * 0.2, ytop - 0.1, z), 0.045)
+            else:
+                for s in (-1, 1):
+                    if zbk < z + s * 0.2 < gz:
+                        k.beam('darkwood', V(x, ytop - 0.32, z), V(x, ytop - 0.1, z + s * 0.2), 0.045)
+    # one great tiled roof over house and galleries
+    k.push(0, 0, zc)
+    tile_gable(k, 2 * xo, gz - zbk, 1.0, over=0.22, y=ytop, gable='plasterBlue', tile_len=0.26, tile_w=0.18)
+    k.pop()
+    for x in (-1.3, 1.3):
+        chimney(k, x, z0 - 0.4, ytop - 0.1, 1.25, 0.3)
+    # lanterns at the door, the sign on the front gallery post
+    k.push(0, P, zf)
+    for x in (-0.5, 0.5):
+        lantern(k, x, 0.85, 0.02)
+    k.pop()
+    hanging_sign(k, fx[4], yu - 0.12, gz - 0.02, 'HOTEL')
+    steps(k, 0, gz + 0.1, 1.0, P, 2, 'stone')
+    # gallery furniture: chairs, a hammock on the upper side gallery, a parrot
+    for (x, z, ry) in ((-1.2, zf + 0.3, 0.3), (1.2, zf + 0.3, -0.3), (1.0, zf + 0.32, 0.2)):
+        k.push(x, P, z, ry)
+        k.box('darkwood', 0.22, 0.04, 0.22, 0, 0.18, 0)
+        k.box('weave', 0.2, 0.02, 0.2, 0, 0.22, 0)
+        k.box('darkwood', 0.22, 0.28, 0.03, 0, 0.18, -0.1, rx=-0.15)
+        for (ax, az) in ((-0.09, -0.09), (0.09, -0.09), (-0.09, 0.09), (0.09, 0.09)):
+            k.box('darkwood', 0.025, 0.18, 0.025, ax, 0, az)
+        k.pop()
+    hammock(k, (xo - 0.05, yu + 0.62, sz[1]), (xo - 0.05, yu + 0.62, sz[2]), w=0.2, sag=0.22, mat='canvasBlue')
+    k.push(0, P, 0)
+    parrot_perch(k, -1.95, zf + 0.32, 0.68)
+    k.pop()
+    # the front garden: a low rendered wall with a gateway, a flagged path, a fountain, palms and beds
+    yz = 2.62
+    for (a, b) in ((-2.7, -0.55), (0.55, 2.7)):
+        k.box('plasterBlue', b - a, 0.42, 0.12, (a + b) / 2, 0, yz, wuv=True)
+        k.box('stone', b - a + 0.04, 0.05, 0.16, (a + b) / 2, 0.42, yz, uvscale=2.0)
+        k.box('stoneDark', b - a + 0.02, 0.07, 0.14, (a + b) / 2, 0, yz, uvscale=2.0)
+    for s in (-1, 1):
+        k.box('plasterBlue', 0.12, 0.42, yz - gz - 0.1, s * 2.7, 0, (yz + gz) / 2 + 0.05, wuv=True)
+        k.box('stone', 0.16, 0.05, yz - gz - 0.06, s * 2.7, 0.42, (yz + gz) / 2 + 0.05, uvscale=2.0)
+        k.box('stone', 0.22, 0.75, 0.22, s * 0.55, 0, yz, uvscale=2.0)
+        lathe(k, 'terracotta', [(0.05, 0), (0.09, 0.05), (0.1, 0.12), (0.09, 0.14)], s * 0.55, 0.75, yz, seg=10)
+        k.cyl('leaf', 0.08, 0.11, 0.1, s * 0.55, 0.86, yz, seg=8)
+        palm_tree(k, s * 1.9, 2.05, 1.9, 0.12, math.pi / 2 - s * 0.6)
+        # beds edged with stone, planted
+        k.box('stoneDark', 1.2, 0.08, 0.5, s * 1.55, 0, 1.55, uvscale=2.0)
+        k.box('soil', 1.12, 0.09, 0.42, s * 1.55, 0, 1.55)
+        if not k.lod:
+            for i in range(6):
+                xx = s * (1.05 + i * 0.2)
+                zz = 1.55 + (i % 2 - 0.5) * 0.15
+                for j in range(6):
+                    frond(k, V(xx, 0.09, zz), j / 6 * math.tau + i, 0.16, lift=1.4, droop=2.0, wd=0.05)
+                lathe(k, 'red' if i % 2 else 'plasterYellow', [(0.0, 0.0), (0.03, 0.01), (0.035, 0.03), (0.0, 0.04)], xx, 0.2, zz, seg=6)
+    for i in range(7):
+        zz = gz + 0.35 + i * 0.22
+        if not (1.85 < zz < 2.45):
+            k.box('stone', 0.6 - (i % 2) * 0.05, 0.02, 0.19, (k.r() - 0.5) * 0.04, 0, zz, ry=(k.r() - 0.5) * 0.06, uvscale=2.0)
+    fountain(k, 0.0, 2.15, 0.34)
+    # behind: kitchen stores and a woodpile
+    for i in range(3):
+        barrel(k, 2.2 - i * 0.32, zbk - 0.28, 0.9)
+    for i in range(12):
+        r = 0.035 + k.r() * 0.01
+        k.cyl('bark', r, r, 0.45, -1.8 + (i % 6) * 0.075 + (0.037 if i >= 6 else 0), (i // 6) * 0.065, zbk - 0.3 + 0.22, seg=6, rx=math.pi / 2)
     return {'ao': 1024}

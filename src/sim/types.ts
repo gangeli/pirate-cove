@@ -180,6 +180,8 @@ export interface Ship {
   vdir: number;
   log: LogEntry[];
   enemyNat?: Nation;
+  /** game time of her last departure on a voyage */
+  sailed?: number;
 }
 
 export interface Voyage {

@@ -127,8 +127,12 @@ def rubble_wall(k, a, b, h=0.32, t=0.15, mat='stone', gaps=(), cope=True, tumble
                 continue  # collapsed section
             k.cbox(mat, x1 - x0 - 0.012, rh - 0.01, t * (0.85 + k.r() * 0.2), (x0 + x1) / 2, r * rh + rh / 2, (k.r() - 0.5) * 0.02,
                    ry=(k.r() - 0.5) * 0.1, rx=(k.r() - 0.5) * 0.1, rz=(k.r() - 0.5) * 0.08, uvscale=2.0)
-    if L > 0.1:
-        k.box('stoneDark', L - 0.06, h * 0.85, t * 0.5, L / 2, 0, 0, uvscale=2.0)  # mortar core
+    segs = [(0.0, 1.0)]
+    for (g0, g1) in gaps:
+        segs = [q for (a0, a1) in segs for q in ([(a0, a1)] if g1 <= a0 or g0 >= a1 else [(a0, g0), (g1, a1)]) if q[1] - q[0] > 0.01]
+    for (a0, a1) in segs:
+        if (a1 - a0) * L > 0.1:
+            k.box('stoneDark', (a1 - a0) * L - 0.06, h * 0.85, t * 0.5, (a0 + a1) / 2 * L, 0, 0, uvscale=2.0)  # mortar core
     if cope:
         n = max(1, round(L / 0.14))
         for i in range(n):
@@ -502,7 +506,7 @@ def church(k):
     k.push(xn, 0, zn)
     plinth(k, nw + 0.08, nd + 0.08, ph, 'stoneDark')
     k.push(0, ph, 0)
-    ops = [Op('front', 0, 'portal', w=0.56, h=0.98)]
+    ops = [Op('front', 0, 'portal', w=0.56, h=0.98), Op('back', 0, 'window', w=0.22, h=0.42, y=0.7, shutters=False, bars=True)]
     for s in ('left', 'right'):
         for x in (-0.66, 0.0, 0.66):
             ops.append(Op(s, x, 'window', w=0.18, h=0.36, y=0.72, shutters=False, bars=True))
@@ -698,7 +702,7 @@ def shopfront(k, x, w, h, y, wares, t=0.09, deep=0.34, counter=True, shelves=3, 
         k.push(x, y + h + 0.04, 0.03, 0, -0.42)
         n = 1 if k.lod else max(3, round(w / 0.11))
         for i in range(n):
-            k.box('planks', w / n - (0.006 if n > 1 else 0), 0.022, h * 0.85, -w / 2 + (i + 0.5) * w / n, 0, 0.0, uvscale=1.4, grain=1)
+            k.box('planks', w / n - (0.006 if n > 1 else 0), 0.022, h * 0.85, -w / 2 + (i + 0.5) * w / n, 0, h * 0.425, uvscale=1.4, grain=1)
         if not k.lod:
             for zz in (0.12, h * 0.7):
                 k.box('planksDark', w - 0.06, 0.016, 0.05, 0, -0.016, zz)
