@@ -1084,10 +1084,28 @@ def shingle_gable(k, w, d, h, rise, over=0.22, mat='planksDark', gable='oldplank
     """a wooden-shingle gable roof on walls w x d of height h (current frame), with ridge board and boarded gables"""
     for s in (-1, 1):
         k.push(0, 0, 0, 0 if s > 0 else math.pi)
-        shingle_lean(k, w + 2 * over * 0.7, d / 2 + over, h + rise, h - over * rise / (d / 2), z0=0.0, mat=mat)
+        L = math.hypot(d / 2 + over, rise + over * rise / (d / 2))
+        shingle_lean(k, w + 2 * over * 0.7, d / 2 + over, h + rise, h - over * rise / (d / 2), z0=0.0, mat=mat, rows=max(2, round(L / 0.125)))
         k.pop()
     k.beam('darkwood', V(-w / 2 - over * 0.7, h + rise + 0.02, 0), V(w / 2 + over * 0.7, h + rise + 0.02, 0), 0.08, 0.06)
     gables(k, w, d, rise, h, gable, 'boards', barge=True)
+
+
+def shutter_opening(k, x, y, w, h, depth=0.06, mat='planks'):
+    """a wide unglazed opening (Op kind 'open') with a sill board and two plank shutters swung right back
+    against the wall (face frame)"""
+    k.cbox('planks', w + 0.1, 0.04, 0.16, x, y - 0.01, 0.03, uvscale=1.3)
+    for s in (-1, 1):
+        k.box('darkwood', 0.05, h, depth + 0.03, x + s * (w / 2 + 0.02), y, -depth / 2)
+    k.box('darkwood', w + 0.12, 0.05, depth + 0.04, x, y + h, -depth / 2)
+    for s in (-1, 1):
+        x0 = x + s * (w / 2 + 0.06)
+        n = 1 if k.lod else 3
+        for i in range(n):
+            k.box(mat, w / 2 / n - (0.005 if n > 1 else 0), h - 0.01, 0.022, x0 + s * (i + 0.5) * w / 2 / n, y, 0.03, uvscale=1.4, grain=1)
+        for yy in (h * 0.15, h * 0.75):
+            k.box('darkwood', w / 2 - 0.03, 0.035, 0.012, x0 + s * w / 4, y + yy, 0.046)
+            k.box('iron', 0.08, 0.012, 0.008, x0 - s * 0.0, y + yy + 0.01, 0.054)
 
 
 @building('gambling_den')
@@ -1098,9 +1116,13 @@ def gambling_den(k):
     k.push(0, 0, zb)
     plinth(k, w + 0.06, d + 0.06, 0.1)
     k.push(0, 0.1, 0)
-    ops = [Op('front', 0.0, 'double', w=0.62, h=0.86), Op('front', -0.85, 'hatch', w=0.62, h=0.42, y=0.42), Op('front', 0.85, 'hatch', w=0.62, h=0.42, y=0.42),
+    ops = [Op('front', 0.0, 'double', w=0.62, h=0.86), Op('front', -0.85, 'open', w=0.6, h=0.42, y=0.42), Op('front', 0.85, 'open', w=0.6, h=0.42, y=0.42),
            Op('left', 0.0, 'window', shutters=True), Op('right', 0.2, 'window'), Op('back', -0.6, 'window'), Op('back', 0.7, 'door', h=0.8)]
     clapboard(k, w, d, h, 'oldplanks', ops, trim='darkwood')
+    k.face('front', w, d)
+    for xx in (-0.85, 0.85):
+        shutter_opening(k, xx, 0.42, 0.6, 0.42, 0.06)
+    k.pop()
     # inside the hatches: a dim room with a lit table and a bottle shelf
     for xx in (-0.85, 0.85):
         k.box('planksDark', 0.7, 0.02, 0.5, xx, 0.4, d / 2 - 0.32)
@@ -1144,7 +1166,12 @@ def gambling_den(k):
     k.pop()
     for (xx, zz, s_) in ((1.58, zf + 0.3, 0.85), (1.6, zf - 0.05, 0.85), (1.6, zf + 0.62, 0.8)):
         barrel(k, xx, zz, s_)
-    barrel(k, 1.6, zf + 0.12, 0.8, 0.31, 0.0, lying=True) if False else None
-    crate(k, 1.35, 0, zf - 0.85 + 0.2, 0.26, 0.3)
+    # round the back: a rain butt under the eave, crates and empties
+    barrel(k, 1.0, zb - d / 2 - 0.2, 1.0)
+    crate(k, -0.6, 0, zb - d / 2 - 0.17, 0.26, 0.2)
+    crate(k, -0.9, 0, zb - d / 2 - 0.16, 0.24, -0.3)
+    crate(k, -0.75, 0.26, zb - d / 2 - 0.17, 0.22, 0.5)
+    for i in range(4):
+        bottle(k, 0.3 + i * 0.07, 0.0, zb - d / 2 - 0.12 - (i % 2) * 0.05)
     hanging_sign(k, w / 2 - 0.12, 1.0, zf + 0.04, 'DICE')
     return {'ao': 1024}
