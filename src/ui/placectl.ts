@@ -22,7 +22,7 @@ export class PlaceControls {
 
   constructor(parent: HTMLElement, onAction: (a: PlaceAction) => void) {
     this.root = el('div', 'placectl hidden', parent);
-    this.root.innerHTML = `<div class="pc-tag"><span class="t"></span></div>
+    this.root.innerHTML = `<div class="pc-tag">${icon('coin', 15, 'i-poor').html}<span class="t"></span></div>
       <button class="pc-btn pc-rot" data-pc="rotl" aria-label="Rotate left">${icon('rotl', 20).html}</button>
       <button class="pc-btn pc-rot" data-pc="rotr" aria-label="Rotate right">${icon('rotr', 20).html}</button>
       <div class="pc-row"><button class="pc-btn pc-no" data-pc="cancel" aria-label="Cancel">${icon('close', 20).html}</button><button class="pc-btn pc-ok" data-pc="ok" aria-label="Confirm">${icon('check', 24, 'i-ok').html}${icon('bulldoze', 22, 'i-del').html}</button></div>`;
@@ -54,7 +54,7 @@ export class PlaceControls {
    * mode 'build' gets rotate + confirm/cancel, 'road' only confirm/cancel, 'roadsel' (a road picked in the world) a
    * pull-up-the-road button; buttons only on touch screens (or when `touch` is forced for a fixed anchor).
    */
-  show(cam: THREE.Camera, view: { w: number; h: number }, box: { x: number; y: number; z: number; w: number; d: number; h: number }, text: string, ok: boolean, mode: 'build' | 'road' | 'roadsel', touch: boolean): void {
+  show(cam: THREE.Camera, view: { w: number; h: number }, box: { x: number; y: number; z: number; w: number; d: number; h: number }, text: string, ok: boolean, mode: 'build' | 'road' | 'roadsel', touch: boolean, poor = false): void {
     let l = Infinity, r = -Infinity, t = Infinity, b = -Infinity;
     const W = view.w, H = view.h; // the 3D canvas sits at the top-left of the page
     for (const dx of [-0.5, 0.5]) for (const dz of [-0.5, 0.5]) for (const dy of [0, 1]) {
@@ -73,12 +73,13 @@ export class PlaceControls {
     r = (r - ui.left) / z;
     t = (t - ui.top) / z;
     b = (b - ui.top) / z;
-    const key = `${Math.round(l)},${Math.round(r)},${Math.round(t)},${Math.round(b)}|${text}|${ok}|${mode}|${touch}|${Math.round(ui.width)}x${Math.round(ui.height)}`;
+    const key = `${Math.round(l)},${Math.round(r)},${Math.round(t)},${Math.round(b)}|${text}|${ok}|${mode}|${touch}|${poor}|${Math.round(ui.width)}x${Math.round(ui.height)}`;
     if (key === this.key) return;
     this.key = key;
     this.root.classList.remove('hidden');
     toggleClass(this.root, 'touch', touch);
     toggleClass(this.root, 'bad', !ok);
+    toggleClass(this.root, 'poor', poor);
     toggleClass(this.root, 'road', mode === 'road');
     toggleClass(this.root, 'roadsel', mode === 'roadsel');
     setText(this.tagText, text);

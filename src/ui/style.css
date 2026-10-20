@@ -437,14 +437,20 @@ body.touch .buildmenu .cats { margin-right: 44px; }
 .bcard:hover { border-color: var(--blood); background: rgba(255, 248, 225, 0.75); }
 .bcard:focus-visible { outline: 2px solid var(--blood-hi); outline-offset: 1px; }
 .bcard.disabled { filter: grayscale(0.9) sepia(0.3); opacity: 0.55; cursor: not-allowed; }
-.bcard.poor img { filter: grayscale(0.6) sepia(0.3); opacity: 0.8; }
+/* can't afford yet: still pickable to look at, so the card stays solid, but stamped and with the shortfall in red */
+.bcard.poor { border-style: dashed; border-color: color-mix(in srgb, var(--blood) 55%, transparent); background: repeating-linear-gradient(-45deg, rgba(110, 26, 20, 0.07) 0 6px, transparent 6px 12px), rgba(250, 242, 220, 0.3); }
+.bcard.poor img { filter: grayscale(0.55) sepia(0.35); opacity: 0.85; }
+.bcard.poor .nm { color: var(--ink2); }
+.bcard.poor .cost .short { font-weight: bold; text-decoration: underline wavy color-mix(in srgb, var(--blood) 60%, transparent); text-underline-offset: 3px; }
 .bcard img { width: 112px; height: 82px; object-fit: contain; display: block; margin: 0 auto; filter: sepia(0.15) contrast(1.05); }
 .bcard .nm { font-family: var(--body); font-size: 14.5px; line-height: 1.1; height: 34px; display: grid; place-items: center; }
 .bcard .cost { font-size: 13.5px; display: flex; justify-content: center; gap: 8px; color: var(--ink2); }
 .bcard .cost span { display: inline-flex; align-items: center; gap: 3px; }
 .bcard .cost .short { color: var(--blood); }
 .bcard .lock { position: absolute; top: 4px; right: 4px; font: 11px/1.4 var(--body); background: var(--blood); color: #f6e4c2; padding: 0 6px; border-radius: 2px; }
-.bcard .lock.poor { background: #6a4808; }
+.bcard .lock.poor { left: 4px; right: 4px; text-align: center; background: radial-gradient(circle at 40% 30%, #a83226, #5a0e08); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+/* built (one allowed) or locked: out of play, faded and inked rather than red */
+.bcard.disabled .lock { background: var(--ink2); }
 
 /* ---------- big screens (log, chart, edicts) ---------- */
 .big { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(1100px, 96vw); height: min(720px, 90vh); display: flex; flex-direction: column; z-index: 20; }
@@ -625,6 +631,10 @@ label.check input { width: 18px; height: 18px; accent-color: var(--blood); }
 }
 .pc-tag::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; margin-left: -5px; transform: rotate(45deg); background: #e0cfa4; border-right: 1px solid #3a2410; border-bottom: 1px solid #3a2410; }
 .placectl.bad .pc-tag { border-left-color: var(--blood); color: #6a120c; }
+.pc-tag .i-poor { display: none; margin: -2px 5px 0 0; }
+/* can't afford it (the spot may be fine): a red-stamped purse rather than a bad-ground warning */
+.placectl.poor .pc-tag { border: 1px dashed var(--blood); border-left: 4px solid var(--blood); background: repeating-linear-gradient(-45deg, rgba(110, 26, 20, 0.08) 0 6px, transparent 6px 12px), var(--paper) 0 0 / 256px 256px, #e6d6ae; }
+.placectl.poor .pc-tag .i-poor { display: inline-block; color: var(--blood); }
 .pc-btn {
   pointer-events: auto; width: 44px; height: 44px; padding: 0; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: #f2dcb0;
   background: radial-gradient(circle at 40% 35%, #4a3020, #1a100a); border: 2px solid #a8822e;

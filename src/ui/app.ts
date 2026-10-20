@@ -23,6 +23,7 @@ import { Overlays } from './overlays';
 import { saveGame, loadGame, hasSave } from './saves';
 import { PlaceControls, type PlaceAction } from './placectl';
 import { QuickRing } from './quickring';
+import { short } from './buildmenu';
 import type { Profiler } from './profiler';
 
 /** wall-clock milliseconds per frame the simulation may use before it starts dropping backlog */
@@ -374,12 +375,12 @@ export class App {
     const a = this.freeArea();
     const cr = this.canvas.getBoundingClientRect();
     const sx = (a.l + a.r) / 2, sy = a.t + Math.max(40, (a.b - a.t - 70) * 0.5);
-    // the camera only translates when it pans: the offset between the ground under the screen centre (its target)
-    // and under the chosen spot is the same wherever it looks
+    // the camera only translates when it pans: move its target (where the centre ray meets the target's height) by
+    // however far the point at height y under the chosen spot is from (x, z)
     this.world.rig.camera.updateMatrixWorld();
-    const c = this.groundAt(cr.left + cr.width / 2, cr.top + cr.height / 2, y), g = this.groundAt(sx, sy, y);
+    const c = this.groundAt(cr.left + cr.width / 2, cr.top + cr.height / 2, this.world.rig.target.y), g = this.groundAt(sx, sy, y);
     if (!c || !g) return { x, z };
-    return { x: x + c.x - g.x, z: z + c.z - g.z };
+    return { x: c.x + x - g.x, z: c.z + z - g.z };
   }
 
   /** after a new selection: if the inspector covers it (or its seals would not fit), pan it into the free area */
@@ -854,7 +855,7 @@ export class App {
   private previewKey = '';
   /** placement check + cursor text for the build ghost, redone when the tile/tool/rotation changes (or every 250 ms
    *  for treasury, lumber and sim changes) */
-  private ghostCheck = { key: '', at: 0, pl: null as ReturnType<App['placement']> | null, reason: '', text: '' };
+  private ghostCheck = { key: '', at: 0, pl: null as ReturnType<App['placement']> | null, reason: '', text: '', poor: false };
 
   private previewResources() {
     return (this.previewRes ??= {
@@ -915,8 +916,10 @@ export class App {
         const miss = this.game.missingReqs(def);
         const cost = this.game.costOf(def);
         if (!reason && miss.length) reason = miss[0] === 'unique' ? 'Only one allowed.' : `Requires a skilled ${miss.join(', ')}.`;
-        if (!reason && cost.gold > 0 && this.game.treasury < cost.gold) reason = 'Not enough gold.';
-        if (!reason && this.game.lumber() < cost.lumber) reason = 'Not enough lumber.';
+        // can't afford it: the tag says so in the treasurer's words, and looks different from a bad spot
+        // (it wins over a bad spot: no spot will do until the money is there; the red footprint still shows the ground)
+        gc.poor = !miss.length && ((cost.gold > 0 && this.game.treasury < cost.gold) || this.game.lumber() < cost.lumber);
+        if (gc.poor) reason = `${def.name}: ${short(cost.gold, this.game.treasury, cost.lumber, this.game.lumber()).toLowerCase()}`;
         gc.reason = reason;
         gc.text = reason || `${def.name}  ·  ${cost.gold ? cost.gold + ' gold  ' : ''}${cost.lumber ? cost.lumber + ' lumber' : ''}`;
       }
@@ -964,7 +967,7 @@ export class App {
       // the name/cost tag hangs from the ghost itself (with rotate / confirm / cancel beside it on touch screens)
       this.cursorTip.classList.add('hidden');
       this.placeCtl.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight },
-        { x: cx, y: gy, z: cz, w: fw, d: fh, h: Math.max(1.2, Math.min(fw, fh) * 0.8) }, gc.text, !gc.reason, 'build', this.touchMode);
+        { x: cx, y: gy, z: cz, w: fw, d: fh, h: Math.max(1.2, Math.min(fw, fh) * 0.8) }, gc.text, !gc.reason, 'build', this.touchMode, gc.poor);
     } else if (tool.kind === 'road' || tool.kind === 'unroad' || tool.kind === 'demolish' || tool.kind === 'clear') {
       this.ghost.visible = false;
       const rp = tool.kind === 'road' ? this.roadPending : null;

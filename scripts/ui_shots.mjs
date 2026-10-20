@@ -64,6 +64,9 @@ S.s_foster = `(() => { const s = g.ships.get(h.dockedShip); if (!s) return 'miss
 S.s_atsea = `(() => { const s = [...g.ships.values()].find((s) => s.status === 'atsea'); if (!s) return 'missing'; a.select({ type: 'ship', id: s.id }); })()`;
 S.build = `a.build.show()`;
 S.build_ent = `a.build.show(); h.click('[data-act="cat:entertainment"]')`;
+// a thin treasury (restored before the next state): unaffordable cards and the placement tag that says so
+S.build_poor = `h.poor(); a.build.show()`;
+S.place_poor = `(() => { h.poor(); a.setTool({ kind: 'build', def: 'black_market', rot: 0 }); const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); h.hoverTile(pal.x + pal.w + 3, pal.y + 1); })()`;
 S.edicts = `a.edicts.show()`;
 S.edicts_dip = `a.edicts.show(); h.click('.tabs [data-act^="tab:"]:nth-child(3)')`;
 for (const t of ['overview', 'finances', 'satisfaction', 'pirates', 'captives', 'nations', 'ships', 'messages']) S[`log_${t}`] = `a.log.open('${t}')`;
@@ -185,6 +188,7 @@ for (const dk of devList) {
     P.createPerson(g, 'soldier', pal.x - 2, pal.y + 2, { nat: 'eng' });
     P.createPerson(g, 'wealthy', pal.x - 3, pal.y + 3, { nat: 'spa', wealthy: true });
     window.__h = { dockedShip: s.id };
+    window.__B = (await import('/src/sim/data/buildings.ts')).BUILDING;
     // freeze the 3D view (SwiftShader frames take seconds); each shot renders one frame explicitly
     window.__render = a.world.render.bind(a.world);
     a.world.render = () => {};
@@ -203,6 +207,9 @@ for (const dk of devList) {
           hover: (sel) => { const e = document.querySelector(sel); if (e) e.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' })); },
           hoverTile: (x, y) => { a.hover = { x, y }; a.world.rig.lookAt(x, y, true); },
         });
+        h.after?.();
+        h.after = null;
+        h.poor = () => { const t = g.treasury; g.treasury = 40; h.after = () => (g.treasury = t); };
         if (!/^(setup|title|credits)/.test(st)) {
           a.modal.queue = [];
           g.over = null;

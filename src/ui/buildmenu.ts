@@ -70,10 +70,16 @@ export class BuildMenu {
         const lock = miss.length ? (miss[0] === 'unique' ? 'Built' : 'Locked') : '';
         const tip = `<b>${d.name}</b><br>${d.desc}${d.workers.length ? `<br><i>Staff: ${d.workers.map((w) => `${w.count} ${JOB_NAMES[w.job]}`).join(', ')}${d.overseer ? ', overseer' : ''}${d.guards ? `, ${d.guards} guards` : ''}</i>` : ''}${d.upkeep ? `<br>Upkeep ${d.upkeep}/month` : ''}${miss.length && miss[0] !== 'unique' ? `<br><span style="color:#ff9070">Requires a skilled ${miss.map((m) => JOB_NAMES[m as keyof typeof JOB_NAMES] ?? m).join(', ')}</span>` : ''}`;
         return html`<button class="bcard ${lock ? 'disabled' : !afford ? 'poor' : ''}" data-act="pick:${d.id}" data-tip="${tip}">
-          ${lock ? html`<span class="lock">${lock}</span>` : !afford ? html`<span class="lock poor">Can't afford</span>` : ''}
+          ${lock ? html`<span class="lock">${lock}</span>` : !afford ? html`<span class="lock poor">${short(cost.gold, g.treasury, cost.lumber, g.lumber())}</span>` : ''}
           ${d.id === 'road' ? html`<div style="height:80px;display:grid;place-items:center">${icon('road', 54)}</div>` : html`<img src="${thumbOrQueue(this.app.world, d.id, this.onThumb) ?? THUMB_PLACEHOLDER}" data-thumb="${d.id}" alt="">`}
           <div class="nm">${d.name}</div>
           <div class="cost">${cost.gold ? html`<span class="${g.treasury < cost.gold ? 'short' : ''}">${icon('coin', 13)} ${cost.gold}</span>` : ''}${cost.lumber ? html`<span class="${g.lumber() < cost.lumber ? 'short' : ''}">${icon('lumber', 13)} ${cost.lumber}</span>` : ''}${!cost.gold && !cost.lumber ? 'Free' : ''}</div></button>`;
       })}</div>`);
   }
+}
+
+/** the ribbon on a card the treasury can't cover yet: what's missing, not just "no" */
+export function short(gold: number, treasury: number, lumber: number, have: number): string {
+  const g = gold > 0 ? Math.max(0, gold - treasury) : 0, l = Math.max(0, lumber - have);
+  return g && l ? 'Short of gold & lumber' : g ? `Short ${Math.ceil(g)} gold` : `Short ${Math.ceil(l)} lumber`;
 }
