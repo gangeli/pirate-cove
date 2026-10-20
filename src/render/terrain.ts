@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { GameMap, Terrain } from '../sim/map';
 import { loadTex } from './textures';
+import { gpu } from './backend';
+import type { TerrainNodes } from './nodes';
 
 /**
  * Splatted PBR terrain. Each vertex carries weights for sand/grass/jungle/rock (aSplat)
@@ -11,8 +13,16 @@ export class TerrainMesh {
   readonly geom: THREE.BufferGeometry;
   private splat: Float32Array;
   private dirt: Float32Array;
-  readonly uniforms = { uTime: { value: 0 } };
+  /** shared by the GLSL program (onBeforeCompile) and the node material (reference nodes) */
+  readonly uniforms = {
+    uTime: { value: 0 },
+    uMapN: { value: 1 },
+    uOverlayOn: { value: 0 },
+    uRoads: { value: null as THREE.Texture | null },
+    uOverlay: { value: null as THREE.Texture | null },
+  };
   readonly skirt: THREE.Mesh;
+  private nodes?: TerrainNodes;
 
   constructor(private map: GameMap) {
     const n = map.size, s = n + 1;
@@ -55,6 +65,19 @@ export class TerrainMesh {
     sk.rotateX(-Math.PI / 2);
     sk.translate(n / 2, -14, n / 2);
     this.skirt = new THREE.Mesh(sk, new THREE.MeshStandardMaterial({ color: 0x0d3a4a, roughness: 1 }));
+  }
+
+  /** the road mask (tile resolution, n x n) */
+  setRoads(tex: THREE.Texture, n: number): void {
+    this.uniforms.uRoads.value = tex;
+    this.uniforms.uMapN.value = n;
+    if (this.nodes) this.nodes.roads.value = tex as any;
+  }
+
+  /** the overlay tint (tile resolution RGBA); uniforms.uOverlayOn switches it */
+  setOverlayTex(tex: THREE.Texture): void {
+    this.uniforms.uOverlay.value = tex;
+    if (this.nodes) this.nodes.overlay.value = tex as any;
   }
 
   /** recompute splat weights in a tile rect (inclusive vertex bounds) */
@@ -108,6 +131,17 @@ export class TerrainMesh {
     for (const l of layers) {
       d[l] = loadTex(`tex/${l}_d.jpg`, true);
       nm[l] = loadTex(`tex/${l}_n.jpg`, false);
+    }
+    const g = gpu();
+    if (g) {
+      // WebGPU: the node twin of the shader below (nodes.ts terrainMaterial); roads and overlay arrive via setRoads/setOverlayTex
+      const blank = (f: THREE.PixelFormat) => {
+        const t = new THREE.DataTexture(new Uint8Array(f === THREE.RedFormat ? 1 : 4), 1, 1, f);
+        t.needsUpdate = true;
+        return t;
+      };
+      this.nodes = g.terrainMaterial(d as any, nm as any, this.uniforms, blank(THREE.RedFormat) as any, blank(THREE.RGBAFormat) as any);
+      return this.nodes.material as unknown as THREE.Material;
     }
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 });
     const u = this.uniforms as any;

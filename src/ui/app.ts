@@ -97,7 +97,9 @@ export class App {
   }
 
   async init(): Promise<void> {
-    this.world = new World(this.canvas, this.qualitySettings());
+    // async: picks WebGPU or WebGL and waits for the renderer to initialise (World may swap in a fresh canvas)
+    this.world = await World.create(this.canvas, this.qualitySettings());
+    this.canvas = this.world.canvas;
     // no graphics acceleration: everything is drawn on the CPU, so drop to the cheapest settings (unless ?q= forces a tier)
     if (this.world.gpu.software && !/[?&]q=/.test(location.search)) {
       this.quality = 'low';

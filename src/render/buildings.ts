@@ -147,7 +147,8 @@ export class BuildingsView {
   private selRing: THREE.LineLoop;
 
   constructor(private world: World, private game: Game) {
-    world.renderer.localClippingEnabled = true;
+    // (WebGPU clips with material planes as they are)
+    (world.renderer as { localClippingEnabled?: boolean }).localClippingEnabled = true;
     for (const b of game.buildings.values()) this.make(b);
     this.selRing = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xffe080, depthTest: false, transparent: true }));
     this.selRing.renderOrder = 10;

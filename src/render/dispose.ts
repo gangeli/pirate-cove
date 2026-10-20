@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { M } from './kit';
 import { props } from './props';
 import { isCachedTexture } from './textures';
+import { isWebGPU, type AnyRenderer } from './backend';
 
 /**
  * Freeing GPU resources (geometries, materials, textures, render targets) of scene graphs that are thrown away,
@@ -48,14 +49,16 @@ function addTex(v: unknown, out: Set<THREE.Texture>): void {
   else if (Array.isArray(v)) for (const x of v) addTex(x, out);
 }
 
-/** textures a material uses: its own map slots, ShaderMaterial uniforms and (when the renderer is given)
- *  the compiled program's uniforms, which hold textures injected through onBeforeCompile */
-export function texturesOf(m: THREE.Material, renderer?: THREE.WebGLRenderer, out = new Set<THREE.Texture>()): Set<THREE.Texture> {
+/** textures a material uses: its own map slots, ShaderMaterial uniforms, the textures a node material lists in
+ *  userData.textures and (when the WebGL renderer is given) the compiled program's uniforms, which hold textures
+ *  injected through onBeforeCompile */
+export function texturesOf(m: THREE.Material, renderer?: AnyRenderer, out = new Set<THREE.Texture>()): Set<THREE.Texture> {
   for (const v of Object.values(m)) addTex(v, out);
   const u = (m as THREE.ShaderMaterial).uniforms;
   if (u) for (const k in u) addTex(u[k]?.value, out);
-  if (renderer) {
-    const pu = (renderer.properties.get(m) as { uniforms?: Record<string, THREE.IUniform> }).uniforms;
+  addTex(m.userData?.textures, out);
+  if (renderer && !isWebGPU(renderer)) {
+    const pu = ((renderer as THREE.WebGLRenderer).properties.get(m) as { uniforms?: Record<string, THREE.IUniform> }).uniforms;
     if (pu) for (const k in pu) addTex(pu[k]?.value, out);
   }
   return out;
@@ -69,7 +72,7 @@ interface Found {
   objects: Set<THREE.Object3D>;
 }
 
-function collect(roots: (THREE.Object3D | null | undefined)[], renderer?: THREE.WebGLRenderer): Found {
+function collect(roots: (THREE.Object3D | null | undefined)[], renderer?: AnyRenderer): Found {
   const f: Found = { geometries: new Set(), materials: new Set(), textures: new Set(), disposables: new Set(), objects: new Set() };
   const addMat = (m: THREE.Material | THREE.Material[] | null | undefined) => {
     if (!m) return;
@@ -101,7 +104,7 @@ function collect(roots: (THREE.Object3D | null | undefined)[], renderer?: THREE.
  * type when its full model arrives) quadratic, so the walk is shared by all calls in one synchronous run.
  */
 const keepCache = new Map<THREE.Object3D, Found>();
-function keepSet(keep: THREE.Object3D, renderer?: THREE.WebGLRenderer): Found {
+function keepSet(keep: THREE.Object3D, renderer?: AnyRenderer): Found {
   let f = keepCache.get(keep);
   if (!f) {
     f = collect([keep], renderer);
@@ -124,7 +127,7 @@ export interface DisposeStats {
  */
 export function disposeObject(
   roots: THREE.Object3D | (THREE.Object3D | null | undefined)[],
-  opts: { keep?: THREE.Object3D; renderer?: THREE.WebGLRenderer } = {},
+  opts: { keep?: THREE.Object3D; renderer?: AnyRenderer } = {},
 ): DisposeStats {
   markKnownCaches();
   const list = Array.isArray(roots) ? roots : [roots];

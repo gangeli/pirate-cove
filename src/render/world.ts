@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import { Sky } from './legacy/sky170';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
@@ -12,12 +12,16 @@ import { TerrainMesh } from './terrain';
 import { Water } from './water';
 import { Vegetation, wind } from './vegetation';
 import { CameraRig } from './camera';
-import { setMaxAnisotropy } from './textures';
+import { setMaxAnisotropy, setKTX2Renderer } from './textures';
 import { BuildingsView } from './buildings';
 import { PeopleView } from './people';
 import { ShipsView } from './ships';
 import { Effects } from './effects';
 import { disposeObject, disposeComposer } from './dispose';
+import { installR170Look, SOFT_SHADOW_RADIUS } from './legacy/r170';
+import { PMREMGenerator as PMREM170 } from './legacy/pmrem170';
+import { RB, chooseBackend, isWebGPU, type AnyRenderer, type Backend, type NodesModule } from './backend';
+import type { GpuPost } from './nodes';
 
 export interface Quality {
   shadows: boolean;
@@ -61,10 +65,15 @@ export interface GpuInfo {
   vendor: string;
   /** rendering on the CPU (SwiftShader, llvmpipe, Microsoft Basic Render, ...) or the browser flags a major performance caveat */
   software: boolean;
+  /** which renderer draws the world, and why that one */
+  backend: Backend;
+  backendReason: string;
 }
 
+const SOFTWARE = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render|gdi generic|mesa offscreen/i;
+
 /** which GPU the browser gave us; software rasterisers make everything crawl */
-function detectGpu(r: THREE.WebGLRenderer): GpuInfo {
+function detectGpu(r: THREE.WebGLRenderer, backendReason: string): GpuInfo {
   const gl = r.getContext();
   let renderer = '', vendor = '';
   try {
@@ -83,12 +92,23 @@ function detectGpu(r: THREE.WebGLRenderer): GpuInfo {
   } catch {
     /* ignore */
   }
-  const soft = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render|gdi generic|mesa offscreen/i.test(`${renderer} ${vendor}`);
-  return { renderer: renderer || 'unknown', vendor, software: soft || caveat };
+  const soft = SOFTWARE.test(`${renderer} ${vendor}`);
+  return { renderer: renderer || 'unknown', vendor, software: soft || caveat, backend: 'webgl', backendReason };
+}
+
+/** the WebGPU adapter: vendor / architecture / description, and the browser's own software-fallback flag */
+function detectGpuWebGPU(nodes: NodesModule, r: import('three/webgpu').WebGPURenderer, adapter: GPUAdapter | null, backendReason: string): GpuInfo {
+  const a = nodes.adapterInfo(r, adapter);
+  const renderer = [a.vendor, a.architecture, a.description].filter(Boolean).join(' ') || 'WebGPU adapter';
+  return { renderer, vendor: a.vendor, software: a.fallback || SOFTWARE.test(renderer), backend: 'webgpu', backendReason };
 }
 
 export class World {
-  readonly renderer: THREE.WebGLRenderer;
+  /** WebGLRenderer, or three's WebGPURenderer when the WebGPU path is active (see backend.ts) */
+  readonly renderer: AnyRenderer;
+  readonly backend: Backend;
+  /** the node-material module on the WebGPU path */
+  private readonly nodes: NodesModule | null;
   readonly scene = new THREE.Scene();
   readonly rig: CameraRig;
   terrain!: TerrainMesh;
@@ -101,10 +121,13 @@ export class World {
   readonly sun: THREE.DirectionalLight;
   readonly hemi: THREE.HemisphereLight;
   readonly gpu: GpuInfo;
-  private sky: Sky;
+  private sky: THREE.Mesh;
+  private skyU: { turbidity: { value: number }; rayleigh: { value: number }; mieCoefficient: { value: number }; mieDirectionalG: { value: number }; sunPosition: { value: THREE.Vector3 } };
   private composer?: EffectComposer;
+  private gpuPost?: GpuPost;
   private fxaa?: ShaderPass;
-  private pmrem: THREE.PMREMGenerator;
+  private pmrem?: THREE.PMREMGenerator;
+  private envTex?: THREE.Texture;
   readonly sunDir = new THREE.Vector3();
   game!: Game;
   quality: Quality;
@@ -117,29 +140,75 @@ export class World {
   readonly overlayGroup = new THREE.Group();
   private roadTex?: THREE.DataTexture;
 
-  constructor(readonly canvas: HTMLCanvasElement, quality: Partial<Quality> = {}) {
-    this.quality = { ...QUALITY_DEFAULTS, ...quality };
+  /**
+   * Pick the backend (backend.ts: WebGPU where the browser gives a hardware adapter, ?gpu=webgl|webgpu forces one),
+   * create and initialise its renderer, and build the world on it. A WebGPU renderer that fails to come up falls back to
+   * WebGL; the canvas is replaced then, since one that handed out a WebGPU context can't give a WebGL one.
+   */
+  static async create(canvas: HTMLCanvasElement, quality: Partial<Quality> = {}): Promise<World> {
+    const choice = await chooseBackend();
+    let reason = choice.reason;
+    if (choice.backend === 'webgpu') {
+      try {
+        const nodes = await import('./nodes');
+        const renderer = await nodes.createRenderer(canvas, /[?&]gpuwebgl=1/.test(location.search));
+        RB.backend = 'webgpu';
+        RB.nodes = nodes;
+        return new World(canvas, quality, renderer, detectGpuWebGPU(nodes, renderer, choice.adapter, reason), nodes);
+      } catch (e) {
+        console.warn('WebGPU renderer failed, using WebGL', e);
+        reason = `WebGPU failed to start (${String((e as Error)?.message ?? e).slice(0, 120)})`;
+        const fresh = canvas.cloneNode(false) as HTMLCanvasElement;
+        canvas.replaceWith(fresh);
+        canvas = fresh;
+      }
+    }
+    RB.backend = 'webgl';
+    RB.nodes = null;
+    installR170Look();
     // no preserveDrawingBuffer: it forces a full-frame copy every frame (screenshots go through the compositor)
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false, stencil: false });
-    this.gpu = detectGpu(this.renderer);
-    this.pr = this.maxPixelRatio();
-    this.renderer.setPixelRatio(this.pr);
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    // the shadow map is redrawn on demand (view moved, or at quality.shadowHz), not on every render call
-    this.renderer.shadowMap.autoUpdate = false;
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: false, stencil: false });
     // reading the compile log after every link stalls the thread until the driver finishes each shader in turn;
     // release builds skip it (and so let shaders compile in parallel), ?shadercheck turns it back on
-    this.renderer.debug.checkShaderErrors = !import.meta.env.PROD || location.search.includes('shadercheck');
-    setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
-    this.rig = new CameraRig(canvas);
-    this.pmrem = new THREE.PMREMGenerator(this.renderer);
+    renderer.debug.checkShaderErrors = !import.meta.env.PROD || location.search.includes('shadercheck');
+    return new World(canvas, quality, renderer, detectGpu(renderer, reason), null);
+  }
+
+  private constructor(readonly canvas: HTMLCanvasElement, quality: Partial<Quality>, renderer: AnyRenderer, gpu: GpuInfo, nodes: NodesModule | null) {
+    this.quality = { ...QUALITY_DEFAULTS, ...quality };
+    this.renderer = renderer;
+    this.nodes = nodes;
+    this.backend = gpu.backend;
+    this.gpu = gpu;
+    this.pr = this.maxPixelRatio();
+    renderer.setPixelRatio(this.pr);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.95;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    if (isWebGPU(renderer)) {
+      setKTX2Renderer(renderer);
+      setMaxAnisotropy(renderer.getMaxAnisotropy());
+    } else {
+      // the shadow map is redrawn on demand (view moved, or at quality.shadowHz), not on every render call
+      renderer.shadowMap.autoUpdate = false;
+      setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
+      // r170's environment prefilter (see legacy/pmrem170.ts)
+      this.pmrem = new PMREM170(renderer) as unknown as THREE.PMREMGenerator;
+    }
+    this.rig = new CameraRig(this.canvas);
 
     // sky + sun
-    this.sky = new Sky();
+    if (nodes) {
+      const s = nodes.createSky();
+      this.sky = s.mesh as unknown as THREE.Mesh;
+      this.skyU = s.uniforms;
+    } else {
+      const s = new Sky() as unknown as THREE.Mesh<THREE.BoxGeometry, THREE.ShaderMaterial>;
+      this.sky = s;
+      this.skyU = s.material.uniforms as unknown as World['skyU'];
+    }
     this.sky.scale.setScalar(4000);
-    const su = this.sky.material.uniforms;
+    const su = this.skyU;
     su.turbidity.value = 3.5;
     su.rayleigh.value = 1.4;
     su.mieCoefficient.value = 0.004;
@@ -148,6 +217,11 @@ export class World {
     this.sun = new THREE.DirectionalLight(0xfff1dc, 3.2);
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.04;
+    if (nodes) {
+      // per light on WebGPU: redrawn on demand, with r170's filters (see legacy/r170.ts)
+      this.sun.shadow.autoUpdate = false;
+      (this.sun.shadow as THREE.DirectionalLightShadow & { filterNode: unknown }).filterNode = nodes.shadowFilter170;
+    }
     this.scene.add(this.sun, this.sun.target);
     this.hemi = new THREE.HemisphereLight(0xbfd8ff, 0x6b5a3a, 0.55);
     this.scene.add(this.hemi);
@@ -183,7 +257,9 @@ export class World {
   private applyShadowQuality(): void {
     const q = this.quality;
     this.renderer.shadowMap.enabled = q.shadows;
-    this.renderer.shadowMap.type = q.softShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    // r170's soft and hard PCF filters, picked by the shadow radius (see legacy/r170.ts)
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.sun.shadow.radius = q.softShadows ? SOFT_SHADOW_RADIUS : 1;
     this.sun.castShadow = q.shadows;
     if (this.sun.shadow.mapSize.x !== q.shadowSize || !q.shadows) {
       this.sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
@@ -191,23 +267,51 @@ export class World {
       (this.sun.shadow as any).map = null;
     }
     this.shadowRect = null;
-    this.renderer.shadowMap.needsUpdate = true;
+    this.requestShadowUpdate();
+  }
+
+  /** redraw the shadow map on the next render */
+  private requestShadowUpdate(): void {
+    if (isWebGPU(this.renderer)) this.sun.shadow.needsUpdate = true;
+    else this.renderer.shadowMap.needsUpdate = true;
   }
 
   /** elevation & azimuth in degrees */
   setSun(elev: number, azim: number): void {
     const phi = THREE.MathUtils.degToRad(90 - elev), theta = THREE.MathUtils.degToRad(azim);
     this.sunDir.setFromSphericalCoords(1, phi, theta);
-    this.sky.material.uniforms.sunPosition.value.copy(this.sunDir);
+    this.skyU.sunPosition.value.copy(this.sunDir);
     // environment from sky for PBR reflections
-    const envScene = new THREE.Scene();
-    const sky2 = new Sky();
-    sky2.scale.setScalar(1000);
-    for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) (sky2.material.uniforms as any)[k].value = (this.sky.material.uniforms as any)[k].value;
-    sky2.material.uniforms.sunPosition.value.copy(this.sunDir);
-    envScene.add(sky2);
-    const rt = this.pmrem.fromScene(envScene as any, 0.02);
-    this.scene.environment = rt.texture;
+    const params: Record<string, number> = {};
+    for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG'] as const) params[k] = this.skyU[k].value;
+    const prev = this.envTex;
+    if (this.nodes) {
+      // made on WebGL exactly as there, uploaded to WebGPU (nodes.bakeEnvironment); three's node PMREM if that fails
+      this.envTex = (this.nodes.bakeEnvironment(params, this.sunDir) as unknown as THREE.Texture | null) ?? undefined;
+      if (!this.envTex) {
+        const s = this.nodes.createSky();
+        s.mesh.scale.setScalar(1000);
+        for (const k of Object.keys(params)) (s.uniforms as any)[k].value = params[k];
+        s.uniforms.sunPosition.value.copy(this.sunDir);
+        const envScene = new this.nodes.THREE.Scene();
+        envScene.add(s.mesh);
+        const gen = new this.nodes.THREE.PMREMGenerator(this.renderer as import('three/webgpu').WebGPURenderer);
+        this.envTex = gen.fromScene(envScene, 0.02).texture as unknown as THREE.Texture;
+        gen.dispose();
+      }
+    } else {
+      const envScene = new THREE.Scene();
+      const sky2 = new Sky() as unknown as THREE.Mesh<THREE.BoxGeometry, THREE.ShaderMaterial>;
+      sky2.scale.setScalar(1000);
+      for (const k of Object.keys(params)) (sky2.material.uniforms as any)[k].value = params[k];
+      sky2.material.uniforms.sunPosition.value.copy(this.sunDir);
+      envScene.add(sky2);
+      this.envTex = this.pmrem!.fromScene(envScene as any, 0.02).texture;
+      sky2.geometry.dispose();
+      sky2.material.dispose();
+    }
+    if (prev && prev !== this.envTex) prev.dispose();
+    this.scene.environment = this.envTex ?? null;
     (this.scene as any).environmentIntensity = 0.55;
   }
 
@@ -260,8 +364,16 @@ export class World {
   private setupComposer(): void {
     disposeComposer(this.composer);
     this.composer = undefined;
+    this.gpuPost?.dispose();
+    this.gpuPost = undefined;
     this.fxaa = undefined;
     const q = this.quality;
+    if (isWebGPU(this.renderer)) {
+      // no post (low): materials tone map and encode sRGB themselves, as on WebGL (nodes.setInlineOutput)
+      this.nodes!.setInlineOutput(this.renderer, !q.post);
+      if (q.post) this.gpuPost = new this.nodes!.GpuPost(this.renderer, this.scene as any, this.rig.camera as any, q, this.renderer.getPixelRatio());
+      return;
+    }
     if (!q.post) return;
     const size = this.renderer.getSize(new THREE.Vector2());
     const pr = this.renderer.getPixelRatio();
@@ -273,7 +385,7 @@ export class World {
     if (q.ao) this.composer.addPass(new FastAO(this.scene, this.rig.camera, W, H, q.aoScale, q.aoSamples, 0.85, q.aoScale < 1 ? 8 : 16, q.aoDepthNormals));
     if (q.bloom) this.composer.addPass(new ScaledBloom(new THREE.Vector2(W, H), 0.18, 0.5, 0.92, q.bloomScale));
     this.composer.addPass(new OutputPass());
-    if (q.aa === 'smaa') this.composer.addPass(new SMAAPass(W, H));
+    if (q.aa === 'smaa') this.composer.addPass(new SMAAPass());
     else if (q.aa === 'fxaa' && pr < 1.5) {
       this.fxaa = new ShaderPass(FXAAShader);
       this.composer.addPass(this.fxaa);
@@ -283,7 +395,7 @@ export class World {
 
   private updateFxaa(): void {
     if (!this.fxaa) return;
-    const s = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const s = (this.renderer as THREE.WebGLRenderer).getDrawingBufferSize(new THREE.Vector2());
     this.fxaa.material.uniforms.resolution.value.set(1 / s.x, 1 / s.y);
   }
 
@@ -296,7 +408,7 @@ export class World {
       this.composer.setSize(w, h);
     }
     this.updateFxaa();
-    this.renderer.shadowMap.needsUpdate = true;
+    this.requestShadowUpdate();
   }
 
   // ------------------------------------------------------------------------------------------------- dynamic resolution
@@ -401,7 +513,7 @@ export class World {
     }
     this.shadowAge += dt;
     if (changed || this.shadowAge >= 1 / q.shadowHz - 0.002) {
-      this.renderer.shadowMap.needsUpdate = true;
+      this.requestShadowUpdate();
       this.shadowAge = 0;
     }
   }
@@ -414,8 +526,7 @@ export class World {
       this.roadTex = new THREE.DataTexture(data, n, n, THREE.RedFormat, THREE.UnsignedByteType);
       this.roadTex.magFilter = THREE.LinearFilter;
       this.roadTex.minFilter = THREE.LinearFilter;
-      (this.terrain.uniforms as any).uRoads = { value: this.roadTex };
-      (this.terrain.uniforms as any).uMapN = { value: n };
+      this.terrain.setRoads(this.roadTex, n);
     } else (this.roadTex.image.data as Uint8Array).set(data);
     this.roadTex.needsUpdate = true;
   }
@@ -424,19 +535,17 @@ export class World {
   /** tile-resolution RGBA overlay tint on the terrain (null to clear) */
   setOverlay(data: Uint8Array | null): void {
     const n = this.game.map.size;
-    const u = this.terrain.uniforms as any;
     if (!this.overlayTex || this.overlayTex.image.width !== n) {
       this.overlayTex = new THREE.DataTexture(new Uint8Array(n * n * 4), n, n, THREE.RGBAFormat);
       // the overlay colours are authored like CSS colours (sRGB), so they come out as picked
       this.overlayTex.colorSpace = THREE.SRGBColorSpace;
       this.overlayTex.magFilter = THREE.LinearFilter;
       this.overlayTex.minFilter = THREE.LinearFilter;
-      u.uOverlay = { value: this.overlayTex };
-      u.uOverlayOn = { value: 0 };
+      this.terrain.setOverlayTex(this.overlayTex);
     }
     if (data) (this.overlayTex.image.data as Uint8Array).set(data);
     this.overlayTex.needsUpdate = true;
-    u.uOverlayOn.value = data ? 1 : 0;
+    this.terrain.uniforms.uOverlayOn.value = data ? 1 : 0;
   }
 
   /** process sim events relevant to visuals */
@@ -490,7 +599,8 @@ export class World {
     this.ships.update(dt);
     this.effects.update(dt);
     this.updateShadows(dt);
-    if (this.composer) this.composer.render(dt);
+    if (this.gpuPost) this.gpuPost.render();
+    else if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, cam);
   }
 

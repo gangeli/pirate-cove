@@ -83,7 +83,7 @@ export class CrowdModel {
         sk.update();
         const row = new Float32Array(this.bones * 16);
         for (let b = 0; b < this.bones; b++) {
-          tmp.fromArray(sk.boneMatrices, b * 16);
+          tmp.fromArray(sk.boneMatrices!, b * 16);
           tmp.premultiply(bindInv).multiply(bind);
           tmp.toArray(row, b * 16);
         }

@@ -18,13 +18,26 @@ const KTX2_DIRS = ['tex/'];
 /** identical maps shipped once */
 const ALIAS: Record<string, string> = { 'tex/whitewash_n.jpg': 'tex/plaster_n.jpg' };
 
+/** the WebGPU renderer, when it draws: its device's features decide the transcode targets (ASTC / BC7 / ETC2 / ...) */
+let gpuRenderer: { isWebGPURenderer: true } | null = null;
+export function setKTX2Renderer(r: { isWebGPURenderer: true }): void {
+  gpuRenderer = r;
+}
+
 /**
- * A KTX2 loader set up for this GPU (formats probed on a throwaway context, so no renderer is needed).
+ * A KTX2 loader set up for this GPU (on WebGL the formats are probed on a throwaway context, so no renderer is needed;
+ * on WebGPU they come from the device, see setKTX2Renderer).
  * Other loaders can use it too, e.g. gltfLoader.setKTX2Loader(createKTX2Loader()) for KHR_texture_basisu models.
  */
 export function createKTX2Loader(): KTX2Loader | null {
   try {
     if (typeof document === 'undefined' || location.search.includes('nocomp')) return null;
+    if (gpuRenderer) {
+      const l = new KTX2Loader().setTranscoderPath(`${import.meta.env.BASE_URL}basis/`);
+      l.setWorkerLimit(2);
+      l.detectSupport(gpuRenderer as unknown as THREE.WebGLRenderer);
+      return l;
+    }
     const c = document.createElement('canvas');
     const gl = c.getContext('webgl2');
     if (!gl) return null;
