@@ -46,6 +46,8 @@ export class SeaChart {
   private side!: HTMLElement;
   private bar!: HTMLElement;
   private legend!: HTMLElement;
+  private bar2!: HTMLElement;
+  private legend2!: HTMLElement;
   private tip!: HTMLElement;
   visible = false;
   private region = -1;
@@ -79,12 +81,15 @@ export class SeaChart {
           </div>
           <div class="chart-legend"></div>
         </div>
-        <div class="chart-side scroll"></div>
+        <div class="chart-sidecol"><div class="chart-bar side-copy"></div><div class="chart-legend side-copy"></div><div class="chart-side scroll"></div></div>
       </div>`);
     this.canvas = this.panel.querySelector('canvas')!;
     this.side = this.panel.querySelector('.chart-side') as HTMLElement;
     this.bar = this.panel.querySelector('.chart-bar') as HTMLElement;
     this.legend = this.panel.querySelector('.chart-legend') as HTMLElement;
+    // short landscape screens show the view switch and legend at the head of the side sheet instead (CSS picks one)
+    this.bar2 = this.panel.querySelector('.chart-bar.side-copy') as HTMLElement;
+    this.legend2 = this.panel.querySelector('.chart-legend.side-copy') as HTMLElement;
     this.tip = this.panel.querySelector('.chart-tip') as HTMLElement;
     delegate(this.panel, {
       close: () => this.hide(),
@@ -745,8 +750,10 @@ export class SeaChart {
   private drawBar(): void {
     const sel = this.selShip();
     const modes: [Mode, string, string][] = [['reach', 'Reach', 'compass'], ['risk', 'Danger', 'skull'], ['reward', 'Plunder', 'chest']];
-    patchHTML(this.bar, html`<div class="seg" role="radiogroup" aria-label="Chart view">${modes.map(([m, n, ic]) => html`<button class="${this.mode === m ? 'on' : ''}" data-act="mode:${m}" role="radio" aria-checked="${this.mode === m ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</div>
-      <span class="how">${this.app.touchMode ? 'Pinch to zoom, drag to pan' : 'Scroll to zoom, drag to pan'}</span>`);
+    const bar = html`<div class="seg" role="radiogroup" aria-label="Chart view">${modes.map(([m, n, ic]) => html`<button class="${this.mode === m ? 'on' : ''}" data-act="mode:${m}" role="radio" aria-checked="${this.mode === m ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</div>
+      <span class="how">${this.app.touchMode ? 'Pinch to zoom, drag to pan' : 'Scroll to zoom, drag to pan'}</span>`;
+    patchHTML(this.bar, bar);
+    patchHTML(this.bar2, bar);
     const sw = (inner: string) => raw(`<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">${inner}</svg>`);
     const items = [html`<span>${sw('<circle cx="9" cy="9" r="7" fill="#7a1810" stroke="#e2c88e" stroke-width="1.2"/><circle cx="9" cy="8" r="2.6" fill="#f2e2bc"/>')} Your Cove</span>`];
     if (this.mode === 'reach') {
@@ -755,6 +762,7 @@ export class SeaChart {
       items.push(html`<span>${sw('<circle cx="9" cy="9" r="6.5" fill="url(#lgF)" stroke="rgba(70,40,15,.4)" stroke-dasharray="3 3"/><defs><pattern id="lgF" width="3" height="3" patternUnits="userSpaceOnUse"><rect width="3" height="3" fill="rgba(160,150,125,.55)"/><rect x=".6" y=".6" width=".9" height=".9" fill="rgba(80,65,45,.7)"/></pattern></defs>')} Uncharted</span>`);
     } else items.push(html`<span class="scale ${this.mode}"><i></i> ${this.mode === 'risk' ? 'Safer → deadlier' : 'Lean → rich pickings'}</span>`);
     patchHTML(this.legend, html`${items}`);
+    patchHTML(this.legend2, html`${items}`);
   }
 
   private drawSide(force: boolean): void {
