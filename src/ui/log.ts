@@ -11,7 +11,7 @@ import { audio } from '../audio/audio';
 import { portraitImg } from './portraits';
 
 type Tab = 'overview' | 'finances' | 'satisfaction' | 'pirates' | 'captives' | 'nations' | 'ships' | 'messages';
-const TABS: [Tab, string][] = [['overview', 'Overview'], ['finances', 'Finances'], ['satisfaction', 'Satisfaction'], ['pirates', 'Pirates'], ['captives', 'Captives'], ['nations', 'Foreign Affairs'], ['ships', 'Fleet'], ['messages', 'Ship\'s Log']];
+const TABS: [Tab, string, string][] = [['overview', 'Overview', 'crown'], ['finances', 'Finances', 'coin'], ['satisfaction', 'Morale', 'heart'], ['pirates', 'Pirates', 'pirate'], ['captives', 'Captives', 'captive'], ['nations', 'Powers', 'flag'], ['ships', 'Fleet', 'ship'], ['messages', 'Letters', 'scroll']];
 
 export class IslandLog {
   private panel: HTMLElement;
@@ -83,7 +83,8 @@ export class IslandLog {
     this.lastRefresh = performance.now();
     const body = this[this.tab]();
     patchHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>
-      <h2>Island Log</h2><div class="tabs">${TABS.map(([t, n]) => html`<div class="t ${t === this.tab ? 'on' : ''}" data-act="tab:${t}">${n}</div>`)}</div>
+      <header class="sheet-head"><h2>Island Log</h2><div class="sub">${this.app.game.king.name}'s ledgers, rolls and correspondence.</div></header>
+      <nav class="tabs book" role="tablist">${TABS.map(([t, n, ic]) => html`<button class="t ${t === this.tab ? 'on' : ''}" data-act="tab:${t}" role="tab" aria-selected="${t === this.tab ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</nav>
       <div class="content scroll">${body}</div>`);
     for (const c of this.panel.querySelectorAll<HTMLCanvasElement>('canvas[data-graph]')) this.graph(c, c.dataset.graph!);
   }
@@ -103,7 +104,7 @@ export class IslandLog {
     const g = this.app.game;
     const s = computeScore(g);
     const k = g.king;
-    return html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    return html`<div class="cols2">
       <div><div class="row" style="align-items:flex-start;gap:12px">${raw(portraitImg(k.portrait, 110))}
         <div><h3 style="margin-top:0">${k.name}, Pirate ${k.sex === 'F' ? 'Queen' : 'King'}</h3>
         <div style="font-size:14px">${BACKGROUNDS[k.bg].name} · ${k.q.map((q) => QUALITIES[q].name).join(', ')} · <i>${FLAWS[k.flaw].name}</i></div>
@@ -115,10 +116,10 @@ export class IslandLog {
         <div class="sub">For a ${g.settings.years}-year reign: gold medal at ${fmt(medalThresholds(g.settings.years).gold)} points, silver at ${fmt(medalThresholds(g.settings.years).silver)}.</div></div>
       <div><h3 style="margin-top:0">Your Hoard</h3>
         <div style="font-size:15px">${g.buildingCount('cave') ? html`Skimming <b>${Math.round(g.hoardRate * 100)}%</b> of all income into your cave. The treasury pays for everything else.` : 'Build a Pirate Cave to start your hoard. The hoard is your score.'}</div>
-        <div class="row" style="margin-top:4px">${[0, 0.05, 0.1, 0.15, 0.2, 0.25].map((v) => html`<button class="btn small ${Math.abs(g.hoardRate - v) < 0.001 ? 'on' : ''}" data-act="hoard:${v}">${Math.round(v * 100)}%</button>`)}</div>
+        <div class="field-row"><span class="lbl">Skim</span><div class="seg full" role="radiogroup">${[0, 0.05, 0.1, 0.15, 0.2, 0.25].map((v) => html`<button class="${Math.abs(g.hoardRate - v) < 0.001 ? 'on' : ''}" data-act="hoard:${v}">${Math.round(v * 100)}%</button>`)}</div></div>
         <h3>Treasury & Hoard</h3><canvas data-graph="money" width="460" height="150" style="width:100%;height:150px"></canvas>
         <h3>Happiness & Resignation</h3><canvas data-graph="mood" width="460" height="120" style="width:100%;height:120px"></canvas>
-        <h3>Deeds</h3><div class="kv inspector" style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:14px">
+        <h3>Deeds</h3><div class="kv">
         <span>Gold plundered</span><span>${fmt(g.stats.plundered)}</span><span>Souls captured</span><span>${g.stats.captured}</span><span>Recruits</span><span>${g.stats.recruits}</span>
         <span>Ships lost</span><span>${g.stats.shipsSunk}</span><span>Escapes</span><span>${g.stats.escapes} (${g.stats.escapeKills} caught)</span><span>Deaths</span><span>${g.stats.deaths}</span></div></div></div>`;
   }
@@ -130,7 +131,7 @@ export class IslandLog {
     const ecats = [...new Set([...Object.keys(exp), ...Object.keys(cure)])];
     const sum = (o: Record<string, number>) => Object.values(o).reduce((a, b) => a + b, 0);
     const venues = [...g.buildings.values()].filter((b) => BUILDING[b.def].service).sort((a, b) => b.lastIncome - a.lastIncome).slice(0, 12);
-    return html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px"><div>
+    return html`<div class="cols2"><div>
       <h3 style="margin-top:0">Income</h3><table class="ledger"><tr><th>Source</th><th>Last month</th><th>This month</th></tr>
       ${cats.map((c) => html`<tr><td>${c}</td><td>${fmt(inc[c] ?? 0)}</td><td>${fmt(cur[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(inc))}</b></td><td><b>${fmt(sum(cur))}</b></td></tr></table>
       <h3>Expenses</h3><table class="ledger"><tr><th>Item</th><th>Last month</th><th>This month</th></tr>
@@ -150,15 +151,15 @@ export class IslandLog {
     const cavg = (k: string) => (cap.length ? cap.reduce((a, p) => a + (p.opinion[k] ?? 0.5), 0) / cap.length : 0);
     const broke = pir.filter((p) => p.gold < 5).length;
     const homeless = pir.filter((p) => !p.home).length;
-    return html`<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px"><div>
-      <h3 style="margin-top:0">Pirates ashore (${pir.length})</h3><div class="needs" style="grid-template-columns:110px 1fr 44px">${needs.map(([k, n]) => html`<span>${n}</span>${bar(avg(k))}<span>${pct(avg(k))}</span>`)}
-      <b>Happiness</b>${bar(g.avgHappiness())}<b>${pct(g.avgHappiness())}</b></div>
+    return html`<div class="cols2"><div>
+      <h3 style="margin-top:0">Pirates ashore (${pir.length})</h3><div class="meters">${needs.map(([k, n]) => html`<span>${n}</span>${bar(avg(k))}<span>${pct(avg(k))}</span>`)}
+      </div><div class="meters total"><span>Happiness</span>${bar(g.avgHappiness())}<span>${pct(g.avgHappiness())}</span></div>
       <div class="sub" style="margin-top:6px">${broke} broke · ${homeless} homeless · ${pir.filter((p) => p.mood !== 'ok').length} disgruntled</div>
       <h3>Least Happy</h3><table class="ledger"><tr><th>Name</th><th>Rank</th><th>Happiness</th><th>Gold</th></tr>
       ${unhappy.map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>${p.name}</td><td>${RANKS[p.rank - 1].name}</td><td>${pct(p.happiness)}</td><td>${fmt(p.gold)}</td></tr>`)}</table></div>
-      <div><h3 style="margin-top:0">Captives (${cap.length})</h3><div class="needs" style="grid-template-columns:110px 1fr 44px">
+      <div><h3 style="margin-top:0">Captives (${cap.length})</h3><div class="meters">
       ${[['food', 'Food'], ['rest', 'Rest'], ['prayer', 'Prayer']].map(([k, n]) => html`<span>${n}</span>${bar(cavg(k))}<span>${pct(cavg(k))}</span>`)}
-      <b>Resignation</b>${bar(g.avgResignation())}<b>${pct(g.avgResignation())}</b></div>
+      </div><div class="meters total"><span>Resignation</span>${bar(g.avgResignation())}<span>${pct(g.avgResignation())}</span></div>
       <div class="sub" style="margin-top:6px">Resigned captives work and stay put. Restless ones run for the beach, and might take others with them.</div>
       <div class="sub">${cap.filter((c) => !c.job).length} unemployed · ${cap.filter((c) => c.skilled).length} skilled</div></div></div>`;
   }
@@ -166,26 +167,26 @@ export class IslandLog {
   private pirates() {
     const g = this.app.game;
     const list = this.sorted(g.pirates(), (p, k) => (k === 'name' ? p.name : k === 'rank' ? p.rank : k === 'gold' ? p.gold : k === 'hap' ? p.happiness : k === 'cour' ? p.traits.courage : k === 'lead' ? p.traits.leadership : k === 'not' ? p.traits.notoriety : activityText(this.app, p)));
-    return html`<table class="ledger"><tr>${this.th('name', 'Name')}${this.th('rank', 'Rank')}${this.th('gold', 'Gold')}${this.th('hap', 'Happiness')}${this.th('cour', 'Courage')}${this.th('lead', 'Leadership')}${this.th('not', 'Notoriety')}${this.th('act', 'Doing')}</tr>
-      ${list.map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>${p.captain ? '⚓ ' : ''}${p.name}</td><td>${RANKS[p.rank - 1].name}</td><td>${fmt(p.gold)}</td><td>${pct(p.happiness)}${p.mood !== 'ok' ? ' ☹' : ''}</td><td>${p.traits.courage}</td><td>${p.traits.leadership}</td><td>${Math.round(p.traits.notoriety)}</td><td>${activityText(this.app, p)}</td></tr>`)}</table>`;
+    return html`<div class="table-wrap"><table class="ledger"><tr>${this.th('name', 'Name')}${this.th('rank', 'Rank')}${this.th('gold', 'Gold')}${this.th('hap', 'Happiness')}${this.th('cour', 'Courage')}${this.th('lead', 'Leadership')}${this.th('not', 'Notoriety')}${this.th('act', 'Doing')}</tr>
+      ${list.map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>${p.captain ? '⚓ ' : ''}${p.name}</td><td>${RANKS[p.rank - 1].name}</td><td>${fmt(p.gold)}</td><td>${pct(p.happiness)}${p.mood !== 'ok' ? ' ☹' : ''}</td><td>${p.traits.courage}</td><td>${p.traits.leadership}</td><td>${Math.round(p.traits.notoriety)}</td><td>${activityText(this.app, p)}</td></tr>`)}</table></div>`;
   }
 
   private captives() {
     const g = this.app.game;
     const list = this.sorted(g.captives(), (p, k) => (k === 'name' ? p.name : k === 'job' ? p.jobRole ?? '' : k === 'res' ? p.resignation : k === 'cour' ? p.traits.courage : k === 'lead' ? p.traits.leadership : k === 'ransom' ? p.ransom : k === 'nat' ? p.nat : p.profession));
-    return html`<table class="ledger"><tr>${this.th('name', 'Name')}${this.th('nat', 'Nation')}${this.th('prof', 'Skill')}${this.th('job', 'Job')}${this.th('res', 'Resignation')}${this.th('cour', 'Courage')}${this.th('lead', 'Leadership')}${this.th('ransom', 'Ransom')}</tr>
+    return html`<div class="table-wrap"><table class="ledger"><tr>${this.th('name', 'Name')}${this.th('nat', 'Nation')}${this.th('prof', 'Skill')}${this.th('job', 'Job')}${this.th('res', 'Resignation')}${this.th('cour', 'Courage')}${this.th('lead', 'Leadership')}${this.th('ransom', 'Ransom')}</tr>
       ${list.map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>${p.name}</td><td>${NATION_ADJ[p.nat]}</td><td>${p.kind === 'skeleton' ? 'Skeleton' : p.skilled ? JOB_NAMES[p.profession as keyof typeof JOB_NAMES] : '-'}</td><td>${p.jobRole ? JOB_NAMES[p.jobRole] : 'idle'}</td><td>${pct(p.resignation)}</td><td>${p.traits.courage}</td><td>${p.traits.leadership}</td><td>${p.ransom ? fmt(p.ransom) : '-'}</td></tr>`)}
-      ${[...g.people.values()].filter((p) => p.kind === 'wealthy').map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>💰 ${p.name}</td><td>${NATION_ADJ[p.nat]}</td><td>Wealthy</td><td>-</td><td>-</td><td>-</td><td>-</td><td>${fmt(p.ransom + p.credit)}</td></tr>`)}</table>`;
+      ${[...g.people.values()].filter((p) => p.kind === 'wealthy').map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>💰 ${p.name}</td><td>${NATION_ADJ[p.nat]}</td><td>Wealthy</td><td>-</td><td>-</td><td>-</td><td>-</td><td>${fmt(p.ransom + p.credit)}</td></tr>`)}</table></div>`;
   }
 
   private nations() {
     const g = this.app.game;
-    return html`<div class="cards-grid" style="grid-template-columns:repeat(3,1fr)">${NATIONS.map((n) => {
+    return html`<div class="cards-grid">${NATIONS.map((n) => {
       const st = g.nations[n];
       const rel = relationLevel(st.relation);
       const policy = g.ongoing.has(`patron:${n}`) ? 'Patron' : g.ongoing.has(`peace:${n}`) ? 'Promised Peace' : g.ongoing.has(`prohibit_${n}`) ? 'Leave Their Ships Alone' : 'Fair Game';
       return html`<div class="ecard"><h4>${NATION_NAMES[n]}</h4>
-        <div class="needs" style="grid-template-columns:80px 1fr"><span>Relations</span>${bar((st.relation + 100) / 200)}</div>
+        <div class="meters"><span>Relations</span>${bar((st.relation + 100) / 200)}<span>${st.relation > 0 ? "+" : ""}${Math.round(st.relation)}</span></div>
         <div style="font-size:15px"><b>${rel}</b> · Policy: ${policy}</div>
         <div style="font-size:14px">${st.knows ? html`<b style="color:#8a1a10">They know where your island is.</b>` : 'Your island is still a secret.'}</div>
         <div style="font-size:14px">Plundered from them: ${fmt(st.plunderGold)} gold</div>
@@ -198,14 +199,14 @@ export class IslandLog {
   private ships() {
     const g = this.app.game;
     const list = [...g.ships.values()];
-    return html`<table class="ledger"><tr><th>Ship</th><th>Type</th><th>Captain</th><th>Crew</th><th>Status</th><th>Mission</th><th>Hull</th><th>Cannons</th></tr>
-      ${list.map((s) => html`<tr data-act="ship:${s.id}" style="cursor:pointer"><td>${s.name}</td><td>${SHIPS[s.type].name}</td><td>${g.people.get(s.captain)?.name ?? '-'}</td><td>${s.crew.length}/${SHIPS[s.type].men + SHIPS[s.type].officers}</td><td>${s.status}</td><td>${MISSION_NAMES[s.mission]} (${g.regions[s.region].name})</td><td>${pct(s.hull)}</td><td>${s.cannons}</td></tr>`)}</table>
+    return html`<div class="table-wrap"><table class="ledger"><tr><th>Ship</th><th>Type</th><th>Captain</th><th>Crew</th><th>Status</th><th>Mission</th><th>Hull</th><th>Cannons</th></tr>
+      ${list.map((s) => html`<tr data-act="ship:${s.id}" style="cursor:pointer"><td>${s.name}</td><td>${SHIPS[s.type].name}</td><td>${g.people.get(s.captain)?.name ?? '-'}</td><td>${s.crew.length}/${SHIPS[s.type].men + SHIPS[s.type].officers}</td><td>${s.status}</td><td>${MISSION_NAMES[s.mission]} (${g.regions[s.region].name})</td><td>${pct(s.hull)}</td><td>${s.cannons}</td></tr>`)}</table></div>
       ${!list.length ? html`<div class="sub">No ships. Build a Boatyard (needs a skilled shipwright) and a Dock.</div>` : ''}`;
   }
 
   private messages() {
     const g = this.app.game;
-    return html`<table class="ledger"><tr><th>Date</th><th>Event</th><th></th></tr>${[...g.messages].reverse().slice(0, 120).map((m) => html`<tr data-act="msg:${m.id}" style="cursor:pointer"><td style="white-space:nowrap">${m.date}</td><td><b style="font-family:var(--head);font-weight:normal">${m.title}</b>: ${m.text.split('\n')[0].slice(0, 140)}</td><td>${m.kind}</td></tr>`)}</table>`;
+    return html`<table class="ledger"><tr><th>Date</th><th>Event</th><th></th></tr>${[...g.messages].reverse().slice(0, 120).map((m) => html`<tr data-act="msg:${m.id}" style="cursor:pointer"><td style="white-space:nowrap">${m.date}</td><td><b style="font-family:var(--head);font-weight:normal">${m.title}</b>: ${m.text.split('\n')[0].slice(0, 140)}</td><td><span class="chip ${m.kind === 'bad' || m.kind === 'alert' ? 'bad' : m.kind === 'good' ? 'ok' : ''}">${m.kind === 'bad' ? 'trouble' : m.kind === 'alert' ? 'alarm' : m.kind}</span></td></tr>`)}</table>`;
   }
 
   private graph(c: HTMLCanvasElement, kind: string): void {

@@ -21,6 +21,7 @@ import { Modal } from './modal';
 import { MainMenu } from './menu';
 import { Overlays } from './overlays';
 import { saveGame, loadGame, hasSave } from './saves';
+import { PlaceControls, type PlaceAction } from './placectl';
 import type { Profiler } from './profiler';
 
 /** wall-clock milliseconds per frame the simulation may use before it starts dropping backlog */
@@ -277,35 +278,43 @@ export class App {
     this.world.rig.touchPan = !(t.kind === 'road' || t.kind === 'clear' || t.kind === 'unroad');
     // see-through trees while laying roads, so the ground (and existing paths) under the canopy stay visible
     this.world.veg?.setGhost(t.kind === 'road' || t.kind === 'unroad');
-    this.touchPlace?.classList.toggle('hidden', !(t.kind === 'build' && this.touchMode));
+    this.roadPending = null;
   }
 
   /** true once the player has touched the screen (shows touch affordances) */
   touchMode = false;
-  private touchPlace: HTMLElement | null = null;
 
-  private buildTouchBar(): void {
-    const bar = el('div', 'touchbar hidden', this.root);
-    bar.innerHTML = `<button class="btn green" data-act="place">Place</button><button class="btn" data-act="rot">Rotate</button><button class="btn red" data-act="cancel">Cancel</button>`;
-    bar.addEventListener('click', (e) => {
-      const act = (e.target as HTMLElement).closest('[data-act]')?.getAttribute('data-act');
-      const tool = this.tool;
-      if (act === 'cancel') return this.setTool({ kind: 'select' });
-      if (tool.kind !== 'build') return;
-      if (act === 'rot') {
-        tool.rot = (tool.rot + 1) % 4;
-        this.ghostKey = '';
+  /** placement controls beside the ghost (touch: rotate / confirm / cancel; mouse: just the cost tag) */
+  private placeCtl!: PlaceControls;
+  /** a road dragged out on a touch screen, waiting for the player to confirm it */
+  private roadPending: { start: { x: number; y: number }; end: { x: number; y: number } } | null = null;
+
+  private placeAction(a: PlaceAction): void {
+    const tool = this.tool;
+    audio.sfx('ui_click');
+    if (tool.kind === 'road' || tool.kind === 'unroad') {
+      const rp = this.roadPending;
+      this.roadPending = null;
+      this.roadPreview.clear();
+      if (a === 'ok' && rp && this.cmd({ type: 'roadLine', x0: rp.start.x, y0: rp.start.y, x1: rp.end.x, y1: rp.end.y })) audio.sfx('build_place');
+      if (a === 'cancel' && !rp) this.setTool({ kind: 'select' });
+      return;
+    }
+    if (tool.kind !== 'build') return;
+    if (a === 'cancel') return this.setTool({ kind: 'select' });
+    if (a === 'rotl' || a === 'rotr') {
+      tool.rot = (tool.rot + (a === 'rotr' ? 1 : 3)) % 4;
+      this.ghostKey = '';
+      return;
+    }
+    if (a === 'ok' && this.hover) {
+      const def = BUILDING[tool.def];
+      const pl = this.placement(def, this.hover, tool.rot);
+      if (this.cmd({ type: 'build', def: def.id, x: pl.x, y: pl.y, rot: pl.rot })) {
+        audio.sfx('build_place');
+        if (!def.decor && def.id !== 'housing_plot') this.setTool({ kind: 'select' });
       }
-      if (act === 'place' && this.hover) {
-        const def = BUILDING[tool.def];
-        const pl = this.placement(def, this.hover, tool.rot);
-        if (this.cmd({ type: 'build', def: def.id, x: pl.x, y: pl.y, rot: pl.rot })) {
-          audio.sfx('build_place');
-          if (!def.decor && def.id !== 'housing_plot') this.setTool({ kind: 'select' });
-        }
-      }
-    });
-    this.touchPlace = bar;
+    }
   }
 
   select(s: Selection): void {
@@ -346,7 +355,7 @@ export class App {
 
   private bindInput(): void {
     const c = this.canvas;
-    this.buildTouchBar();
+    this.placeCtl = new PlaceControls(this.root, (a) => this.placeAction(a));
     let touches = 0;
     c.addEventListener('pointerdown', (ev) => {
       if (ev.pointerType === 'touch') {
@@ -377,6 +386,7 @@ export class App {
       if (!t) return;
       if (ev.pointerType === 'touch') this.hover = t;
       this.dragStart = t;
+      this.roadPending = null; // a new drag replaces a road still waiting for its tick
       if (this.tool.kind === 'clear') this.cmd({ type: 'clearTrees', x: t.x, y: t.y, r: 1 });
     });
     c.addEventListener('pointerup', (ev) => {
@@ -389,9 +399,11 @@ export class App {
         const t = this.tileAt(ev);
         if (!t) return;
         this.hover = t;
-        // building on touch: a tap moves the ghost; the Place button commits it
-        if (this.tool.kind === 'build') {
-          this.touchPlace?.classList.remove('hidden');
+        // building on touch: a tap moves the ghost; the tick beside it commits it
+        if (this.tool.kind === 'build') return;
+        // a road dragged out on touch waits beside its end for a tick (or a cross)
+        if (this.tool.kind === 'road' && start) {
+          this.roadPending = { start, end: t };
           return;
         }
         this.click(ev, t, start ?? t);
@@ -737,8 +749,10 @@ export class App {
   private updateGhost(): void {
     const tool = this.tool;
     const h = this.hover;
+    const hv = h;
     if (this.state !== 'game' || !h) {
       this.ghost.visible = false;
+      this.placeCtl?.hide();
       return;
     }
     if (tool.kind === 'build') {
@@ -801,12 +815,15 @@ export class App {
       const grid = this.ghost.getObjectByName('grid')!;
       foot.position.y = grid.position.y = 0.06;
       (foot.material as THREE.MeshBasicMaterial).color.set(pl.ok ? 0x40ff40 : 0xff3030);
-      setText(this.cursorTip, gc.text);
-      this.cursorTip.classList.toggle('ok', !gc.reason);
-      this.cursorTip.classList.remove('hidden');
+      // the name/cost tag hangs from the ghost itself (with rotate / confirm / cancel beside it on touch screens)
+      this.cursorTip.classList.add('hidden');
+      this.placeCtl.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight },
+        { x: cx, y: gy, z: cz, w: fw, d: fh, h: Math.max(1.2, Math.min(fw, fh) * 0.8) }, gc.text, !gc.reason, 'build', this.touchMode);
     } else if (tool.kind === 'road' || tool.kind === 'unroad' || tool.kind === 'demolish' || tool.kind === 'clear') {
       this.ghost.visible = false;
-      const ds = tool.kind === 'road' ? this.dragStart : null;
+      const rp = tool.kind === 'road' ? this.roadPending : null;
+      const ds = tool.kind === 'road' ? (rp?.start ?? this.dragStart) : null;
+      const h = rp?.end ?? hv!;
       const pk = `${tool.kind}:${h.x},${h.y}:${ds ? `${ds.x},${ds.y}` : ''}`;
       const pv = (this.previewRes ??= {
         geo: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
@@ -837,6 +854,12 @@ export class App {
           this.roadPreview.add(m);
         });
       }
+      if (rp) {
+        const n = Math.abs(rp.end.x - rp.start.x) + Math.abs(rp.end.y - rp.start.y) + 1;
+        const ex = rp.end.x + 0.5, ez = rp.end.y + 0.5;
+        this.placeCtl.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight },
+          { x: ex, y: Math.max(0.05, this.game.map.heightAt(ex, ez)), z: ez, w: 1, d: 1, h: 0.3 }, `Road · ${n} tile${n > 1 ? 's' : ''}`, true, 'road', true);
+      } else this.placeCtl.hide();
       if (tool.kind === 'demolish') {
         const b = this.game.tileBuilding(h.x, h.y);
         setText(this.cursorTip, b ? `Demolish ${BUILDING[b.def].name}` : 'Demolish');
@@ -844,6 +867,7 @@ export class App {
       } else this.cursorTip.classList.add('hidden');
     } else {
       this.ghost.visible = false;
+      this.placeCtl.hide();
       if (tool.kind === 'target') {
         setText(this.cursorTip, `Click a ${tool.what} (right-click to cancel)`);
         this.cursorTip.classList.add('ok');

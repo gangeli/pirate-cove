@@ -1,12 +1,12 @@
 import type { App } from './app';
-import { el, html, setHTML, patchHTML, delegate, fmt } from './dom';
+import { el, html, setHTML, patchHTML, delegate, fmt, raw } from './dom';
 import { icon } from './icons';
 import { NATIONS, NATION_NAMES, NATION_ADJ } from '../sim/data/kings';
 import { SHIPS, MISSION_NAMES } from '../sim/data/ships';
 import { regionReachable, transitTime } from '../sim/sea';
 import { relationLevel } from '../sim/diplomacy';
 import { MONTH } from '../sim/time';
-import type { Region } from '../sim/types';
+import type { Region, Ship } from '../sim/types';
 import { audio } from '../audio/audio';
 
 type Poly = [number, number][];
@@ -29,25 +29,61 @@ const ISLETS: [number, number, number][] = [
   [0.83, 0.32, 0.008], [0.86, 0.36, 0.009], [0.88, 0.41, 0.01], [0.9, 0.46, 0.009], [0.9, 0.51, 0.01], [0.91, 0.56, 0.008], [0.92, 0.62, 0.012],
   [0.62, 0.64, 0.01], [0.66, 0.645, 0.008], [0.36, 0.33, 0.007], [0.4, 0.34, 0.006], [0.15, 0.36, 0.007],
 ];
+/** the chart is drawn at this aspect (map x and y both run 0..1) */
+const ASPECT = 4 / 3;
+const PAPER_W = 1600;
+const INK = '#3a1a08', BLOOD = '#8a1a10', REACH = '#2c6a36';
+const LEVELS = ['Uncharted', 'Surveyed', 'Charted', 'Familiar seas', 'Like the back of our hand', 'Our own waters'];
+
+type Mode = 'reach' | 'risk' | 'reward';
+type Box = { x: number; y: number; w: number; h: number };
 
 export class SeaChart {
   private panel: HTMLElement;
   private canvas!: HTMLCanvasElement;
   private side!: HTMLElement;
+  private bar!: HTMLElement;
+  private legend!: HTMLElement;
+  private tip!: HTMLElement;
   visible = false;
   private region = -1;
   private ship = 0;
-  private mode: 'none' | 'risk' | 'reward' = 'none';
+  private mode: Mode = 'reach';
   private lastRefresh = 0;
   private paper: HTMLCanvasElement | null = null;
+  private fog: CanvasPattern | null = null;
+  private hatch: CanvasPattern | null = null;
+  /** zoom (1 = whole chart fits) and the map point at the centre of the view */
+  private view = { z: 1, cx: 0.5, cy: 0.5 };
+  private geo = { cw: 1, ch: 1, mw: 1, mh: 1 };
+  private hoverR = -1;
+  private tipR = -1;
+  private ptrs = new Map<number, { x: number; y: number }>();
+  private drag: { x: number; y: number; cx: number; cy: number; moved: boolean } | null = null;
+  private pinch: { d: number; z: number } | null = null;
+  private raf = 0;
 
   constructor(private app: App) {
-    this.panel = el('div', 'panel big hidden', app.root);
-    setHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button><h2>Sea Chart of the Caribbee</h2>
-      <div class="sub">Pick a ship, then click a region to send her there. Ships can only reach charted seas, or seas next to charted ones.</div>
-      <div class="chart-wrap" style="margin-top:8px"><canvas></canvas><div class="chart-side scroll"></div></div>`);
+    this.panel = el('div', 'panel big chart hidden', app.root);
+    setHTML(this.panel, html`<button class="close" data-act="close" aria-label="Close">${icon('close', 14)}</button>
+      <header class="sheet-head"><h2>Sea Chart of the Caribbee</h2><div class="sub">Choose a ship, then pick a sea to send her there.</div></header>
+      <div class="chart-wrap">
+        <div class="chart-main">
+          <div class="chart-bar"></div>
+          <div class="chart-map">
+            <canvas aria-label="Sea chart"></canvas>
+            <div class="chart-zoom"><button class="mm-btn" data-act="zoom:1" aria-label="Zoom in">${icon('plus', 14)}</button><button class="mm-btn" data-act="zoom:-1" aria-label="Zoom out">${icon('minus', 14)}</button></div>
+            <div class="chart-tip hidden"></div>
+          </div>
+          <div class="chart-legend"></div>
+        </div>
+        <div class="chart-side scroll"></div>
+      </div>`);
     this.canvas = this.panel.querySelector('canvas')!;
     this.side = this.panel.querySelector('.chart-side') as HTMLElement;
+    this.bar = this.panel.querySelector('.chart-bar') as HTMLElement;
+    this.legend = this.panel.querySelector('.chart-legend') as HTMLElement;
+    this.tip = this.panel.querySelector('.chart-tip') as HTMLElement;
     delegate(this.panel, {
       close: () => this.hide(),
       ship: (id) => {
@@ -57,9 +93,14 @@ export class SeaChart {
         this.refresh(true);
       },
       mode: (m) => {
-        this.mode = this.mode === m ? 'none' : (m as any);
+        this.mode = m as Mode;
         this.refresh(true);
       },
+      zoom: (d) => {
+        const { cw, ch } = this.geo;
+        this.zoomAt(cw / 2, ch / 2, this.view.z * (+d > 0 ? 1.5 : 1 / 1.5));
+      },
+      region: (id) => this.pickRegion(+id),
       open: () => {
         if (this.ship) {
           app.select({ type: 'ship', id: this.ship });
@@ -73,25 +114,147 @@ export class SeaChart {
         }
       },
     }, () => audio.sfx('ui_click'));
-    this.canvas.addEventListener('click', (ev) => {
-      const r = this.canvas.getBoundingClientRect();
-      const x = (ev.clientX - r.left) / r.width, y = (ev.clientY - r.top) / r.height;
-      let best = -1, bd = 0.06;
-      for (const reg of app.game.regions) {
-        const d = Math.hypot(reg.x - x, (reg.y - y) * 0.8);
-        if (d < bd) (bd = d), (best = reg.id);
+    this.bindMap();
+  }
+
+  // ------------------------------------------------------------------------------------------------ pan, zoom, pick
+  private bindMap(): void {
+    const c = this.canvas;
+    const local = (e: PointerEvent | WheelEvent) => {
+      const r = c.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    c.addEventListener('pointerdown', (e) => {
+      c.setPointerCapture(e.pointerId);
+      const p = local(e);
+      this.ptrs.set(e.pointerId, p);
+      if (this.ptrs.size === 1) this.drag = { ...p, cx: this.view.cx, cy: this.view.cy, moved: false };
+      else if (this.ptrs.size === 2) {
+        const [a, b] = [...this.ptrs.values()];
+        this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: this.view.z };
+        if (this.drag) this.drag.moved = true;
       }
-      if (best < 0) return;
-      this.region = best;
-      audio.sfx('quill');
-      if (this.ship) {
-        const s = app.game.ships.get(this.ship);
-        if (s && (s.status === 'docked' || s.status === 'boarding' || s.status === 'repairing')) app.cmd({ type: 'shipOrders', ship: s.id, region: best });
+    });
+    c.addEventListener('pointermove', (e) => {
+      const p = local(e);
+      if (this.ptrs.has(e.pointerId)) {
+        this.ptrs.set(e.pointerId, p);
+        if (this.pinch && this.ptrs.size >= 2) {
+          const [a, b] = [...this.ptrs.values()];
+          const d = Math.hypot(a.x - b.x, a.y - b.y);
+          this.zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, (this.pinch.z * d) / Math.max(1, this.pinch.d));
+          return;
+        }
+        const dr = this.drag;
+        if (dr) {
+          const dx = p.x - dr.x, dy = p.y - dr.y;
+          if (Math.hypot(dx, dy) > 6) dr.moved = true;
+          if (dr.moved && this.view.z > 1.001) {
+            this.view.cx = dr.cx - dx / (this.geo.mw * this.view.z);
+            this.view.cy = dr.cy - dy / (this.geo.mh * this.view.z);
+            this.schedule();
+          }
+        }
+        return;
       }
-      this.refresh(true);
+      if (e.pointerType !== 'mouse') return;
+      const h = this.hit(p.x, p.y);
+      c.style.cursor = h >= 0 ? 'pointer' : this.view.z > 1 ? 'grab' : 'default';
+      if (h !== this.hoverR) {
+        this.hoverR = h;
+        this.tipR = h;
+        this.schedule();
+      }
+    });
+    const up = (e: PointerEvent) => {
+      const dr = this.drag;
+      this.ptrs.delete(e.pointerId);
+      if (this.ptrs.size < 2) this.pinch = null;
+      if (this.ptrs.size === 0) {
+        this.drag = null;
+        if (dr && !dr.moved && e.type === 'pointerup') {
+          const p = local(e);
+          const h = this.hit(p.x, p.y);
+          if (h >= 0) {
+            this.tipR = h;
+            this.pickRegion(h);
+          }
+        }
+      }
+    };
+    c.addEventListener('pointerup', up);
+    c.addEventListener('pointercancel', up);
+    c.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'mouse' && this.hoverR >= 0) {
+        this.hoverR = this.tipR = -1;
+        this.schedule();
+      }
+    });
+    c.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const p = local(e);
+      this.zoomAt(p.x, p.y, this.view.z * (e.deltaY < 0 ? 1.25 : 1 / 1.25));
+    }, { passive: false });
+  }
+
+  private zoomAt(sx: number, sy: number, nz: number): void {
+    const v = this.view, { cw, ch, mw, mh } = this.geo;
+    nz = Math.max(1, Math.min(4, nz));
+    const mx = v.cx + (sx - cw / 2) / (mw * v.z), my = v.cy + (sy - ch / 2) / (mh * v.z);
+    v.z = nz;
+    v.cx = mx - (sx - cw / 2) / (mw * nz);
+    v.cy = my - (sy - ch / 2) / (mh * nz);
+    this.schedule();
+  }
+
+  private clampView(): void {
+    const v = this.view, { cw, ch, mw, mh } = this.geo;
+    const hx = cw / (2 * mw * v.z), hy = ch / (2 * mh * v.z);
+    v.cx = hx >= 0.5 ? 0.5 : Math.max(hx, Math.min(1 - hx, v.cx));
+    v.cy = hy >= 0.5 ? 0.5 : Math.max(hy, Math.min(1 - hy, v.cy));
+  }
+
+  private sx(x: number): number {
+    return this.geo.cw / 2 + (x - this.view.cx) * this.geo.mw * this.view.z;
+  }
+  private sy(y: number): number {
+    return this.geo.ch / 2 + (y - this.view.cy) * this.geo.mh * this.view.z;
+  }
+  private radius(): number {
+    return Math.max(12, Math.min(44, 0.04 * this.geo.mw * this.view.z));
+  }
+
+  /** the region under a point of the canvas (CSS px), or -1 */
+  private hit(px: number, py: number): number {
+    let best = -1, bd = Math.max(22, this.radius() * 1.15);
+    for (const r of this.app.game.regions) {
+      const d = Math.hypot(this.sx(r.x) - px, this.sy(r.y) - py);
+      if (d < bd) (bd = d), (best = r.id);
+    }
+    return best;
+  }
+
+  private pickRegion(id: number): void {
+    const app = this.app;
+    this.region = id;
+    audio.sfx('quill');
+    const s = this.ship ? app.game.ships.get(this.ship) : undefined;
+    if (s && (s.status === 'docked' || s.status === 'boarding' || s.status === 'repairing') && s.region !== id) {
+      const reach = regionReachable(app.game, s, id);
+      if (reach.ok) app.cmd({ type: 'shipOrders', ship: s.id, region: id });
+    }
+    this.refresh(true);
+  }
+
+  private schedule(): void {
+    if (this.raf) return;
+    this.raf = requestAnimationFrame(() => {
+      this.raf = 0;
+      if (this.visible) this.draw();
     });
   }
 
+  // ------------------------------------------------------------------------------------------------ show / hide
   open(shipId = 0): void {
     this.show();
     if (shipId) {
@@ -109,8 +272,10 @@ export class SeaChart {
     this.app.closeAll();
     this.visible = true;
     this.panel.classList.remove('hidden');
-    if (!this.ship) this.ship = [...this.app.game.ships.values()].find((s) => s.status === 'docked')?.id ?? 0;
+    const ships = [...this.app.game.ships.values()];
+    if (!this.ship || !this.app.game.ships.has(this.ship)) this.ship = (ships.find((s) => s.status === 'docked') ?? ships[0])?.id ?? 0;
     if (this.region < 0) this.region = this.app.game.homeRegion;
+    this.view = { z: 1, cx: 0.5, cy: 0.5 };
     this.refresh(true);
     this.app.hud.updateTool();
     audio.sfx('parchment');
@@ -133,59 +298,63 @@ export class SeaChart {
     if (!this.visible) return;
     if (!force && performance.now() - this.lastRefresh < 1000) return;
     this.lastRefresh = performance.now();
+    this.drawBar();
     this.draw();
     this.drawSide(force);
   }
 
-  private makePaper(W: number, H: number): HTMLCanvasElement {
+  private selShip(): Ship | undefined {
+    return this.ship ? this.app.game.ships.get(this.ship) : undefined;
+  }
+
+  // ------------------------------------------------------------------------------------------------ paper
+  private makePaper(): HTMLCanvasElement {
+    const W = PAPER_W, H = Math.round(PAPER_W / ASPECT);
     const c = document.createElement('canvas');
     c.width = W;
     c.height = H;
     const g = c.getContext('2d')!;
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     // sea wash
     const sea = g.createRadialGradient(W / 2, H / 2, 50, W / 2, H / 2, W * 0.7);
-    sea.addColorStop(0, '#d8e4d0');
-    sea.addColorStop(1, '#b8c8b0');
+    sea.addColorStop(0, '#dde6cf');
+    sea.addColorStop(1, '#b9c7ad');
     g.fillStyle = sea;
     g.fillRect(0, 0, W, H);
-    // paper grain
-    for (let i = 0; i < 9000; i++) {
-      g.fillStyle = `rgba(${90 + Math.random() * 40},${70 + Math.random() * 30},40,${Math.random() * 0.05})`;
-      g.fillRect(Math.random() * W, Math.random() * H, 1 + Math.random() * 3, 1);
+    for (let i = 0; i < 16000; i++) {
+      g.fillStyle = `rgba(${90 + rnd() * 40},${70 + rnd() * 30},40,${rnd() * 0.05})`;
+      g.fillRect(rnd() * W, rnd() * H, 1 + rnd() * 4, 1.5);
     }
     // rhumb lines from two compass points
-    g.strokeStyle = 'rgba(120,80,40,0.18)';
-    g.lineWidth = 1;
+    g.strokeStyle = 'rgba(120,80,40,0.16)';
+    g.lineWidth = 1.2;
     for (const [cx, cy] of [[0.68 * W, 0.47 * H], [0.18 * W, 0.2 * H]]) for (let a = 0; a < 32; a++) {
       g.beginPath();
       g.moveTo(cx, cy);
       g.lineTo(cx + Math.cos((a / 32) * Math.PI * 2) * W * 1.5, cy + Math.sin((a / 32) * Math.PI * 2) * W * 1.5);
       g.stroke();
     }
-    // land
     const drawPoly = (p: Poly) => {
       g.beginPath();
       p.forEach(([x, y], i) => (i ? g.lineTo(x * W, y * H) : g.moveTo(x * W, y * H)));
       g.closePath();
     };
     for (const p of LAND) {
-      // coastal shading rings
-      for (let k = 4; k >= 1; k--) {
-        g.save();
+      for (let k = 5; k >= 1; k--) {
         drawPoly(p);
-        g.strokeStyle = `rgba(90,110,100,${0.08 * k})`;
-        g.lineWidth = k * 4;
+        g.strokeStyle = `rgba(80,105,95,${0.07 * k})`;
+        g.lineWidth = k * 6;
         g.stroke();
-        g.restore();
       }
       drawPoly(p);
       const lg = g.createLinearGradient(0, 0, W, H);
-      lg.addColorStop(0, '#e2cf9e');
-      lg.addColorStop(1, '#cdb47c');
+      lg.addColorStop(0, '#e6d4a4');
+      lg.addColorStop(1, '#cfb57e');
       g.fillStyle = lg;
       g.fill();
       g.strokeStyle = '#5a3a1a';
-      g.lineWidth = 1.6;
+      g.lineWidth = 2.4;
       g.stroke();
     }
     for (const [x, y, r] of ISLETS) {
@@ -194,23 +363,30 @@ export class SeaChart {
       g.fillStyle = '#d8c48e';
       g.fill();
       g.strokeStyle = '#5a3a1a';
-      g.lineWidth = 1.2;
+      g.lineWidth = 1.8;
       g.stroke();
     }
-    // hill marks on big land
+    // hill marks on the southern mainland, kept clear of the title cartouche
     g.strokeStyle = 'rgba(90,60,30,0.5)';
-    for (let i = 0; i < 60; i++) {
-      const x = Math.random() * W, y = H * (0.8 + Math.random() * 0.2);
+    g.lineWidth = 1.5;
+    for (let i = 0; i < 70; i++) {
+      const x = rnd() * W, y = H * (0.82 + rnd() * 0.17);
+      if (x > W * 0.36 && x < W * 0.84 && y > H * 0.84) continue;
       g.beginPath();
-      g.moveTo(x - 6, y);
-      g.lineTo(x, y - 7);
-      g.lineTo(x + 6, y);
+      g.moveTo(x - 9, y);
+      g.lineTo(x, y - 10);
+      g.lineTo(x + 9, y);
       g.stroke();
     }
     // compass rose
-    const cx = 0.86 * W, cy = 0.17 * H, R = Math.min(W, H) * 0.08;
+    const cx = 0.88 * W, cy = 0.15 * H, R = H * 0.085;
     g.save();
     g.translate(cx, cy);
+    g.strokeStyle = 'rgba(90,50,20,0.6)';
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.arc(0, 0, R * 0.62, 0, Math.PI * 2);
+    g.stroke();
     for (let a = 0; a < 8; a++) {
       g.rotate(Math.PI / 4);
       g.beginPath();
@@ -222,118 +398,350 @@ export class SeaChart {
       g.fill();
     }
     g.fillStyle = '#5a2a10';
-    g.font = `bold ${R * 0.35}px Georgia`;
+    g.font = `${R * 0.42}px "IM Fell English SC", Georgia`;
     g.textAlign = 'center';
-    g.fillText('N', 0, -R - 4);
+    g.fillText('N', 0, -R - 6);
     g.restore();
-    // title cartouche
-    g.font = `${Math.round(H * 0.035)}px "IM Fell English SC", Georgia`;
+    // title cartouche on the southern mainland
+    const tx = 0.6 * W, ty = 0.905 * H;
+    g.fillStyle = 'rgba(240,228,196,0.85)';
+    g.strokeStyle = '#5a3a1a';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.roundRect(tx - W * 0.2, ty - H * 0.055, W * 0.4, H * 0.1, 10);
+    g.fill();
+    g.stroke();
+    g.beginPath();
+    g.roundRect(tx - W * 0.2 + 6, ty - H * 0.055 + 6, W * 0.4 - 12, H * 0.1 - 12, 6);
+    g.lineWidth = 1;
+    g.stroke();
+    g.textAlign = 'center';
     g.fillStyle = '#4a2a10';
-    g.textAlign = 'left';
-    g.fillText('Mare Caribbeum', W * 0.04, H * 0.62);
-    g.font = `italic ${Math.round(H * 0.022)}px "IM Fell English", Georgia`;
-    g.fillText('Here be Pyrates', W * 0.05, H * 0.66);
+    g.font = `${Math.round(H * 0.045)}px "IM Fell English SC", Georgia`;
+    g.fillText('Mare Caribbeum', tx, ty + 2);
+    g.font = `italic ${Math.round(H * 0.026)}px "IM Fell English", Georgia`;
+    g.fillText('Here be Pyrates', tx, ty + H * 0.032);
     return c;
   }
 
+  private patterns(g: CanvasRenderingContext2D): void {
+    if (this.fog && this.hatch) return;
+    const mk = (col: string, bg: string | null, step: number) => {
+      const p = document.createElement('canvas');
+      p.width = p.height = step;
+      const x = p.getContext('2d')!;
+      if (bg) {
+        x.fillStyle = bg;
+        x.fillRect(0, 0, step, step);
+      }
+      x.strokeStyle = col;
+      x.lineWidth = 1.2;
+      x.beginPath();
+      x.moveTo(-1, step + 1);
+      x.lineTo(step + 1, -1);
+      x.moveTo(-1, 1);
+      x.lineTo(1, -1);
+      x.moveTo(step - 1, step + 1);
+      x.lineTo(step + 1, step - 1);
+      x.stroke();
+      return g.createPattern(p, 'repeat');
+    };
+    // uncharted: a soft stipple of fog; out of reach: inked diagonal hatching
+    const dots = document.createElement('canvas');
+    dots.width = dots.height = 6;
+    const d = dots.getContext('2d')!;
+    d.fillStyle = 'rgba(160,150,125,0.5)';
+    d.fillRect(0, 0, 6, 6);
+    d.fillStyle = 'rgba(80,65,45,0.55)';
+    d.fillRect(1, 1, 1.4, 1.4);
+    d.fillRect(4, 4, 1.4, 1.4);
+    this.fog = g.createPattern(dots, 'repeat');
+    this.hatch = mk('rgba(70,35,15,0.55)', 'rgba(70,40,20,0.12)', 7);
+  }
+
+  // ------------------------------------------------------------------------------------------------ the map
   private draw(): void {
     const c = this.canvas;
     const rect = c.getBoundingClientRect();
-    const W = Math.max(400, Math.floor(rect.width)), H = Math.max(300, Math.floor(rect.height));
-    if (c.width !== W || c.height !== H) {
-      c.width = W;
-      c.height = H;
-      this.paper = null;
+    const cw = Math.max(200, Math.round(rect.width)), ch = Math.max(150, Math.round(rect.height));
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    if (c.width !== Math.round(cw * dpr) || c.height !== Math.round(ch * dpr)) {
+      c.width = Math.round(cw * dpr);
+      c.height = Math.round(ch * dpr);
     }
-    if (!this.paper) this.paper = this.makePaper(W, H);
+    // cover the frame when that crops only a sliver of open sea; otherwise fit the whole chart
+    const cover = Math.max(cw, ch * ASPECT), contain = Math.min(cw, ch * ASPECT);
+    const mw = cover / contain < 1.18 ? cover : contain;
+    this.geo = { cw, ch, mw, mh: mw / ASPECT };
+    this.clampView();
+    this.paper ??= this.makePaper();
     const g = c.getContext('2d')!;
-    g.drawImage(this.paper, 0, 0);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.patterns(g);
+    g.fillStyle = '#b4c2a8';
+    g.fillRect(0, 0, cw, ch);
+    const z = this.view.z, { mh } = this.geo;
+    g.drawImage(this.paper, this.sx(0), this.sy(0), mw * z, mh * z);
+    // neat line
+    g.strokeStyle = 'rgba(60,30,10,0.7)';
+    g.lineWidth = 1;
+    g.strokeRect(this.sx(0) + 3.5, this.sy(0) + 3.5, mw * z - 7, mh * z - 7);
+
     const game = this.app.game;
-    const sel = this.ship ? game.ships.get(this.ship) : undefined;
-    for (const r of game.regions) {
-      const x = r.x * W, y = r.y * H;
-      const known = r.knowledge > 0;
-      const reach = sel ? regionReachable(game, sel, r.id).ok : true;
-      // overlay modes
-      if (this.mode !== 'none' && known) {
+    const sel = this.selShip();
+    const R = this.radius();
+    const small = cw < 520;
+    const home = game.regions[game.homeRegion];
+    const info = game.regions.map((r) => ({
+      r, x: this.sx(r.x), y: this.sy(r.y), known: r.knowledge > 0, home: r.id === game.homeRegion,
+      reach: sel ? regionReachable(game, sel, r.id) : null,
+      months: sel ? transitTime(game, sel, r.id) / MONTH : 0,
+    }));
+    // a dashed course from home to the selected ship's destination
+    if (sel && sel.region !== game.homeRegion) {
+      const d = info[sel.region];
+      g.save();
+      g.strokeStyle = 'rgba(138,26,16,0.75)';
+      g.lineWidth = 2;
+      g.setLineDash([7, 5]);
+      g.beginPath();
+      g.moveTo(this.sx(home.x), this.sy(home.y));
+      g.lineTo(d.x, d.y);
+      g.stroke();
+      g.restore();
+    }
+    for (const o of info) {
+      const { r, x, y, known } = o;
+      // danger / plunder wash
+      if (this.mode !== 'reach' && known) {
         const v = this.mode === 'risk' ? this.risk(r) : this.reward(r);
+        const gr = g.createRadialGradient(x, y, R * 0.2, x, y, R * 1.35);
+        const col = this.mode === 'risk' ? '170,30,20' : '30,130,50';
+        gr.addColorStop(0, `rgba(${col},${0.12 + v * 0.11})`);
+        gr.addColorStop(1, `rgba(${col},0)`);
+        g.fillStyle = gr;
         g.beginPath();
-        g.arc(x, y, 42, 0, Math.PI * 2);
-        g.fillStyle = this.mode === 'risk' ? `rgba(200,30,20,${v * 0.09})` : `rgba(40,160,40,${v * 0.09})`;
+        g.arc(x, y, R * 1.35, 0, Math.PI * 2);
         g.fill();
       }
       g.beginPath();
-      g.arc(x, y, 34, 0, Math.PI * 2);
-      g.setLineDash([5, 5]);
-      g.strokeStyle = r.id === this.region ? '#a01a10' : known ? 'rgba(90,50,20,0.55)' : 'rgba(90,50,20,0.25)';
-      g.lineWidth = r.id === this.region ? 3 : 1.5;
+      g.arc(x, y, R, 0, Math.PI * 2);
+      if (!known && !o.home) {
+        g.fillStyle = this.fog!;
+        g.fill();
+      } else {
+        g.fillStyle = 'rgba(250,244,224,0.32)';
+        g.fill();
+      }
+      const out = sel && o.reach && !o.reach.ok;
+      if (out && known) {
+        g.fillStyle = this.hatch!;
+        g.fill();
+      }
+      // ring: within reach (solid green), charted (inked dashes), unknown (faint)
+      g.lineWidth = 1.5;
+      if (sel && o.reach?.ok && this.mode === 'reach') {
+        g.strokeStyle = REACH;
+        g.lineWidth = 2.5;
+      } else g.strokeStyle = known ? 'rgba(70,40,15,0.7)' : 'rgba(70,40,15,0.35)';
+      if (!(sel && o.reach?.ok && this.mode === 'reach')) g.setLineDash([4, 4]);
       g.stroke();
       g.setLineDash([]);
-      if (!known) {
-        g.fillStyle = 'rgba(120,100,70,0.28)';
-        g.fill();
-      }
-      if (sel && !reach) {
-        g.fillStyle = 'rgba(60,30,10,0.15)';
-        g.fill();
-      }
-      g.font = `${r.id === this.region ? 'bold ' : ''}14px "IM Fell English", Georgia`;
-      g.textAlign = 'center';
-      g.fillStyle = '#3a1a08';
-      g.fillText(r.name, x, y - 38);
-      if (known) {
-        // risk cannons and reward chests
-        const rk = this.risk(r), rw = this.reward(r);
-        g.font = '12px Georgia';
-        g.fillStyle = '#8a1a10';
-        g.fillText('●'.repeat(rk) + '○'.repeat(5 - rk), x, y + 46);
-        g.fillStyle = '#7a5a10';
-        g.fillText('◆'.repeat(rw) + '◇'.repeat(5 - rw), x, y + 58);
-      } else {
-        g.font = 'italic 13px Georgia';
-        g.fillStyle = '#5a4020';
-        g.fillText('uncharted', x, y + 50);
-      }
+      // destination, inspected and hovered regions
+      if (sel && sel.region === r.id && !o.home) this.ring(g, x, y, R + 4, BLOOD, 2.5);
+      if (r.id === this.region) this.ring(g, x, y, R + (sel && sel.region === r.id ? 9 : 4), '#b8955a', 2);
+      if (r.id === this.hoverR) this.ring(g, x, y, R + 1, 'rgba(60,30,10,0.9)', 1.5);
+      // known settlements: tiny coloured flags at the rim
+      let k = 0;
       for (const st of r.settlements) if (st.found) {
-        g.fillStyle = st.type === 'military' ? '#8a1a10' : st.type === 'trade' ? '#7a5a10' : '#3a6a2a';
-        g.fillRect(x + 20, y - 8, 7, 7);
-      }
-      if (r.routeFound) {
-        g.strokeStyle = 'rgba(122,90,16,0.7)';
-        g.setLineDash([2, 4]);
-        g.beginPath();
-        g.moveTo(x - 30, y + 10);
-        g.lineTo(x + 30, y - 10);
-        g.stroke();
-        g.setLineDash([]);
+        g.fillStyle = st.type === 'military' ? BLOOD : st.type === 'trade' ? '#8a6a10' : '#3a6a2a';
+        const a = -0.6 + k++ * 0.45;
+        g.fillRect(x + Math.cos(a) * R - 3, y + Math.sin(a) * R - 3, 6, 6);
       }
     }
-    // home island
-    const home = game.regions[game.homeRegion];
-    g.font = '30px serif';
-    g.textAlign = 'center';
-    g.fillText('☠', home.x * W, home.y * H + 10);
-    // ships at sea
+    // home: a wax-seal roundel with the jolly roger
+    {
+      const x = this.sx(home.x), y = this.sy(home.y), s = Math.max(12, R * 0.62);
+      g.save();
+      g.shadowColor = 'rgba(0,0,0,0.35)';
+      g.shadowBlur = 4;
+      g.shadowOffsetY = 1;
+      const gr = g.createRadialGradient(x - s * 0.3, y - s * 0.3, s * 0.1, x, y, s);
+      gr.addColorStop(0, '#b0372a');
+      gr.addColorStop(0.6, '#7a1810');
+      gr.addColorStop(1, '#4a0a06');
+      g.fillStyle = gr;
+      g.beginPath();
+      g.arc(x, y, s, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+      g.strokeStyle = '#e2c88e';
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.arc(x, y, s - 2.5, 0, Math.PI * 2);
+      g.stroke();
+      this.skull(g, x, y, s * 0.62);
+    }
+    // ships: at their station, or moored at home
     let k = 0;
     for (const s of game.ships.values()) {
-      const r = game.regions[s.status === 'atsea' || s.status === 'returning' ? s.region : game.homeRegion];
-      const x = r.x * W + 18 + (k % 3) * 10, y = r.y * H + 8 + Math.floor(k / 3) * 10;
+      const r = game.regions[s.status === 'atsea' || s.status === 'returning' || s.status === 'departing' ? s.region : game.homeRegion];
+      const x = this.sx(r.x) + R * 0.7 + (k % 3) * 11, y = this.sy(r.y) + R * 0.55 + Math.floor(k / 3) * 11;
       k++;
-      g.fillStyle = s.id === this.ship ? '#a01a10' : '#2a1a0a';
-      g.beginPath();
-      g.moveTo(x - 7, y);
-      g.lineTo(x + 7, y);
-      g.lineTo(x + 4, y + 5);
-      g.lineTo(x - 4, y + 5);
-      g.closePath();
-      g.fill();
-      g.fillRect(x - 0.5, y - 10, 1.5, 10);
-      g.beginPath();
-      g.moveTo(x + 1, y - 10);
-      g.lineTo(x + 7, y - 3);
-      g.lineTo(x + 1, y - 2);
-      g.fill();
+      this.shipGlyph(g, x, y, s.id === this.ship ? BLOOD : '#2a1a0a');
     }
+    this.drawLabels(g, info, R, small, sel);
+    this.drawTip(info);
+  }
+
+  private ring(g: CanvasRenderingContext2D, x: number, y: number, r: number, col: string, w: number): void {
+    g.strokeStyle = col;
+    g.lineWidth = w;
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.stroke();
+  }
+
+  private skull(g: CanvasRenderingContext2D, x: number, y: number, s: number): void {
+    g.save();
+    g.translate(x, y);
+    g.strokeStyle = '#f2e2bc';
+    g.fillStyle = '#f2e2bc';
+    g.lineCap = 'round';
+    g.lineWidth = Math.max(1.4, s * 0.16);
+    g.beginPath();
+    g.moveTo(-s * 0.85, s * 0.85);
+    g.lineTo(s * 0.85, -s * 0.05);
+    g.moveTo(s * 0.85, s * 0.85);
+    g.lineTo(-s * 0.85, -s * 0.05);
+    g.stroke();
+    g.beginPath();
+    g.arc(0, -s * 0.25, s * 0.52, 0, Math.PI * 2);
+    g.fill();
+    g.fillRect(-s * 0.28, -s * 0.05, s * 0.56, s * 0.42);
+    g.fillStyle = '#6a120c';
+    g.beginPath();
+    g.arc(-s * 0.2, -s * 0.28, s * 0.14, 0, Math.PI * 2);
+    g.arc(s * 0.2, -s * 0.28, s * 0.14, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
+  }
+
+  private shipGlyph(g: CanvasRenderingContext2D, x: number, y: number, col: string): void {
+    g.fillStyle = col;
+    g.strokeStyle = 'rgba(240,228,196,0.9)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(x - 7, y);
+    g.lineTo(x + 7, y);
+    g.lineTo(x + 4, y + 5);
+    g.lineTo(x - 4, y + 5);
+    g.closePath();
+    g.stroke();
+    g.fill();
+    g.fillRect(x - 0.5, y - 10, 1.5, 10);
+    g.beginPath();
+    g.moveTo(x + 1, y - 10);
+    g.lineTo(x + 7, y - 3);
+    g.lineTo(x + 1, y - 2);
+    g.fill();
+  }
+
+  /** region names (and a second line: months of sailing, or danger/plunder pips), placed so they never overlap */
+  private drawLabels(g: CanvasRenderingContext2D, info: { r: Region; x: number; y: number; known: boolean; home: boolean; reach: { ok: boolean } | null; months: number }[], R: number, small: boolean, sel?: Ship): void {
+    const f1 = small ? 11.5 : 13.5, f2 = small ? 10.5 : 12;
+    const placed: Box[] = [];
+    const discs = info.map((o) => ({ x: o.x - R, y: o.y - R, w: R * 2, h: R * 2 }));
+    const inter = (a: Box, b: Box) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    const order = [...info].sort((a, b) => (a.home ? -1 : b.home ? 1 : 0) || (a.r.id === this.region ? -1 : b.r.id === this.region ? 1 : 0) || a.y - b.y);
+    for (const o of order) {
+      const name = o.home ? 'Your Cove' : o.r.name;
+      let line2 = '';
+      if (o.home) line2 = o.r.name;
+      else if (this.mode === 'reach' && sel && o.reach?.ok) line2 = `${o.months.toFixed(1)} mo`;
+      else if (this.mode !== 'reach' && o.known) {
+        const v = this.mode === 'risk' ? this.risk(o.r) : this.reward(o.r);
+        line2 = (this.mode === 'risk' ? '●' : '◆').repeat(v) + (this.mode === 'risk' ? '○' : '◇').repeat(5 - v);
+      }
+      g.font = `${o.home ? '' : o.known ? '' : 'italic '}${o.home ? f1 + 2 : f1}px ${o.home ? '"IM Fell English SC"' : '"IM Fell English"'}, Georgia`;
+      const w1 = g.measureText(name).width;
+      g.font = `${f2}px "IM Fell English", Georgia`;
+      const w2 = line2 ? g.measureText(line2).width : 0;
+      const w = Math.max(w1, w2) + 6, h = (line2 ? f1 + f2 + 2 : f1) + 4;
+      const off = (o.home ? Math.max(12, R * 0.62) : R) + 3;
+      const cands: Box[] = [
+        { x: o.x - w / 2, y: o.y - off - h, w, h },
+        { x: o.x - w / 2, y: o.y + off, w, h },
+        { x: o.x + off, y: o.y - h / 2, w, h },
+        { x: o.x - off - w, y: o.y - h / 2, w, h },
+        { x: o.x - w / 2 + R, y: o.y - off - h, w, h },
+        { x: o.x - w / 2 - R, y: o.y - off - h, w, h },
+        { x: o.x - w / 2 + R, y: o.y + off, w, h },
+        { x: o.x - w / 2 - R, y: o.y + off, w, h },
+      ];
+      let best = cands[0], bs = Infinity;
+      cands.forEach((b, i) => {
+        let s = i * 0.5;
+        for (const p of placed) s += inter(b, p) * 10;
+        discs.forEach((d, j) => (s += info[j] === o ? 0 : inter(b, d)));
+        if (b.x < 2 || b.x + b.w > this.geo.cw - 2 || b.y < 2 || b.y + b.h > this.geo.ch - 2) s += 400;
+        if (s < bs) (bs = s), (best = b);
+      });
+      placed.push(best);
+      const cx = best.x + best.w / 2;
+      g.textAlign = 'center';
+      g.textBaseline = 'top';
+      g.lineJoin = 'round';
+      g.lineWidth = 3.5;
+      g.strokeStyle = 'rgba(236,226,196,0.9)';
+      g.font = `${o.home ? '' : o.known ? '' : 'italic '}${o.home ? f1 + 2 : f1}px ${o.home ? '"IM Fell English SC"' : '"IM Fell English"'}, Georgia`;
+      g.fillStyle = o.home ? BLOOD : o.known ? INK : 'rgba(70,50,30,0.75)';
+      if (o.r.id === this.region && !o.home) g.font = `bold ${g.font}`;
+      g.strokeText(name, cx, best.y + 2);
+      g.fillText(name, cx, best.y + 2);
+      if (line2) {
+        g.font = `${o.home ? 'italic ' : ''}${f2}px "IM Fell English", Georgia`;
+        g.fillStyle = o.home ? '#5a3a1a' : this.mode === 'reach' ? REACH : this.mode === 'risk' ? BLOOD : '#7a5a10';
+        g.strokeText(line2, cx, best.y + 4 + f1);
+        g.fillText(line2, cx, best.y + 4 + f1);
+      }
+      g.textBaseline = 'alphabetic';
+    }
+  }
+
+  private drawTip(info: { r: Region; x: number; y: number; known: boolean; home: boolean; reach: { ok: boolean; reason?: string } | null; months: number }[]): void {
+    const o = info[this.tipR];
+    if (!o) {
+      this.tip.classList.add('hidden');
+      return;
+    }
+    const sel = this.selShip();
+    const lines = [`<b>${o.home ? 'Your Cove · ' : ''}${o.r.name}</b>`, `<i>${LEVELS[Math.min(5, Math.floor(o.r.knowledge))]}</i>`];
+    if (sel && o.reach) lines.push(o.reach.ok ? `${sel.name}: ${o.months.toFixed(1)} months each way` : `<span class="bad">${o.reach.reason}</span>`);
+    this.tip.innerHTML = lines.join('<br>');
+    this.tip.classList.remove('hidden');
+    const tw = this.tip.offsetWidth, th = this.tip.offsetHeight;
+    const R = this.radius();
+    let x = o.x - tw / 2, y = o.y + R + 10;
+    if (y + th > this.geo.ch - 4) y = o.y - R - 10 - th;
+    x = Math.max(4, Math.min(this.geo.cw - tw - 4, x));
+    this.tip.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px)`;
+  }
+
+  // ------------------------------------------------------------------------------------------------ controls & side
+  private drawBar(): void {
+    const sel = this.selShip();
+    const modes: [Mode, string, string][] = [['reach', 'Reach', 'compass'], ['risk', 'Danger', 'skull'], ['reward', 'Plunder', 'chest']];
+    patchHTML(this.bar, html`<div class="seg" role="radiogroup" aria-label="Chart view">${modes.map(([m, n, ic]) => html`<button class="${this.mode === m ? 'on' : ''}" data-act="mode:${m}" role="radio" aria-checked="${this.mode === m ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</div>
+      <span class="how">${this.app.touchMode ? 'Pinch to zoom, drag to pan' : 'Scroll to zoom, drag to pan'}</span>`);
+    const sw = (inner: string) => raw(`<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">${inner}</svg>`);
+    const items = [html`<span>${sw('<circle cx="9" cy="9" r="7" fill="#7a1810" stroke="#e2c88e" stroke-width="1.2"/><circle cx="9" cy="8" r="2.6" fill="#f2e2bc"/>')} Your Cove</span>`];
+    if (this.mode === 'reach') {
+      if (sel) items.push(html`<span>${sw(`<circle cx="9" cy="9" r="6.5" fill="rgba(250,244,224,.5)" stroke="${REACH}" stroke-width="2.2"/>`)} ${sel.name} can reach</span>`,
+        html`<span>${sw('<circle cx="9" cy="9" r="6.5" fill="url(#lgH)" stroke="rgba(70,40,15,.7)" stroke-dasharray="3 3"/><defs><pattern id="lgH" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M-1 5 5 -1" stroke="rgba(70,35,15,.7)"/></pattern></defs>')} Out of reach</span>`);
+      items.push(html`<span>${sw('<circle cx="9" cy="9" r="6.5" fill="url(#lgF)" stroke="rgba(70,40,15,.4)" stroke-dasharray="3 3"/><defs><pattern id="lgF" width="3" height="3" patternUnits="userSpaceOnUse"><rect width="3" height="3" fill="rgba(160,150,125,.55)"/><rect x=".6" y=".6" width=".9" height=".9" fill="rgba(80,65,45,.7)"/></pattern></defs>')} Uncharted</span>`);
+    } else items.push(html`<span class="scale ${this.mode}"><i></i> ${this.mode === 'risk' ? 'Safer → deadlier' : 'Lean → rich pickings'}</span>`);
+    patchHTML(this.legend, html`${items}`);
   }
 
   private drawSide(force: boolean): void {
@@ -341,31 +749,46 @@ export class SeaChart {
     const game = this.app.game;
     const r = game.regions[this.region] ?? game.regions[game.homeRegion];
     const known = r.knowledge > 0;
-    const level = ['Unexplored', 'Well Surveyed', 'Thoroughly Charted', 'Very Familiar Seas', 'Like the Back of Our Hand', 'Claimed as Our Waters'][Math.min(5, Math.floor(r.knowledge))];
+    const isHome = r.id === game.homeRegion;
     const ships = [...game.ships.values()];
-    const sel = this.ship ? game.ships.get(this.ship) : undefined;
+    const sel = this.selShip();
+    const pips = (v: number, on: string, off: string) => html`<span class="pips">${on.repeat(v)}<i>${off.repeat(5 - v)}</i></span>`;
+    const statusName = (s: Ship) => ({ docked: 'In port', boarding: 'Boarding', departing: 'Setting sail', atsea: 'At sea', returning: 'Homeward', repairing: 'Repairing', building: 'Being built', lost: 'Lost' } as Record<string, string>)[s.status] ?? s.status;
+    const reach = sel ? regionReachable(game, sel, r.id) : null;
+    const canTask = sel && (sel.status === 'docked' || sel.status === 'boarding' || sel.status === 'repairing');
     patchHTML(this.side, html`
-      <div class="row"><button class="btn small ${this.mode === 'risk' ? 'on' : ''}" data-act="mode:risk">Danger</button><button class="btn small ${this.mode === 'reward' ? 'on' : ''}" data-act="mode:reward">Plunder</button></div>
-      <h3>${r.name}${r.id === game.homeRegion ? ' (home)' : ''}</h3><div class="sub">${level}</div>
-      ${known ? html`<div class="kv inspector" style="display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:14px;margin-top:4px">
-        <span>Danger</span><span style="color:#8a1a10">${'●'.repeat(this.risk(r))}${'○'.repeat(5 - this.risk(r))}</span>
-        <span>Plunder</span><span style="color:#7a5a10">${'◆'.repeat(this.reward(r))}${'◇'.repeat(5 - this.reward(r))}</span>
-        ${NATIONS.map((n) => html`<span>${NATION_ADJ[n]}</span><span>${r.merchant[n] > 0.6 ? 'busy' : r.merchant[n] > 0.3 ? 'some' : 'few'} merchants, ${r.naval[n] > 0.5 ? 'strong' : r.naval[n] > 0.2 ? 'some' : 'little'} navy</span>`)}
-        <span>Settlements</span><span>${r.settlements.filter((s) => s.found).map((s) => `${s.name} (${NATION_ADJ[s.nat]} ${s.type})`).join(', ') || 'none known'}</span>
-        <span>Trade route</span><span>${r.routeFound ? 'yes' : 'none known'}</span></div>` : html`<div class="sub">Send a ship to explore these waters.</div>`}
-      <hr class="rule"><h3>Your Fleet</h3>
-      ${ships.length ? ships.map((s) => html`<div class="row" style="justify-content:space-between;cursor:pointer;padding:2px 4px;border-radius:4px;${s.id === this.ship ? 'background:rgba(200,160,72,0.35)' : ''}" data-act="ship:${s.id}">
-        <span>${icon('ship', 16)} ${s.name}</span><span class="sub">${s.status === 'atsea' ? `${MISSION_NAMES[s.mission]}, ${game.regions[s.region].name}` : s.status}</span></div>`) : html`<div class="sub">You have no ships. Build a boatyard!</div>`}
-      ${sel ? html`<hr class="rule"><h3>${sel.name}</h3><div style="font-size:14px">${SHIPS[sel.type].name} · ${MISSION_NAMES[sel.mission]} → ${game.regions[sel.region].name}</div>
-        <div class="sub">${(() => {
-          const re = regionReachable(game, sel, sel.region);
-          return re.ok ? `${(transitTime(game, sel, sel.region) / MONTH).toFixed(1)} months each way · rations ${Math.floor(sel.rations)}/${SHIPS[sel.type].rations}` : re.reason;
-        })()}</div>
-        <div class="row" style="margin-top:6px">${sel.status === 'docked' || sel.status === 'boarding' ? html`<button class="btn green small" data-act="sail">${icon('bell', 14)} Set Sail</button>` : ''}<button class="btn small" data-act="open">Ship details</button></div>` : ''}
-      <hr class="rule"><h3>Great Powers</h3>
-      ${NATIONS.map((n) => {
-        const st = game.nations[n];
-        return html`<div style="font-size:14px"><b>${NATION_NAMES[n]}</b>: ${relationLevel(st.relation)}${st.knows ? ' · knows where you are' : ''}${st.atWarWith.length ? ` · at war with ${st.atWarWith.map((x) => NATION_NAMES[x]).join(', ')}` : ''}${st.invasion.stage ? html` · <b style="color:#a01010">invasion ${['', 'rumoured', 'assembling', 'underway'][st.invasion.stage]}!</b>` : ''}<br><span class="sub">plundered ${fmt(st.plunderGold)} gold</span></div>`;
-      })}`);
+      <section class="sect">
+        <h4 class="eng">Your fleet</h4>
+        ${ships.length ? html`<div class="pick-list">${ships.map((s) => html`<button class="pick ${s.id === this.ship ? 'on' : ''}" data-act="ship:${s.id}">
+          ${icon('ship', 18)}<span class="nm">${s.name}<small>${SHIPS[s.type].name}</small></span><span class="chip ${s.status === 'docked' ? 'ok' : ''}">${statusName(s)}</span></button>`)}</div>`
+          : html`<div class="sub">You have no ships yet. Build a Boatyard and a Dock.</div>`}
+      </section>
+      <section class="sect">
+        <div class="titled"><h3>${r.name}</h3>${isHome ? html`<span class="chip home">Home waters</span>` : ''}</div>
+        <div class="sub">${LEVELS[Math.min(5, Math.floor(r.knowledge))]}${isHome ? ' · your island lies here' : ''}</div>
+        ${sel && reach ? html`<div class="callout ${reach.ok ? 'ok' : 'bad'}">${icon(reach.ok ? 'ship' : 'info', 16)}<span>${reach.ok
+          ? (isHome ? `${sel.name} is moored at home.` : `${sel.name}: ${(transitTime(game, sel, r.id) / MONTH).toFixed(1)} months' sail each way.${canTask && sel.region === r.id ? ' Course set.' : ''}`)
+          : reach.reason}</span></div>` : ''}
+        ${known ? html`<div class="kv">
+          <span>Danger</span>${pips(this.risk(r), '●', '○')}
+          <span>Plunder</span>${pips(this.reward(r), '◆', '◇')}
+          ${NATIONS.map((n) => html`<span>${NATION_ADJ[n]}</span><span>${r.merchant[n] > 0.6 ? 'busy' : r.merchant[n] > 0.3 ? 'some' : 'few'} merchants, ${r.naval[n] > 0.5 ? 'strong' : r.naval[n] > 0.2 ? 'some' : 'little'} navy</span>`)}
+          <span>Settlements</span><span>${r.settlements.filter((s) => s.found).map((s) => `${s.name} (${NATION_ADJ[s.nat]} ${s.type})`).join(', ') || 'none known'}</span>
+          <span>Trade route</span><span>${r.routeFound ? 'found' : 'none known'}</span></div>` : html`<div class="sub">Send a ship to explore the neighbouring seas to chart these waters.</div>`}
+      </section>
+      ${sel ? html`<section class="sect">
+        <h4 class="eng">${sel.name}'s orders</h4>
+        <div class="kv"><span>Mission</span><span>${MISSION_NAMES[sel.mission]}</span><span>Bound for</span><span>${game.regions[sel.region].name}</span>
+          <span>Rations</span><span>${Math.floor(sel.rations)} of ${SHIPS[sel.type].rations}</span></div>
+        <div class="actions">${canTask && sel.status !== 'repairing' ? html`<button class="btn primary" data-act="sail">${icon('bell', 16)} ${sel.status === 'boarding' ? 'Leave now' : 'Set sail'}</button>` : ''}<button class="btn ghost" data-act="open">Ship details</button></div>
+      </section>` : ''}
+      <section class="sect">
+        <h4 class="eng">Great Powers</h4>
+        ${NATIONS.map((n) => {
+          const st = game.nations[n];
+          return html`<div class="power"><b>${NATION_NAMES[n]}</b> <span class="chip">${relationLevel(st.relation)}</span>${st.invasion.stage ? html` <span class="chip bad">Invasion ${['', 'rumoured', 'assembling', 'underway'][st.invasion.stage]}</span>` : ''}
+            <div class="sub">${st.knows ? 'Knows where you are' : 'Your island is a secret'}${st.atWarWith.length ? ` · at war with ${st.atWarWith.map((x) => NATION_NAMES[x]).join(', ')}` : ''} · plundered ${fmt(st.plunderGold)} gold</div></div>`;
+        })}
+      </section>`);
   }
 }

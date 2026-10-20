@@ -5,5 +5,5 @@ dist
 test-results
 shots/
 __pycache__/
-scripts/_*.mjs
+scripts/_*
 .claude/worktrees/

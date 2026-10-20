@@ -51,7 +51,7 @@ export class Modal {
     this.show(html`<div class="seal">${icon(m.kind === 'ship' ? 'ship' : m.kind === 'bad' || m.kind === 'alert' ? 'skull' : 'coin', 30)}</div>
       <h2>${m.title}</h2><div class="sub">${m.date}</div>
       <div class="body">${lines[0]}${lines.length > 1 ? html`<hr class="rule"><div style="font-size:14px;color:#4a3018">${lines.slice(1).join('\n\n')}</div>` : ''}</div>
-      <div class="row">${focus ? html`<button class="btn" data-act="do:go">Show me</button>` : ''}<button class="btn green" data-act="do:ok">Aye!</button></div>`, {
+      <div class="row">${focus ? html`<button class="btn ghost" data-act="do:go">${icon('eye', 15)} Show me</button>` : ''}<button class="btn primary" data-act="do:ok">Aye!</button></div>`, {
       ok: () => this.close(),
       go: () => {
         this.close();
@@ -62,7 +62,7 @@ export class Modal {
   }
 
   confirm(title: string, text: string, yes: () => void): void {
-    this.show(html`<h2>${title}</h2><div class="body">${text}</div><div class="row"><button class="btn" data-act="do:no">No</button><button class="btn red" data-act="do:yes">Yes</button></div>`, {
+    this.show(html`<h2>${title}</h2><div class="body">${text}</div><div class="row"><button class="btn ghost" data-act="do:no">Keep it</button><button class="btn danger" data-act="do:yes">Yes, do it</button></div>`, {
       yes: () => {
         this.close();
         yes();
@@ -72,14 +72,14 @@ export class Modal {
   }
 
   gameMenu(): void {
-    this.show(html`<h2>Captain's Quarters</h2><div class="sub">The game is paused.</div><hr class="rule">
-      <div style="display:flex;flex-direction:column;gap:8px;margin:10px 0">
-        <button class="btn" data-act="do:resume">Resume</button>
-        <button class="btn" data-act="do:save">Save Game</button>
-        <button class="btn" data-act="do:load">Load Game</button>
-        <button class="btn" data-act="do:settings">Settings</button>
-        <button class="btn" data-act="do:help">How to Play</button>
-        <button class="btn red" data-act="do:quit">Quit to Main Menu</button>
+    this.show(html`<h2>Captain's Quarters</h2><div class="sub center">The island holds its breath while you are here.</div>
+      <div class="menu-list">
+        <button class="btn primary" data-act="do:resume">${icon('play', 15)} Resume</button>
+        <button class="mrow" data-act="do:save">${icon('chest', 18)}<span>Save game<small>Four slots, plus the autosave</small></span></button>
+        <button class="mrow" data-act="do:load">${icon('book', 18)}<span>Load game<small>Pick up an earlier reign</small></span></button>
+        <button class="mrow" data-act="do:settings">${icon('gear', 18)}<span>Settings<small>Sound, graphics, advisor, camera</small></span></button>
+        <button class="mrow" data-act="do:help">${icon('info', 18)}<span>How to play<small>Barnaby explains the island</small></span></button>
+        <button class="mrow danger" data-act="do:quit">${icon('skull', 18)}<span>Quit to main menu<small>Unsaved progress is lost; the autosave is kept</small></span></button>
       </div>`, {
       resume: () => this.close(),
       save: () => {
@@ -108,11 +108,11 @@ export class Modal {
   async saveDialog(): Promise<void> {
     const saves = await listSaves();
     const slots = ['slot1', 'slot2', 'slot3', 'slot4'];
-    this.show(html`<h2>Save Game</h2><div style="display:flex;flex-direction:column;gap:6px;margin:10px 0">
+    this.show(html`<h2>Save Game</h2><div class="menu-list">
       ${slots.map((s, i) => {
         const m = saves.find((x) => x.slot === s);
-        return html`<button class="btn" data-act="do:${s}">Slot ${i + 1}: ${m ? `${m.king}, ${m.date}` : 'empty'}</button>`;
-      })}</div><div class="row"><button class="btn" data-act="do:cancel">Cancel</button></div>`, {
+        return html`<button class="mrow" data-act="do:${s}">${icon('chest', 18)}<span>Slot ${i + 1}<small>${m ? `${m.king}, ${m.date}` : 'Empty'}</small></span></button>`;
+      })}</div><div class="row"><button class="btn ghost" data-act="do:cancel">Cancel</button></div>`, {
       ...Object.fromEntries(slots.map((s) => [s, async () => {
         this.close();
         await this.app.save(s);
@@ -124,9 +124,9 @@ export class Modal {
 
   async loadDialog(fromMenu = false): Promise<void> {
     const saves = await listSaves();
-    this.show(html`<h2>Load Game</h2><div style="display:flex;flex-direction:column;gap:6px;margin:10px 0;max-height:50vh;overflow:auto">
-      ${saves.length ? saves.map((m) => html`<button class="btn" data-act="do:${m.slot}">${m.slot === 'auto' ? 'Autosave' : m.slot === 'quick' ? 'Quicksave' : m.slot.replace('slot', 'Slot ')}: ${m.king}, ${m.date}<small style="opacity:.7"> (${new Date(m.savedAt).toLocaleString()})</small></button>`) : html`<div class="sub">No saved games yet.</div>`}
-      </div><div class="row"><button class="btn" data-act="do:cancel">Cancel</button></div>`, {
+    this.show(html`<h2>Load Game</h2><div class="menu-list scroll" style="max-height:50vh">
+      ${saves.length ? saves.map((m) => html`<button class="mrow" data-act="do:${m.slot}">${icon('book', 18)}<span>${m.slot === 'auto' ? 'Autosave' : m.slot === 'quick' ? 'Quicksave' : m.slot.replace('slot', 'Slot ')}: ${m.king}, ${m.date}<small>Saved ${new Date(m.savedAt).toLocaleString()}</small></span></button>`) : html`<div class="sub">No saved games yet.</div>`}
+      </div><div class="row"><button class="btn ghost" data-act="do:cancel">Cancel</button></div>`, {
       ...Object.fromEntries(saves.map((m) => [m.slot, async () => {
         this.close();
         await this.app.continueGame(m.slot);
@@ -139,15 +139,16 @@ export class Modal {
     const a = audio.vol;
     const q = this.app.quality;
     const adv = this.app.hud.advisorMode;
-    const slider = (k: keyof typeof a, label: string) => html`<label style="display:grid;grid-template-columns:110px 1fr;align-items:center;gap:8px">${label}<input type="range" min="0" max="1" step="0.05" value="${a[k]}" data-vol="${k}"></label>`;
-    this.show(html`<h2>Settings</h2><hr class="rule">
-      <h3>Sound</h3>${slider('master', 'Master')}${slider('music', 'Music')}${slider('voice', 'Voices')}${slider('sfx', 'Effects')}${slider('ambient', 'Ambience')}
-      <h3>Graphics</h3><div class="row">${(['low', 'medium', 'high'] as const).map((x) => html`<button class="btn small ${q === x ? 'on' : ''}" data-act="do:q_${x}">${x[0].toUpperCase() + x.slice(1)}</button>`)}</div>
+    const slider = (k: keyof typeof a, label: string) => html`<label class="slider"><span>${label}</span><input type="range" min="0" max="1" step="0.05" value="${a[k]}" data-vol="${k}"><output>${Math.round(a[k] * 100)}%</output></label>`;
+    this.show(html`<h2>Settings</h2><div class="body settings">
+      <section class="sect"><h4 class="eng">Sound</h4>${slider('master', 'Master')}${slider('music', 'Music')}${slider('voice', 'Voices')}${slider('sfx', 'Effects')}${slider('ambient', 'Ambience')}</section>
+      <section class="sect"><h4 class="eng">Graphics</h4><div class="seg full" role="radiogroup">${(['low', 'medium', 'high'] as const).map((x) => html`<button class="${q === x ? 'on' : ''}" data-act="do:q_${x}">${x[0].toUpperCase() + x.slice(1)}</button>`)}</div>
       <div class="sub" style="font-size:12px;margin-top:4px;user-select:text;-webkit-user-select:text">Renderer: ${this.app.world.backend === 'webgpu' ? 'WebGPU' : 'WebGL'} &middot; ${this.app.world.gpu.renderer}${this.app.world.gpu.software ? ' (software, no graphics acceleration)' : ''} &middot; resolution ${Math.round(this.app.world.pr * 100)}%</div>
-      <div class="row" style="margin-top:6px;align-items:center;gap:8px"><button class="btn small" data-act="do:profile">Record performance (60 s)</button><span class="sub" style="font-size:12px">Play normally for a minute, then copy the report.</span></div>
-      <h3>Advisor</h3><div class="row">${(['full', 'brief', 'off'] as const).map((x) => html`<button class="btn small ${adv === x ? 'on' : ''}" data-act="do:a_${x}">${x === 'full' ? 'Chatty' : x === 'brief' ? 'Brief' : 'Silent'}</button>`)}</div>
-      <h3>Camera</h3><label><input type="checkbox" data-edge ${this.app.world.rig.edgeScroll ? 'checked' : ''}> Scroll at the screen edges</label>
-      <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn green" data-act="do:done">Done</button></div>`, {
+      <div class="row" style="margin-top:8px;align-items:center;gap:8px"><button class="btn ghost small" data-act="do:profile">Record performance (60 s)</button><span class="sub" style="font-size:12px">Play normally for a minute, then copy the report.</span></div></section>
+      <section class="sect"><h4 class="eng">Advisor</h4><div class="seg full" role="radiogroup">${(['full', 'brief', 'off'] as const).map((x) => html`<button class="${adv === x ? 'on' : ''}" data-act="do:a_${x}">${x === 'full' ? 'Chatty' : x === 'brief' ? 'Brief' : 'Silent'}</button>`)}</div>
+        <div class="seg-note">${adv === 'full' ? 'Barnaby speaks his mind in full.' : adv === 'brief' ? 'Barnaby keeps it to one line.' : 'Barnaby holds his tongue; important news still arrives as notes.'}</div></section>
+      <section class="sect"><h4 class="eng">Camera</h4><label class="check"><input type="checkbox" data-edge ${this.app.world.rig.edgeScroll ? 'checked' : ''}><span>Scroll when the pointer touches the screen edges</span></label></section></div>
+      <div class="row"><button class="btn primary" data-act="do:done">Done</button></div>`, {
       done: () => this.close(),
       profile: () => {
         this.close();
@@ -163,6 +164,8 @@ export class Modal {
     for (const inp of this.box.querySelectorAll<HTMLInputElement>('[data-vol]')) {
       inp.oninput = () => {
         (audio.vol as any)[inp.dataset.vol!] = +inp.value;
+        const o = inp.nextElementSibling;
+        if (o) o.textContent = `${Math.round(+inp.value * 100)}%`;
         audio.applyVolumes();
       };
     }
@@ -205,24 +208,23 @@ export class Modal {
 <b>Your hoard</b> is your score. Build a Pirate Cave and a share of all income is skimmed into it.
 
 <b>Controls:</b> WASD or arrow keys pan, mouse wheel zooms, Q/E rotate, right-drag pans. B build, R rotate a building, O overlays, X edicts, M sea chart, L island log, F follow the selection, Space pause, 1-4 speed, Backspace cycles through disgruntled pirates, F5 quicksave.</div>
-<div class="row"><button class="btn green" data-act="do:ok">Got it</button></div>`, { ok: () => this.close() });
+<div class="row"><button class="btn primary" data-act="do:ok">Got it</button></div>`, { ok: () => this.close() });
   }
 
   gameOver(): void {
     const g = this.app.game;
     const o = g.over!;
     const s = o.score;
-    const medal = s.medal === 'gold' ? '🥇' : s.medal === 'silver' ? '🥈' : '🥉';
     this.show(html`<div class="gameover"><h2>${o.win ? 'Your Reign Is Complete' : 'Your Reign Has Ended'}</h2>
-      <p>${o.reason}</p>
-      ${o.win ? html`<div class="medal">${medal}</div><h3>${s.medal[0].toUpperCase() + s.medal.slice(1)} Medal</h3>` : ''}
-      <table class="ledger" style="max-width:380px;margin:8px auto">
-        <tr><td>Hoard</td><td>${fmt(s.hoard)}</td></tr><tr><td>Pirate happiness</td><td>${fmt(s.happiness)}</td></tr>
-        <tr><td>Fleet</td><td>${fmt(s.fleet)}</td></tr><tr><td>Captains</td><td>${fmt(s.captains)}</td></tr><tr><td>Pirates</td><td>${fmt(s.pirates)}</td></tr>
-        <tr><td>Bonus objective (${s.bonusKey})</td><td>×3</td></tr><tr><td>Difficulty</td><td>${Math.round(s.difficulty * 100)}%</td></tr>
-        <tr><td><b>Final score</b></td><td><b>${fmt(s.total)}</b></td></tr>
-      </table></div>
-      <div class="row">${o.win ? html`<button class="btn" data-act="do:cont">Keep playing</button>` : ''}<button class="btn green" data-act="do:menu">Main Menu</button></div>`, {
+      <p class="reason">${o.reason}</p>
+      ${o.win ? html`<div class="medal ${s.medal}" role="img" aria-label="${s.medal} medal"><span>${s.medal[0].toUpperCase() + s.medal.slice(1)}</span></div>` : ''}
+      <div class="score kv">
+        <span>Hoard</span><span>${fmt(s.hoard)}</span><span>Pirate happiness</span><span>${fmt(s.happiness)}</span>
+        <span>Fleet</span><span>${fmt(s.fleet)}</span><span>Captains</span><span>${fmt(s.captains)}</span><span>Pirates</span><span>${fmt(s.pirates)}</span>
+        <span>Bonus (${s.bonusKey})</span><span>×3</span><span>Difficulty</span><span>${Math.round(s.difficulty * 100)}%</span>
+        <span class="tot">Final score</span><span class="tot">${fmt(s.total)}</span>
+      </div></div>
+      <div class="row">${o.win ? html`<button class="btn ghost" data-act="do:cont">Keep playing</button>` : ''}<button class="btn primary" data-act="do:menu">Main menu</button></div>`, {
       cont: () => {
         g.over = null;
         g.settings.years = 999;

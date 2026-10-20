@@ -158,9 +158,10 @@ export function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
-/** coloured meter */
+/** an inked tube filled from left to right: red when low, ochre midway, green when full ('brass' for plain progress) */
 export function bar(v: number, cls = '', label = ''): Raw {
-  const w = Math.max(0, Math.min(1, v)) * 100;
-  const hue = Math.round(Math.max(0, Math.min(1, v)) * 110);
-  return html`<div class="meter ${cls}" title="${label}"><div class="fill" style="width:${w.toFixed(1)}%;background:hsl(${hue},62%,42%)"></div></div>`;
+  const t = Math.max(0, Math.min(1, v));
+  const w = t * 100;
+  const fill = cls.includes('brass') ? 'linear-gradient(90deg,#8a6a30,#c8a060)' : `hsl(${Math.round(4 + t * 106)},${Math.round(48 - t * 8)}%,${Math.round(38 + t * 2)}%)`;
+  return html`<div class="meter ${cls}" ${label ? html`title="${label}"` : ''}><div class="fill" style="width:${w.toFixed(1)}%;background:${fill}"></div></div>`;
 }
