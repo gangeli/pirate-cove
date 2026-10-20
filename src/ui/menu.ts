@@ -176,6 +176,7 @@ export class MainMenu {
       <div class="content scroll" style="flex:1;margin:8px 0">${body}</div>
       <div class="row" style="justify-content:space-between"><span class="sub">Difficulty: <b>${this.difficulty()}%</b> (your final score is multiplied by this)</span>
         <div class="row">${this.tab !== 'king' ? html`<button class="btn ghost" data-act="tab:${this.tab === 'preset' ? 'island' : this.tab === 'island' ? 'conditions' : 'king'}">Next</button>` : ''}<button class="btn primary" data-act="start">Begin your reign</button></div></div>`);
+    this.setup.querySelector('.tabs .t.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const sel = this.setup.querySelector<HTMLSelectElement>('[data-region]');
     if (sel) sel.onchange = () => (this.s.region = +sel.value);
     const bg = this.setup.querySelector<HTMLSelectElement>('[data-bg]');
