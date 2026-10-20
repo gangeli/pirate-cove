@@ -703,6 +703,50 @@ label.check input { width: 18px; height: 18px; accent-color: var(--blood); }
 .inspector.ringed .ins-foot .in-ring { display: none; }
 .inspector.ringed .ins-foot:not(:has(> .btn:not(.in-ring))) { display: none; }
 
+/* ---------- notices outside the game proper: no graphics acceleration, the performance log ---------- */
+.gpu-notice { left: 50%; top: 84px; transform: translateX(-50%); width: min(540px, calc(100vw - 24px)); z-index: 40; font-size: 15px; line-height: 1.38; padding: 18px 22px 14px; max-height: calc(100% - 100px); overflow-y: auto; }
+.panel.gpu-notice { padding-top: 54px; }
+.gpu-notice h2 { font-size: 24px; color: var(--blood); padding: 0 30px; line-height: 1.1; text-align: center; }
+.gpu-notice .seal { position: absolute; left: 50%; margin-left: -22px; top: 6px; width: 44px; height: 44px; display: grid; place-items: center; color: #e8b090; border-radius: 47% 53% 50% 48% / 52% 46% 54% 48%;
+  background: radial-gradient(circle at 42% 38%, #9a2a20, #6a140e 55%, #3a0806); box-shadow: 0 3px 6px rgba(0, 0, 0, 0.6), inset 0 0 0 4px rgba(0, 0, 0, 0.18); }
+.gpu-notice p { margin: 8px 0 10px; }
+@media (max-height: 540px) { .panel.gpu-notice { top: 6px; max-height: calc(100% - 12px); padding-top: 12px; z-index: 40; } .gpu-notice .seal { display: none; } }
+.gpu-notice h4 { font-size: 15px; color: var(--ink2); margin: 4px 0 2px; }
+.gpu-notice .steps { margin: 4px 0 10px; padding-left: 22px; }
+.gpu-notice .steps li { margin: 3px 0; }
+.gpu-notice .steps li::marker { color: var(--blood); font-family: var(--head); }
+.gpu-notice .rend { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; font-size: 13px; color: var(--ink3); font-style: italic; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--ink2) 30%, transparent); }
+.gpu-notice .rend code, .prof-raw { font: 12px/1.35 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-style: normal; color: var(--ink); word-break: break-all; }
+.gpu-notice .row, .prof-report .row { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.prof-badge {
+  position: fixed; right: 12px; top: calc(var(--app-h, 100dvh) - 84px - env(safe-area-inset-bottom, 0px)); transform: translateY(-100%); z-index: 60; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 9px; font: 14px/1.2 var(--body); color: var(--brass-hi); border-radius: 3px;
+  background: var(--wood-img); background-size: 256px 256px; border: 1px solid #000; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 50%, transparent), 0 3px 10px rgba(0, 0, 0, 0.5);
+}
+.prof-badge b { font-weight: normal; color: #f4e2b4; font-variant-numeric: tabular-nums; }
+.prof-badge .sub { font-size: 12px; font-style: italic; color: #b8a888; }
+.prof-badge .rec { width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #e05040, #7a1408); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4); animation: rec 1.4s ease-in-out infinite; }
+@keyframes rec { 50% { opacity: 0.45; } }
+.prof-report { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 70; width: min(640px, calc(100vw - 24px)); max-height: calc(var(--app-h, 100dvh) - 48px); display: flex; flex-direction: column; gap: 8px; font-family: var(--body); }
+.prof-report h2 { font-size: 25px; color: var(--blood); text-align: center; }
+.prof-report > .sub { text-align: center; }
+.prof-gauges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.prof-gauges > div { display: flex; flex-direction: column; align-items: center; padding: 6px 4px 5px; border: 1px solid color-mix(in srgb, var(--ink2) 45%, transparent); border-radius: 2px; background: rgba(250, 242, 220, 0.35); }
+.prof-gauges b { font: 24px/1 var(--display); color: #2a140a; font-weight: normal; font-variant-numeric: tabular-nums; }
+.prof-gauges span { font-size: 12.5px; font-style: italic; color: var(--ink2); text-align: center; }
+@media (max-width: 480px) { .prof-gauges { grid-template-columns: repeat(2, 1fr); } }
+@media (max-height: 540px) {
+  .prof-report { gap: 4px; padding-top: 8px; padding-bottom: 8px; max-height: calc(var(--app-h, 100dvh) - 12px); }
+  .prof-report h2 { font-size: 20px; }
+  .prof-report > .sub { display: none; }
+  .prof-gauges > div { padding: 2px 4px; }
+  .prof-gauges b { font-size: 18px; }
+  .prof-raw { min-height: 60px; }
+  .prof-report .row { margin-top: 2px; }
+}
+.prof-raw { flex: 1; min-height: 160px; width: 100%; box-sizing: border-box; resize: none; padding: 8px; font-size: 11px; background: rgba(255, 250, 235, 0.65); border: 1px solid var(--ink2); border-radius: 2px; box-shadow: inset 0 1px 4px rgba(60, 30, 10, 0.25); }
+.prof-raw:focus { outline: 2px solid var(--blood-hi); outline-offset: 1px; }
+
 /* ---------- touch placement bar ---------- */
 .touchbar { position: absolute; left: 50%; bottom: calc(var(--tb-h) + 8px); transform: translateX(-50%); display: flex; gap: 8px; z-index: 12; pointer-events: auto; }
 .touchbar .btn { font-size: 18px; padding: 8px 18px; }

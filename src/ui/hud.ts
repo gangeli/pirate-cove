@@ -220,16 +220,17 @@ export class Hud {
       /* ignore */
     }
     const p = el('div', 'panel gpu-notice', this.app.root);
-    p.style.cssText = 'left:50%;top:84px;transform:translateX(-50%);width:min(520px,calc(100vw - 32px));z-index:40;font-size:15px;line-height:1.35';
-    setHTML(p, html`<button class="close" data-act="ok">${icon('close', 14)}</button>
-      <h3 style="margin-top:0">The Ship Sails Without Her Rigging</h3>
-      <div>Thy browser is drawing this island <b>without graphics acceleration</b> &mdash; every timber and wave is painted by hand on the
-      CPU, so the game will crawl. We have struck the lesser sails (lowest graphics) to keep her moving.</div>
-      <div style="margin-top:6px"><b>To set it right:</b> in Chrome or Edge, open <i>Settings &rsaquo; System</i> and turn on
-      <i>&ldquo;Use graphics acceleration when available&rdquo;</i>, then relaunch the browser. In Firefox: <i>Settings &rsaquo; General &rsaquo; Performance</i>,
-      untick &ldquo;Use recommended&rdquo; and tick &ldquo;Use hardware acceleration when available&rdquo;. Check <i>chrome://gpu</i> if it persists.</div>
-      <div class="sub" style="margin-top:6px">Renderer reported: ${renderer}</div>
-      <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn small" data-act="ok">Understood</button></div>`);
+    setHTML(p, html`<button class="close" data-act="ok" aria-label="Close">${icon('close', 14)}</button>
+      <div class="seal" aria-hidden="true">${icon('wheel', 24)}</div>
+      <h2>The Ship Sails Without Her Rigging</h2>
+      <p>Your browser is drawing this island <b>without graphics acceleration</b>: every timber and wave is painted by hand on the
+      CPU, so the game will crawl. We have struck the lesser sails (lowest graphics) to keep her moving.</p>
+      <h4 class="eng">To set it right</h4>
+      <ol class="steps"><li><b>Chrome or Edge:</b> <i>Settings &rsaquo; System</i>, turn on <i>&ldquo;Use graphics acceleration when available&rdquo;</i>, then relaunch the browser.</li>
+      <li><b>Firefox:</b> <i>Settings &rsaquo; General &rsaquo; Performance</i>, untick &ldquo;Use recommended&rdquo; and tick &ldquo;Use hardware acceleration when available&rdquo;.</li>
+      <li>Still crawling? Check <i>chrome://gpu</i>.</li></ol>
+      <div class="rend"><span>Renderer reported</span><code>${renderer}</code></div>
+      <div class="row"><button class="btn primary" data-act="ok">Understood</button></div>`);
     delegate(p, {
       ok: () => {
         try {

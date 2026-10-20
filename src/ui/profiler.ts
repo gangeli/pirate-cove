@@ -68,8 +68,7 @@ export class Profiler {
     } catch {
       /* ignore */
     }
-    this.badge = el('div', 'panel prof-badge', document.body);
-    this.badge.style.cssText = 'position:fixed;right:12px;top:calc(var(--app-h, 100dvh) - 84px - env(safe-area-inset-bottom, 0px));transform:translateY(-100%);z-index:60;padding:6px 10px;font-size:13px;pointer-events:auto;cursor:pointer';
+    this.badge = el('div', 'prof-badge', document.body); // styled in style.css (timber tag with a recording seal)
     this.badge.title = 'Click to stop early';
     this.badge.onclick = () => this.finish();
     this.paintBadge();
@@ -77,7 +76,7 @@ export class Profiler {
 
   private paintBadge(): void {
     const left = Math.max(0, Math.ceil(this.secondsWanted - (performance.now() - this.t0) / 1000));
-    setHTML(this.badge, html`<span style="color:#e04030">&#9679;</span> Recording performance&hellip; ${left}s <span class="sub">(click to stop)</span>`);
+    setHTML(this.badge, html`<span class="rec" aria-hidden="true"></span><span>Logging the voyage&hellip; <b>${left}s</b></span><span class="sub">stop now</span>`);
   }
 
   // ------------------------------------------------------------------------------------------- frame hooks
@@ -241,14 +240,14 @@ export function recordProfile(app: App, seconds = 60): void {
 }
 
 function showReport(report: string): void {
-  const box = el('div', 'panel prof-report', document.body);
-  box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:70;width:min(620px,calc(100vw - 32px));max-height:calc(var(--app-h, 100dvh) - 64px);display:flex;flex-direction:column;gap:8px';
+  const box = el('div', 'panel prof-report', document.body); // layout in style.css
   const sum = JSON.parse(report).summary;
   const kb = (report.length / 1024).toFixed(1);
-  setHTML(box, html`<h3 style="margin:0">Performance report</h3>
-    <div class="sub">${sum.fps} fps average &middot; GPU ${sum.gpuMsPerFrame ?? 'n/a'} ms/frame &middot; ${sum.drawCalls} draw calls &middot; ${kb} KB. Copy it and paste it into the chat, or save the file.</div>
-    <textarea readonly style="flex:1;min-height:160px;font:11px/1.3 ui-monospace,monospace;width:100%;box-sizing:border-box;background:#f6efdc;color:#2a1a0c;border:1px solid #8a6a3a">${report}</textarea>
-    <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn small" data-k="copy">Copy</button><button class="btn small" data-k="save">Save file</button><button class="btn small green" data-k="close">Close</button></div>`);
+  setHTML(box, html`<h2>Ship&rsquo;s Log of Performance</h2>
+    <div class="sub">Copy it and paste it into the chat, or save the file.</div>
+    <div class="prof-gauges"><div><b>${sum.fps}</b><span>fps average</span></div><div><b>${sum.gpuMsPerFrame ?? 'n/a'}</b><span>GPU ms a frame</span></div><div><b>${sum.drawCalls}</b><span>draw calls</span></div><div><b>${kb}</b><span>KB of log</span></div></div>
+    <textarea readonly class="prof-raw" aria-label="Performance report (JSON)">${report}</textarea>
+    <div class="row"><button class="btn ghost" data-k="copy">Copy</button><button class="btn ghost" data-k="save">Save file</button><button class="btn primary" data-k="close">Close</button></div>`);
   const ta = box.querySelector('textarea')!;
   const btn = (k: string) => box.querySelector<HTMLButtonElement>(`[data-k="${k}"]`)!;
   btn('copy').onclick = async () => {
