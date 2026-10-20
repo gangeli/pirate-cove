@@ -3,6 +3,7 @@
  * Material images (--paper, --wood-img, --wood-dark, --leather-img) are painted at startup by theme.ts.
  */
 :root {
+  --tb-h: 74px; /* toolbar height: panels anchored to the bottom sit just above it */
   --parch: #e4d4ae;
   --parch2: #d3be8e;
   --ink: #23170c;
@@ -135,16 +136,23 @@ input[type=range] { accent-color: var(--blood); }
   clip-path: polygon(16px 0, calc(100% - 16px) 0, 100% 100%, 0 100%);
 }
 .tool {
-  width: 50px; height: 50px; display: grid; place-items: center; cursor: pointer; color: var(--brass); position: relative;
+  width: 58px; height: 54px; padding: 4px 0 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  cursor: pointer; color: var(--brass); position: relative; font: inherit;
   background: radial-gradient(ellipse at 50% 35%, rgba(255, 220, 160, 0.08), rgba(0, 0, 0, 0.35)), var(--leather-img);
   background-size: auto, 256px 256px;
   border: 1px solid #000; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 40%, transparent), inset 0 2px 8px rgba(0, 0, 0, 0.6);
   transition: color 0.12s, box-shadow 0.12s;
 }
 .tool .ic { filter: drop-shadow(0 1px 0 #000); }
+.tool .lbl { font-family: var(--body); font-size: 11.5px; line-height: 1; color: #c8b088; text-shadow: 0 1px 0 #000; white-space: nowrap; letter-spacing: 0.01em; }
 .tool:hover { color: var(--brass-hi); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass-hi) 80%, transparent), inset 0 2px 8px rgba(0, 0, 0, 0.6); }
+.tool:hover .lbl { color: #ecdcb4; }
+.tool:focus-visible { outline: 2px solid var(--brass-hi); outline-offset: -3px; }
 .tool.on { color: #f6e6bc; box-shadow: inset 0 0 0 1px #e2c88e, inset 0 0 0 3px rgba(0, 0, 0, 0.5), inset 0 0 14px rgba(226, 180, 90, 0.45), 0 0 10px rgba(226, 180, 90, 0.25); }
-.tool .key { position: absolute; bottom: 1px; right: 3px; font-size: 10px; color: #a89474; font-family: var(--head); letter-spacing: 0.02em; }
+.tool.on .lbl { color: #f6e6bc; }
+.tool.disabled { cursor: default; color: #6a5a44; }
+.tool.disabled .lbl { color: #7a6a52; }
+.tool.disabled:hover { color: #6a5a44; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 40%, transparent), inset 0 2px 8px rgba(0, 0, 0, 0.6); }
 .toolbar .sep { width: 1px; height: 38px; background: color-mix(in srgb, var(--brass) 35%, transparent); margin: 0 6px; }
 
 .clock { position: absolute; top: 0; right: 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 7px 10px 8px; pointer-events: auto; border-top: 0; }
@@ -233,7 +241,7 @@ input[type=range] { accent-color: var(--blood); }
 .modal .seal .ic { opacity: 0.75; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)); }
 
 /* ---------- inspector ---------- */
-.inspector { right: 12px; bottom: 12px; z-index: 5; width: 414px; max-height: calc(100% - 120px); display: flex; flex-direction: column; }
+.inspector { right: 12px; bottom: calc(var(--tb-h) + 8px); z-index: 5; width: 414px; max-height: calc(100% - var(--tb-h) - 100px); display: flex; flex-direction: column; }
 .inspector .head { display: flex; gap: 12px; align-items: center; }
 .inspector .head .portrait { border: 1px solid var(--ink); box-shadow: 0 0 0 3px rgba(226, 210, 170, 0.6), 0 0 0 4px var(--ink2); flex: none; }
 .inspector .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 14px; }
@@ -260,7 +268,7 @@ input[type=range] { accent-color: var(--blood); }
 .thought.bad { color: var(--blood); }
 
 /* ---------- build menu ---------- */
-.buildmenu { left: 50%; transform: translateX(-50%); bottom: 82px; width: min(920px, 96vw); padding: 10px 12px 12px; }
+.buildmenu { left: 50%; transform: translateX(-50%); bottom: calc(var(--tb-h) + 8px); width: min(920px, 96vw); padding: 10px 12px 12px; }
 .buildmenu .cats { display: flex; gap: 0; flex-wrap: wrap; margin-bottom: 10px; border-bottom: 1px solid var(--ink2); margin-right: 30px; }
 .buildmenu .cat { font-family: var(--head); font-size: 14px; padding: 3px 7px 2px; cursor: pointer; color: var(--ink3); border: 1px solid transparent; border-bottom: 0; margin-bottom: -1px; letter-spacing: 0; white-space: nowrap; }
 .buildmenu .cat:hover { color: var(--ink); }
@@ -303,7 +311,7 @@ table.ledger tr.sel td { background: color-mix(in srgb, var(--blood) 12%, transp
 .legend .grad { height: 8px; margin: 4px 0; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3); }
 
 /* ---------- placement hint ---------- */
-.hint { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); background: rgba(20, 13, 8, 0.92); color: #e4d6b4; border: 1px solid #000; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 50%, transparent); padding: 5px 14px; font-size: 15px; font-style: italic; pointer-events: none; }
+.hint { position: absolute; left: 50%; bottom: calc(var(--tb-h) + 10px); transform: translateX(-50%); background: rgba(20, 13, 8, 0.92); color: #e4d6b4; border: 1px solid #000; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 50%, transparent); padding: 5px 14px; font-size: 15px; font-style: italic; pointer-events: none; }
 .cursor-tip { position: fixed; left: 0; top: 0; will-change: transform; pointer-events: none; z-index: 100; background: rgba(20, 13, 8, 0.92); color: #e8a08a; border: 1px solid #000; box-shadow: inset 0 0 0 1px rgba(154, 44, 32, 0.8); padding: 3px 9px; font-size: 14px; }
 .cursor-tip.ok { color: #c8d8a0; box-shadow: inset 0 0 0 1px rgba(110, 140, 70, 0.8); }
 
@@ -358,7 +366,7 @@ table.ledger tr.sel td { background: color-mix(in srgb, var(--blood) 12%, transp
 .gameover { text-align: center; }
 .gameover .medal { font-size: 72px; }
 /* ---------- touch placement bar ---------- */
-.touchbar { position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); display: flex; gap: 8px; z-index: 12; pointer-events: auto; }
+.touchbar { position: absolute; left: 50%; bottom: calc(var(--tb-h) + 8px); transform: translateX(-50%); display: flex; gap: 8px; z-index: 12; pointer-events: auto; }
 .touchbar .btn { font-size: 18px; padding: 8px 18px; }
 body.touch .btn.small { padding: 6px 12px; font-size: 16px; }
 body.touch .panel .close { width: 36px; height: 36px; }
@@ -366,7 +374,7 @@ body.touch .panel .close { width: 36px; height: 36px; }
 
 /* ---------- phones & small windows ---------- */
 @media (max-width: 900px), (max-height: 540px) {
-  #ui { font-size: 14px; }
+  #ui { font-size: 14px; --tb-h: 58px; }
   .topbar { padding: 3px 8px 5px; clip-path: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 8px 100%); max-width: calc(100vw - 150px); left: calc(50% - 60px); }
   .topbar .res { font-size: 16px; padding: 1px 6px; gap: 4px; }
   .topbar .res .ic { width: 18px; height: 18px; }
@@ -376,10 +384,10 @@ body.touch .panel .close { width: 36px; height: 36px; }
   .speed .sp, .clock .soundbtn { width: 26px; height: 24px; }
   .date { font-size: 15px; min-width: 92px; }
   .toolbar { padding: 5px 12px; gap: 2px; max-width: 100vw; overflow-x: auto; clip-path: none; }
-  .tool { width: 40px; height: 40px; flex: none; }
-  .tool .ic { width: 22px; height: 22px; }
-  .tool .key { display: none; }
-  .minimap { width: 118px; height: 118px; left: 8px; bottom: 60px; }
+  .tool { width: 50px; height: 46px; flex: none; }
+  .tool .ic { width: 21px; height: 21px; }
+  .tool .lbl { font-size: 10.5px; }
+  .minimap { width: 118px; height: 118px; left: 8px; bottom: calc(var(--tb-h) + 8px); }
   .minimap .mm-btn { width: 24px; height: 24px; }
   .advisor { top: 44px; left: 6px; max-width: min(440px, 80vw); gap: 8px; }
   .advisor .face { width: 48px; height: 56px; }
@@ -390,12 +398,12 @@ body.touch .panel .close { width: 36px; height: 36px; }
   .toast { font-size: 12px; padding: 4px 8px; }
   .toast b { font-size: 14px; }
   .panel { padding: 10px 12px; border-width: 6px; }
-  .buildmenu { left: 0; right: 0; transform: none; width: auto; bottom: 52px; padding: 6px 8px 8px; }
+  .buildmenu { left: 0; right: 0; transform: none; width: auto; bottom: calc(var(--tb-h) + 2px); padding: 6px 8px 8px; }
   .buildmenu .cats { overflow-x: auto; flex-wrap: nowrap; }
   .bcard { width: 102px; }
   .bcard img { width: 84px; height: 60px; }
   .bcard .nm { font-size: 12.5px; height: 28px; }
-  .inspector { right: 6px; left: auto; bottom: 52px; width: min(354px, calc(100vw - 12px)); max-height: calc(100% - 104px); font-size: 13px; }
+  .inspector { right: 6px; left: auto; bottom: calc(var(--tb-h) + 2px); width: min(354px, calc(100vw - 12px)); max-height: calc(100% - var(--tb-h) - 50px); font-size: 13px; }
   .inspector h2 { font-size: 20px !important; }
   .inspector .kv, .needs { font-size: 12.5px; }
   .inspector .head .portrait-img, .inspector .head svg { width: 48px !important; height: 60px !important; }
@@ -406,8 +414,8 @@ body.touch .panel .close { width: 36px; height: 36px; }
   .chart-wrap { flex-direction: column; }
   .chart-side { width: auto; max-height: 40%; overflow-y: auto; }
   .legend { top: 52px; right: 6px; width: 204px; }
-  .hint { bottom: 56px; font-size: 13px; max-width: 90vw; }
-  .touchbar { bottom: 58px; }
+  .hint { bottom: calc(var(--tb-h) + 6px); font-size: 13px; max-width: 90vw; }
+  .touchbar { bottom: calc(var(--tb-h) + 6px); }
   .menu { padding-left: 6vw; }
   .menu .item { font-size: 22px; }
   .menu .tag { font-size: 15px; margin: 8px 0 18px 4px; }
@@ -422,7 +430,6 @@ body.touch .panel .close { width: 36px; height: 36px; }
 @media (max-width: 760px) {
   .topbar .res { font-size: 16px; padding: 2px 6px; }
   .topbar .mood { display: none; }
-  .tool { width: 42px; height: 42px; }
   .minimap { width: 130px; height: 130px; }
   .inspector { width: calc(100vw - 12px); max-height: 45vh; }
   .advisor { max-width: 92vw; }
@@ -440,8 +447,11 @@ body.touch .panel .close { width: 36px; height: 36px; }
   .date small { font-size: 11px; }
   .advisor { top: 72px; left: 6px; right: 6px; max-width: none; }
   .toolbar { left: 0; right: 0; transform: none; max-width: none; justify-content: space-between; gap: 2px; padding: 5px 4px; overflow: hidden; }
-  .tool { flex: 1 1 0; width: auto; min-width: 0; max-width: 46px; height: 42px; }
-  .inspector { left: 6px; right: 6px; width: auto; bottom: 56px; max-height: calc((var(--app-h, 100dvh) - 56px) * 0.58); }
+  .tool { flex: 1 1 0; width: auto; min-width: 0; max-width: 54px; height: 46px; padding: 3px 0 2px; }
+  .tool .ic { width: 20px; height: 20px; }
+  .tool .lbl { font-size: 9.5px; letter-spacing: -0.02em; }
+  .toolbar .sep { display: none; }
+  .inspector { left: 6px; right: 6px; width: auto; bottom: calc(var(--tb-h) + 2px); max-height: calc((var(--app-h, 100dvh) - var(--tb-h)) * 0.58); }
   .legend { top: 72px; }
 }
 

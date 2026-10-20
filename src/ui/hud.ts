@@ -1,5 +1,6 @@
 import type { App } from './app';
-import { el, html, setHTML, delegate, fmt, raw, setText, setAttr, setStyle, toggleClass } from './dom';
+import { el, html, setHTML, delegate, fmt, raw, esc, setText, setAttr, setStyle, toggleClass } from './dom';
+import { undoLabel } from '../sim/undo';
 import { icon } from './icons';
 import { portraitImg, parrotSvg } from './portraits';
 import type { Message } from '../sim/types';
@@ -96,19 +97,26 @@ export class Hud {
   }
 
   private buildToolbar(): void {
-    const tools: [string, string, string, string][] = [
-      ['build', 'hammer', 'B', '<b>Construction</b><br>Build structures for your island.'],
-      ['road', 'road', '', '<b>Roads</b><br>Drag to lay a road. Most buildings must touch one.'],
-      ['clear', 'axe', '', '<b>Clear Vegetation</b><br>Drag to cut down trees.'],
-      ['demolish', 'bulldoze', '', '<b>Demolish</b><br>Tear down a building.'],
-      ['overlays', 'eye', 'O', '<b>Overlays</b><br>See order, fear, anarchy, fertility and more.'],
-      ['edicts', 'scroll', 'X', '<b>Edicts</b><br>Issue royal decrees.'],
-      ['chart', 'telescope', 'M', '<b>Sea Chart</b><br>Send your ships out to plunder.'],
-      ['log', 'book', 'L', '<b>Island Log</b><br>Finances, people, nations and more.'],
-      ['menu', 'wheel', 'Esc', '<b>Game Menu</b><br>Save, load and settings.'],
+    // [id, icon, label, key, tooltip]; null is a divider between building tools and the island's books
+    const tools: ([string, string, string, string, string] | null)[] = [
+      ['build', 'hammer', 'Build', 'B', '<b>Construction</b><br>Build structures for your island.'],
+      ['road', 'road', 'Road', '', '<b>Roads</b><br>Drag to lay a road. Most buildings must touch one.'],
+      ['clear', 'axe', 'Clear', '', '<b>Clear Vegetation</b><br>Drag to cut down trees.'],
+      ['demolish', 'bulldoze', 'Demolish', 'Del', '<b>Demolish</b><br>Tear down a building or pull up a road. Undo brings it back.'],
+      ['undo', 'undo', 'Undo', 'Ctrl+Z', '<b>Undo</b><br>Nothing to undo yet.'],
+      null,
+      ['overlays', 'eye', 'Overlays', 'O', '<b>Overlays</b><br>See order, fear, anarchy, fertility and more.'],
+      ['edicts', 'scroll', 'Edicts', 'X', '<b>Edicts</b><br>Issue royal decrees.'],
+      ['chart', 'telescope', 'Chart', 'M', '<b>Sea Chart</b><br>Send your ships out to plunder.'],
+      ['log', 'book', 'Log', 'L', '<b>Island Log</b><br>Finances, people, nations and more.'],
+      ['menu', 'wheel', 'Menu', 'Esc', '<b>Game Menu</b><br>Save, load and settings.'],
     ];
     setHTML(this.bar, html`
-      ${tools.map(([id, ic, k, tip]) => html`<div class="tool" data-act="tool:${id}" data-tool="${id}" data-tip="${tip}">${icon(ic, 26)}${k ? html`<span class="key">${k}</span>` : ''}</div>`)}
+      ${tools.map((t) => {
+        if (!t) return html`<div class="sep"></div>`;
+        const [id, ic, label, k, tip] = t;
+        return html`<button class="tool" data-act="tool:${id}" data-tool="${id}" data-tip="${tip}${k ? ` <i>(${k})</i>` : ''}" aria-label="${label}">${icon(ic, 24)}<span class="lbl">${label}</span></button>`;
+      })}
 `);
     setHTML(this.clock, html`
       <div class="speed">
@@ -146,6 +154,7 @@ export class Hud {
         if (id === 'chart') return a.chart.toggle();
         if (id === 'log') return a.log.toggle();
         if (id === 'menu') return a.modal.gameMenu();
+        if (id === 'undo') return a.undo();
       },
     });
   }
@@ -162,11 +171,17 @@ export class Hud {
     const hints: Record<string, string> = {
       road: 'Drag to lay a road. Right-click to stop.',
       clear: 'Drag over trees to clear them. Right-click to stop.',
-      demolish: 'Click a building to demolish it. Right-click to stop.',
+      demolish: 'Click a building or a road to tear it down. Right-click to stop.',
       build: 'Click to place. R rotates, Shift keeps placing, right-click cancels.',
     };
+    const touchHints: Record<string, string> = {
+      road: 'Drag along the ground to lay a road.',
+      clear: 'Drag over trees to clear them.',
+      demolish: 'Tap a building or a road to tear it down.',
+      build: 'Tap the ground to move the building, then confirm.',
+    };
     const h = hints[k];
-    if (h) this.flash(h, 0);
+    if (h) this.flash(this.app.touchMode ? touchHints[k] ?? h : h, 0);
     else if (this.hintTimer === 0) this.hint.classList.add('hidden');
   }
 
@@ -241,6 +256,7 @@ export class Hud {
     const els: Record<string, HTMLElement> = {
       goldRes: q('[data-act="gold"]'), hoardRes: q('[data-act="hoard"]'), piratesRes: q('[data-act="pirates"]'), mood: q('.mood'),
       dv: this.clock.querySelector('.dv') as HTMLElement, dl: this.clock.querySelector('.dl') as HTMLElement,
+      undo: this.bar.querySelector('[data-tool="undo"]') as HTMLElement,
     };
     for (const e of this.top.querySelectorAll<HTMLElement>('[data-k]')) els[e.dataset.k!] = e;
     return els;
@@ -282,6 +298,9 @@ export class Hud {
     setText(e.dv, g.date);
     const left = Math.max(0, g.settings.years - g.yearsElapsed);
     setText(e.dl, g.over ? 'reign over' : `${left.toFixed(1)} years left`);
+    const ul = undoLabel(g);
+    toggleClass(e.undo, 'disabled', !ul);
+    setAttr(e.undo, 'data-tip', ul ? `<b>Undo</b><br>Take back: ${esc(ul)} <i>(Ctrl+Z)</i>` : '<b>Undo</b><br>Nothing to undo yet. <i>(Ctrl+Z)</i>');
     this.updateSpeed();
     // advisor timeout
     if (this.advUntil && performance.now() > this.advUntil) this.dismissAdvisor();
