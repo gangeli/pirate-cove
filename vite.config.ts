@@ -68,6 +68,14 @@ export default defineConfig({
   base: './',
   plugins: [pwa()],
   server: { host: '0.0.0.0', port: 5173 },
-  build: { target: 'es2022', chunkSizeWarningLimit: 2000 },
+  build: {
+    target: 'es2022',
+    chunkSizeWarningLimit: 2000,
+    rolldownOptions: {
+      // three (core plus the loaders and passes from examples/jsm) in one vendor chunk: it changes far less often
+      // than the game, so returning players keep it cached across game updates
+      output: { codeSplitting: { groups: [{ name: 'three', test: /[\\/]node_modules[\\/]three[\\/]/ }] } },
+    },
+  },
   test: { include: ['tests/**/*.test.ts'], testTimeout: 120000 },
 } as any);
