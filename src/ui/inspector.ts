@@ -267,7 +267,7 @@ export class Inspector {
         const total = def.workers.reduce((a, w) => a + w.count, 0);
         body.push(html`<section class="sect"><h4 class="eng">Staff</h4><div class="slotrows">${rows}</div>
           ${total ? html`<div class="field-row"><span class="lbl">Open places</span><div class="step"><button data-act="block:1" aria-label="Close a place" data-tip="Close a place: fewer workers here">${icon('minus', 14)}</button><span class="val">${total - Math.min(total, b.blocked)} of ${total}</span><button data-act="block:-1" aria-label="Open a place" data-tip="Open a closed place">${icon('plus', 14)}</button></div></div>` : ''}
-          ${def.overseer || def.guards ? html`<div class="field-row"><span class="lbl">${def.guards ? 'Guard wage' : 'Overseer wage'}</span>${this.seg('wage', b.wage, [[0, 'None'], [2, '2'], [4, '4'], [8, '8'], [12, '12']])}</div>
+          ${def.overseer || def.guards ? html`<div class="field-row"><span class="lbl">${def.guards ? 'Guard wage' : 'Overseer wage'}</span>${this.seg('wage', b.wage, [[0, 'Unpaid'], [2, '2g'], [4, '4g'], [8, '8g'], [12, '12g']])}</div>
             <div class="seg-note">Gold a month for each ${def.guards ? 'guard' : 'overseer'}. Pirates take the best-paid posts first.</div>` : ''}
           <div class="field-row"><span class="lbl">Priority</span>${this.prioSeg(b)}</div>
           <div class="seg-note">Higher-priority buildings are staffed first, taking workers from lower ones.</div></section>`);
@@ -487,7 +487,7 @@ export class Inspector {
     if (s.status === 'docked' || s.status === 'boarding' || s.status === 'repairing') {
       const mission = s.mission;
       const missions: [string, string, string][] = [['cruise', 'Cruise', 'ship'], ['raid', 'Raid', 'flag'], ['kidnap', 'Kidnap', 'chain'], ['explore', 'Explore', 'telescope'], ['foster_war', 'Foster war', 'scroll']];
-      const orders = [html`<div class="seg full wrap4 missions" role="radiogroup" aria-label="Mission">${missions.map(([m, n, ic]) => html`<button class="${mission === m ? 'on' : ''}" data-act="mission:${m}" role="radio" aria-checked="${mission === m ? 'true' : 'false'}">${icon(ic, 16)}${n}</button>`)}</div>
+      const orders = [html`<div class="seg missions" role="radiogroup" aria-label="Mission">${missions.map(([m, n, ic]) => html`<button class="${mission === m ? 'on' : ''}" data-act="mission:${m}" role="radio" aria-checked="${mission === m ? 'true' : 'false'}">${icon(ic, 16)}${n}</button>`)}</div>
         <div class="seg-note">${missionTip(mission)}</div>`];
       if (mission === 'cruise') orders.push(html`<div class="field-row"><span class="lbl">Tactics</span>${this.seg('orders', s.orders, [['board', 'Board'], ['pound', 'Pound'], ['harass', 'Harass']], 'full')}</div><div class="seg-note">${ordersTip(s.orders)}</div>`);
       if (mission === 'cruise' || mission === 'explore' || mission === 'foster_war') {

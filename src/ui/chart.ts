@@ -33,6 +33,8 @@ const ISLETS: [number, number, number][] = [
 const ASPECT = 4 / 3;
 const PAPER_W = 1600;
 const INK = '#3a1a08', BLOOD = '#8a1a10', REACH = '#2c6a36';
+/** the title cartouche, on the southern mainland clear of the seas (centre, map units) */
+const CARTOUCHE: [number, number] = [0.75, 0.915];
 const LEVELS = ['Uncharted', 'Surveyed', 'Charted', 'Familiar seas', 'Like the back of our hand', 'Our own waters'];
 
 type Mode = 'reach' | 'risk' | 'reward';
@@ -371,7 +373,7 @@ export class SeaChart {
     g.lineWidth = 1.5;
     for (let i = 0; i < 70; i++) {
       const x = rnd() * W, y = H * (0.82 + rnd() * 0.17);
-      if (x > W * 0.36 && x < W * 0.84 && y > H * 0.84) continue;
+      if (Math.abs(x / W - CARTOUCHE[0]) < 0.2 && y > H * 0.84) continue;
       g.beginPath();
       g.moveTo(x - 9, y);
       g.lineTo(x, y - 10);
@@ -403,7 +405,7 @@ export class SeaChart {
     g.fillText('N', 0, -R - 6);
     g.restore();
     // title cartouche on the southern mainland
-    const tx = 0.6 * W, ty = 0.905 * H;
+    const tx = CARTOUCHE[0] * W, ty = CARTOUCHE[1] * H;
     g.fillStyle = 'rgba(240,228,196,0.85)';
     g.strokeStyle = '#5a3a1a';
     g.lineWidth = 2;
@@ -650,7 +652,8 @@ export class SeaChart {
   /** region names (and a second line: months of sailing, or danger/plunder pips), placed so they never overlap */
   private drawLabels(g: CanvasRenderingContext2D, info: { r: Region; x: number; y: number; known: boolean; home: boolean; reach: { ok: boolean } | null; months: number }[], R: number, small: boolean, sel?: Ship): void {
     const f1 = small ? 11.5 : 13.5, f2 = small ? 10.5 : 12;
-    const placed: Box[] = [];
+    // the title cartouche is an obstacle too
+    const placed: Box[] = [{ x: this.sx(CARTOUCHE[0] - 0.2), y: this.sy(CARTOUCHE[1] - 0.055), w: 0.4 * this.geo.mw * this.view.z, h: 0.1 * this.geo.mh * this.view.z }];
     const discs = info.map((o) => ({ x: o.x - R, y: o.y - R, w: R * 2, h: R * 2 }));
     const inter = (a: Box, b: Box) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
     const order = [...info].sort((a, b) => (a.home ? -1 : b.home ? 1 : 0) || (a.r.id === this.region ? -1 : b.r.id === this.region ? 1 : 0) || a.y - b.y);

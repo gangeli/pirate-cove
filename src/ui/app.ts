@@ -278,6 +278,8 @@ export class App {
     this.world.veg?.setGhost(t.kind === 'road' || t.kind === 'unroad');
     this.roadPending = null;
     this.roadPick = null;
+    // phones hide the minimap while placing, so it never sits under the controls beside the ghost
+    this.root.classList.toggle('placing', t.kind === 'build' || t.kind === 'road');
   }
 
   /** true once the player has touched the screen (shows touch affordances) */

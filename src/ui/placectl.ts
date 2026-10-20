@@ -80,7 +80,9 @@ export class PlaceControls {
     toggleClass(this.root, 'roadsel', mode === 'roadsel');
     setText(this.tagText, text);
     const cx = (l + r) / 2, cy = (t + b) / 2;
-    const uw = ui.width, uh = ui.height;
+    // keep clear of the toolbar (and of the screen edges)
+    const tb = document.querySelector('.toolbar')?.getBoundingClientRect();
+    const uw = ui.width, uh = tb && tb.height ? Math.min(ui.height, tb.top - ui.top) : ui.height;
     const clampX = (x: number, w: number) => Math.max(6, Math.min(uw - w - 6, x));
     const clampY = (y: number, h: number) => Math.max(6, Math.min(uh - h - 6, y));
     // the tag hangs above the ghost (below it when there is no room)

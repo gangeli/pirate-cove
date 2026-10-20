@@ -337,7 +337,8 @@ input[type=range] { accent-color: var(--blood); }
 .field-row > .seg.full > button, .seg.prio > button { font-size: 14px; }
 .seg.prio { display: flex; }
 .seg.prio > button { flex: 1 1 0; min-width: 0; padding: 4px 2px; }
-.seg.missions > button { font-size: 14.5px; }
+.seg.missions { display: flex; }
+.seg.missions > button { flex: 1 1 0; min-width: 0; flex-direction: column; gap: 2px; padding: 5px 2px 4px; font-size: 13.5px; line-height: 1.05; white-space: normal; text-align: center; }
 .seg.full.wrap4 { flex-wrap: wrap; }
 .seg.full.wrap4 > button { flex: 1 1 30%; border-top: 1px solid color-mix(in srgb, var(--ink2) 25%, transparent); margin-top: -1px; }
 .dest { flex: 1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 15px; }
@@ -747,6 +748,7 @@ body.touch .cursor-tip { display: none; }
   .chart-bar .seg { display: flex; flex: 1; }
   .chart-bar .seg > button { flex: 1; }
   .chart-bar .how { display: none; }
+  #ui.placing .minimap { display: none; }
 }
 @media (max-height: 540px) and (min-width: 761px) {
   .chart-side { width: 280px; }
