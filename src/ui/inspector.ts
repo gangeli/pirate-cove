@@ -173,9 +173,10 @@ export class Inspector {
       rename: () => {
         const b = app.game.buildings.get(this.sel());
         if (!b) return;
-        const name = prompt('Name this establishment:', b.name ?? '');
-        if (name) app.cmd({ type: 'rename', id: b.id, name });
-        this.refresh(true);
+        app.modal.prompt('Name this establishment', `A new sign over the door of the ${BUILDING[b.def].name}:`, b.name ?? '', (name) => {
+          app.cmd({ type: 'rename', id: b.id, name });
+          this.refresh(true);
+        });
       },
     }, () => audio.sfx('ui_click'));
   }
@@ -245,7 +246,7 @@ export class Inspector {
     else if (staffed) chips.push(b.staff >= 0.99 ? html`<span class="chip ok">Fully staffed</span>` : b.staff < 0.5 ? html`<span class="chip bad">Short-staffed</span>` : html`<span class="chip">Partly staffed</span>`);
     if (b.built >= 1 && def.upkeep) chips.push(html`<span class="chip">${icon('coin', 12)} ${def.upkeep}/month</span>`);
     const head = html`<div class="tile thumb"><img src="${thumb}" alt=""></div>
-      <div class="hd"><h2>${title}${def.service && b.built >= 1 ? html` <button class="icon-link" data-act="rename" aria-label="Rename" data-tip="Rename this establishment">${icon('scroll', 14)}</button>` : ''}</h2>
+      <div class="hd"><h2>${title}${def.service && b.built >= 1 ? html` <button class="icon-link" data-act="rename" aria-label="Rename" data-tip="Rename this establishment">${icon('quill', 15)}</button>` : ''}</h2>
         <div class="sub">${def.service && b.name ? def.name + ' · ' : ''}${def.desc}</div>
         ${chips.length ? html`<div class="chips">${chips}</div>` : ''}</div>`;
     if (b.built < 1) {

@@ -71,6 +71,27 @@ export class Modal {
     });
   }
 
+  /** ask for a line of text on parchment (instead of the browser's prompt box) */
+  prompt(title: string, label: string, value: string, done: (v: string) => void): void {
+    const ok = () => {
+      const v = this.box.querySelector<HTMLInputElement>('input[data-prompt]')?.value.trim() ?? '';
+      this.close();
+      if (v) done(v.slice(0, 40));
+    };
+    this.show(html`<h2>${title}</h2><label class="field-text"><span>${label}</span><input type="text" data-prompt maxlength="40" value="${value}" autocomplete="off"></label>
+      <div class="row"><button class="btn ghost" data-act="do:cancel">Cancel</button><button class="btn primary" data-act="do:ok">Done</button></div>`, { ok, cancel: () => this.close() });
+    const inp = this.box.querySelector<HTMLInputElement>('input[data-prompt]');
+    if (inp) {
+      inp.focus();
+      inp.select();
+      inp.onkeydown = (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') ok();
+        if (e.key === 'Escape') this.close();
+      };
+    }
+  }
+
   gameMenu(): void {
     this.show(html`<h2>Captain's Quarters</h2><div class="sub center">The island holds its breath while you are here.</div>
       <div class="menu-list">

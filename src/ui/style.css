@@ -46,6 +46,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #070c10; fon
 }
 #ui .pe, #ui button, #ui .panel, #ui .bar, #ui .toolbar, #ui .menu, #ui .modal-wrap { pointer-events: auto; }
 .hidden { display: none !important; }
+input, textarea { user-select: text; -webkit-user-select: text; }
 /* frames size by their outside edge, so a width like calc(100vw - 12px) really fits the screen */
 .panel, .topbar, .toolbar, .clock, .touchbar, .hint, .tipbox, .toast, .bcard, .ecard { box-sizing: border-box; }
 .ic { display: inline-block; vertical-align: middle; flex: none; }
@@ -602,6 +603,9 @@ body.touch .setup .field .opts .o { min-height: 40px; }
 .slider { display: grid; grid-template-columns: 90px 1fr 44px; align-items: center; gap: 10px; font-size: 15px; min-height: 30px; }
 .slider output { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink2); font-size: 14px; }
 input[type=range] { accent-color: var(--blood); width: 100%; }
+label.field-text { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 16px; font-size: 15px; color: var(--ink2); font-style: italic; }
+label.field-text input { font: 20px var(--body); font-style: normal; color: var(--ink); padding: 6px 8px; background: rgba(255, 250, 235, 0.7); border: 1px solid var(--ink2); border-radius: 2px; box-shadow: inset 0 1px 3px rgba(60, 30, 10, 0.2); }
+label.field-text input:focus { outline: 2px solid var(--blood-hi); outline-offset: 1px; }
 label.check { display: flex; gap: 8px; align-items: center; font-size: 15px; cursor: pointer; }
 label.check input { width: 18px; height: 18px; accent-color: var(--blood); }
 /* ---------- placement controls riding beside the ghost building ---------- */
