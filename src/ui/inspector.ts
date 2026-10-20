@@ -3,13 +3,14 @@ import { el, html, patchHTML, delegate, fmt, pct, bar, raw } from './dom';
 import { icon } from './icons';
 import { BUILDING, HOUSE_LEVELS, JOB_NAMES, RANKS, PRICE_LEVELS, type PirateNeed } from '../sim/data/buildings';
 import { GOOD_NAMES, type Good } from '../sim/data/goods';
-import { SHIPS, SHIP_LIST, MISSION_NAMES, ORDERS_NAMES, SPOILS_NAMES, type ShipType } from '../sim/data/ships';
+import { SHIPS, SHIP_LIST, MISSION_NAMES, SPOILS_TREASURY, type ShipType } from '../sim/data/ships';
 import { NATION_ADJ, NATION_NAMES, NATIONS } from '../sim/data/kings';
 import type { Building, Person, Ship } from '../sim/types';
 import { serviceFee, serviceBand, pirateFactors } from '../sim/people';
 import { farmFertility, treesNear } from '../sim/economy';
 import { portrait, portraitImg, portraitIdFor, type PortraitSpec } from './portraits';
 import { audio } from '../audio/audio';
+import { thumbOrQueue, THUMB_PLACEHOLDER } from './thumbs';
 import { regionReachable, transitTime } from '../sim/sea';
 import { MONTH } from '../sim/time';
 
@@ -179,6 +180,8 @@ export class Inspector {
     }, () => audio.sfx('ui_click'));
   }
 
+  private onThumb = (): void => this.refresh(true);
+
   private sel(): number {
     return this.app.selection?.id ?? 0;
   }
@@ -201,197 +204,230 @@ export class Inspector {
       this.panel.classList.add('hidden');
       return;
     }
-    const key = `${s.type}:${s.id}:${this.tab}`;
-    if (key !== this.lastKey) {
+    const key = `${s.type}:${s.id}`;
+    const changed = key !== this.lastKey;
+    if (changed) {
       if (this.lastKey && !this.lastKey.startsWith(`${s.type}:`)) this.tab = 'overview';
       this.lastKey = key;
     }
-    let content;
+    let v: View;
     if (s.type === 'building') {
       const b = this.app.game.buildings.get(s.id);
       if (!b) return this.app.select(null);
-      content = this.building(b);
+      v = this.building(b);
     } else if (s.type === 'person') {
       const p = this.app.game.people.get(s.id);
       if (!p) return this.app.select(null);
-      content = this.person(p);
+      v = this.person(p);
     } else {
       const sh = this.app.game.ships.get(s.id);
       if (!sh) return this.app.select(null);
-      content = this.ship(sh);
+      v = this.ship(sh);
     }
     this.panel.classList.remove('hidden');
-    patchHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>${content}`);
-    void force;
+    patchHTML(this.panel, html`<button class="close" data-act="close" aria-label="Close">${icon('close', 14)}</button>
+      <header class="ins-head">${v.head}</header>
+      <div class="ins-body scroll">${v.body}</div>
+      ${v.foot ? html`<footer class="ins-foot">${v.foot}</footer>` : ''}`);
+    if (changed) this.panel.querySelector('.ins-body')?.scrollTo(0, 0);
   }
 
   // ------------------------------------------------------------------------------------------------ building
-  private building(b: Building) {
+  private building(b: Building): View {
     const g = this.app.game;
     const def = BUILDING[b.def];
-    const parts = [];
+    const body = [];
     const title = def.service && b.name ? b.name : def.house && b.houseLevel ? HOUSE_LEVELS[b.houseLevel - 1].name : def.name;
-    parts.push(html`<div class="head"><div><h2>${title}</h2><div class="sub">${def.service && b.name ? def.name + ' · ' : ''}${def.desc}</div></div></div>`);
+    const thumb = thumbOrQueue(this.app.world, def.id, this.onThumb) ?? THUMB_PLACEHOLDER;
+    const chips = [];
+    const staffed = def.workers.length > 0 || !!def.overseer || !!def.guards;
+    if (b.built < 1) chips.push(html`<span class="chip warn">Being built · ${pct(b.built)}</span>`);
+    else if (staffed) chips.push(b.staff >= 0.99 ? html`<span class="chip ok">Fully staffed</span>` : b.staff < 0.5 ? html`<span class="chip bad">Short-staffed</span>` : html`<span class="chip">Partly staffed</span>`);
+    if (b.built >= 1 && def.upkeep) chips.push(html`<span class="chip">${icon('coin', 12)} ${def.upkeep}/month</span>`);
+    const head = html`<div class="tile thumb"><img src="${thumb}" alt=""></div>
+      <div class="hd"><h2>${title}${def.service && b.built >= 1 ? html` <button class="icon-link" data-act="rename" aria-label="Rename" data-tip="Rename this establishment">${icon('scroll', 14)}</button>` : ''}</h2>
+        <div class="sub">${def.service && b.name ? def.name + ' · ' : ''}${def.desc}</div>
+        ${chips.length ? html`<div class="chips">${chips}</div>` : ''}</div>`;
     if (b.built < 1) {
-      parts.push(html`<h3>Under Construction</h3><div class="progress"><div style="width:${(b.built * 100).toFixed(0)}%"></div></div>
-        <div class="sub">${g.buildingCount('construction_tent') ? 'Builders from the construction tents will finish it.' : 'You need a Construction Tent and builders!'}</div>
-        <div class="row" style="margin-top:6px">Priority: ${[1, 2, 3, 4, 5].map((v) => html`<button class="btn small ${b.priority === v ? 'on' : ''}" data-act="prio:${v}">${v}</button>`)}</div>`);
+      body.push(html`<section class="sect"><h4 class="eng">Construction</h4>
+        <div class="meters"><span>Built</span>${bar(b.built, 'brass')}<span>${pct(b.built)}</span></div>
+        ${g.buildingCount('construction_tent') ? html`<div class="seg-note">Builders from the construction tents will finish it.</div>` : html`<div class="callout bad">${icon('info', 16)}<span>You need a Construction Tent and builders.</span></div>`}</section>
+        <section class="sect"><h4 class="eng">Priority</h4>${this.prioSeg(b)}<div class="seg-note">Builders go to higher-priority sites first.</div></section>`);
     } else {
-      // workers
+      // staff
       const slots = def.workers.filter((w) => w.job !== 'hauler' || def.id === 'dock');
-      if (slots.length || def.haulers) {
-        parts.push(html`<h3>Workers</h3>`);
+      if (slots.length || def.haulers || def.overseer || def.guards) {
+        const rows = [];
         for (const sl of def.workers) {
           const list = sl.job === 'hauler' ? b.haulers.concat(b.workers.filter((id) => g.people.get(id)?.jobRole === 'hauler')) : b.workers.filter((id) => g.people.get(id)?.jobRole === sl.job);
-          const uniq = [...new Set(list)];
-          parts.push(this.slotRow(JOB_NAMES[sl.job], sl.count, uniq, b));
+          rows.push(this.slotRow(JOB_NAMES[sl.job] + (sl.count > 1 ? 's' : ''), sl.count, [...new Set(list)], b));
         }
-        if (def.haulers && !def.workers.some((w) => w.job === 'hauler')) parts.push(this.slotRow('Hauler', def.haulers, b.haulers, b));
+        if (def.haulers && !def.workers.some((w) => w.job === 'hauler')) rows.push(this.slotRow(def.haulers > 1 ? 'Haulers' : 'Hauler', def.haulers, b.haulers, b));
+        if (def.overseer || def.guards) rows.push(this.slotRow(def.guards ? 'Guards' : 'Overseer', def.guards ?? 1, [b.overseer, ...b.guards].filter(Boolean), b, true));
+        const total = def.workers.reduce((a, w) => a + w.count, 0);
+        body.push(html`<section class="sect"><h4 class="eng">Staff</h4><div class="slotrows">${rows}</div>
+          ${total ? html`<div class="field-row"><span class="lbl">Open places</span><div class="step"><button data-act="block:1" aria-label="Close a place" data-tip="Close a place: fewer workers here">${icon('minus', 14)}</button><span class="val">${total - Math.min(total, b.blocked)} of ${total}</span><button data-act="block:-1" aria-label="Open a place" data-tip="Open a closed place">${icon('plus', 14)}</button></div></div>` : ''}
+          ${def.overseer || def.guards ? html`<div class="field-row"><span class="lbl">${def.guards ? 'Guard wage' : 'Overseer wage'}</span>${this.seg('wage', b.wage, [[0, 'None'], [2, '2'], [4, '4'], [8, '8'], [12, '12']])}</div>
+            <div class="seg-note">Gold a month for each ${def.guards ? 'guard' : 'overseer'}. Pirates take the best-paid posts first.</div>` : ''}
+          <div class="field-row"><span class="lbl">Priority</span>${this.prioSeg(b)}</div>
+          <div class="seg-note">Higher-priority buildings are staffed first, taking workers from lower ones.</div></section>`);
       }
-      if (def.overseer || def.guards) {
-        const pir = [b.overseer, ...b.guards].filter(Boolean);
-        parts.push(this.slotRow(def.guards ? 'Guards' : 'Overseer', def.guards ?? 1, pir, b, true));
-        parts.push(html`<div class="row" style="font-size:14px">Wage: ${[0, 2, 4, 8, 12].map((v) => html`<button class="btn small ${b.wage === v ? 'on' : ''}" data-act="wage:${v}">${v}</button>`)}<span class="sub">gold/month each</span></div>`);
-      }
-      if (slots.length || def.overseer || def.guards) parts.push(html`<div class="row" style="font-size:14px;margin-top:4px" data-tip="Higher priority buildings are staffed first, taking workers from lower ones.">Priority: ${[1, 2, 3, 4, 5].map((v) => html`<button class="btn small ${b.priority === v ? 'on' : ''}" data-act="prio:${v}">${v}</button>`)}
-        <button class="btn small" data-act="block:1" data-tip="Block a worker slot">${icon('minus', 12)}</button><button class="btn small" data-act="block:-1" data-tip="Unblock a slot">${icon('plus', 12)}</button></div>`);
       // production
       if (def.recipe || def.gather) {
         const r = def.recipe;
         const out = r?.out ?? def.gather!.out;
-        let extra = '';
-        if (def.gather?.crop) extra = `Soil fertility: ${pct(farmFertility(g, b, def.gather.crop))}`;
-        if (def.gather?.from === 'trees') extra = `Trees nearby: ${treesNear(g, b, 9)}`;
-        parts.push(html`<h3>Production</h3>
-          <div class="row" style="font-size:14px">${r ? Object.entries(r.in).map(([k, v]) => html`<span class="chip">${v}× ${GOOD_NAMES[k as Good]}: ${Math.floor(b.inv[k as Good] ?? 0)}</span>`) : ''}
-          <b>→</b> <span class="chip">${GOOD_NAMES[out]}: ${Math.floor(b.inv[out] ?? 0)}</span></div>
-          <div class="progress" style="margin-top:4px"><div style="width:${(b.progress * 100).toFixed(0)}%"></div></div>
-          <div class="sub">${extra}${b.staff < 0.5 ? ' · Short-staffed' : ''}</div>`);
+        const rows = [html`<span>Progress</span>${bar(b.progress, 'brass')}<span>${pct(b.progress)}</span>`];
+        if (def.gather?.crop) {
+          const f = farmFertility(g, b, def.gather.crop);
+          rows.push(html`<span>Soil</span>${bar(f)}<span>${pct(f)}</span>`);
+        }
+        body.push(html`<section class="sect"><h4 class="eng">Production</h4>
+          <div class="flow">${r ? Object.entries(r.in).map(([k, v]) => html`<span class="good">${v}× ${GOOD_NAMES[k as Good]} <b>${Math.floor(b.inv[k as Good] ?? 0)}</b></span>`) : ''}
+            ${r ? html`<span class="arrow">→</span>` : ''}<span class="good out">${GOOD_NAMES[out]} <b>${Math.floor(b.inv[out] ?? 0)}</b></span></div>
+          <div class="meters">${rows}</div>
+          ${def.gather?.from === 'trees' ? html`<div class="seg-note">${treesNear(g, b, 9)} trees within reach.</div>` : ''}</section>`);
       }
       // service
       if (def.service) {
         const sv = def.service;
         const [lo, hi] = serviceBand(b);
-        parts.push(html`<h3>Customers ${b.customers.length}/${sv.capacity} <a data-act="rename" style="font-size:13px;cursor:pointer;text-decoration:underline;font-family:var(--body)">rename</a></h3>
+        body.push(html`<section class="sect"><h4 class="eng">Customers <span class="aside">${b.customers.length} of ${sv.capacity}</span></h4>
           <div class="slots">${Array.from({ length: sv.capacity }, (_, i) => {
             const id = b.customers[i];
             const p = id ? g.people.get(id) : null;
             const present = p && p.task.phase === 1;
-            return html`<div class="slot ${!p ? 'empty' : present ? '' : 'res'}" ${p ? raw(`data-act="goto:${p.id}"`) : ''} data-tip="${p ? p.name : 'Empty'}">${p ? icon('pirate', 20) : ''}</div>`;
+            return p ? html`<button class="slot ${present ? '' : 'res'}" data-act="goto:${p.id}" data-tip="${p.name}${present ? '' : ' (on the way)'}">${icon('pirate', 18)}</button>` : html`<span class="slot empty"></span>`;
           })}</div>
-          <div class="kv" style="margin-top:6px"><span>Satisfies</span><span>${Object.keys(sv.needs).map((n) => NEED_NAMES[n]).join(', ')}</span>
-          <span>Bonus goods</span><span>${sv.bonus.length ? sv.bonus.map((x) => `${GOOD_NAMES[x]} (${Math.floor(b.inv[x] ?? 0)})`).join(', ') : 'none'}</span>
-          <span>Serves ranks</span><span>${lo}–${hi} (${RANKS[lo - 1].name} to ${RANKS[hi - 1].name})</span>
-          <span>Fee</span><span>${serviceFee(b)} gold</span><span>Income last month</span><span>${fmt(b.lastIncome)} gold</span></div>
-          <div class="row" style="margin-top:4px;font-size:14px">Prices: ${PRICE_LEVELS.map((n, i) => html`<button class="btn small ${b.price === i ? 'on' : ''}" data-act="price:${i}">${n}</button>`)}</div>
-          <div class="row" style="margin-top:4px;font-size:14px" data-tip="Narrow the clientele to a band of ranks. Pirates outside the band enjoy it less.">Service: <button class="btn small ${b.quality === 0 ? 'on' : ''}" data-act="quality:0">All</button>${[1, 2, 3].filter((q) => sv.ranks[0] + q + 1 <= sv.ranks[1]).map((q) => html`<button class="btn small ${b.quality === q ? 'on' : ''}" data-act="quality:${q}">${sv.ranks[0] + q - 1}–${sv.ranks[0] + q + 1}</button>`)}</div>`);
+          <div class="kv" style="margin-top:8px"><span>Satisfies</span><span>${Object.keys(sv.needs).map((n) => NEED_NAMES[n]).join(', ')}</span>
+            <span>Extras</span><span>${sv.bonus.length ? sv.bonus.map((x) => `${GOOD_NAMES[x]} (${Math.floor(b.inv[x] ?? 0)})`).join(', ') : 'none'}</span>
+            <span>Serves</span><span>${RANKS[lo - 1].name} to ${RANKS[hi - 1].name}</span>
+            <span>Fee</span><span>${serviceFee(b)} gold a visit</span><span>Last month</span><span>${fmt(b.lastIncome)} gold</span></div></section>
+          <section class="sect"><h4 class="eng">Running it</h4>
+          <div class="field-row"><span class="lbl">Prices</span>${this.seg('price', b.price, PRICE_LEVELS.map((n, i) => [i, ['Bargain', 'Middling', "Gouge 'em"][i] ?? n] as [number, string]))}</div>
+          <div class="field-row" data-tip="Narrow the clientele to a band of ranks. Pirates outside the band enjoy it less."><span class="lbl">Clientele</span>${this.seg('quality', b.quality, [[0, 'All'], ...[1, 2, 3].filter((q) => sv.ranks[0] + q + 1 <= sv.ranks[1]).map((q) => [q, `Ranks ${sv.ranks[0] + q - 1}–${sv.ranks[0] + q + 1}`] as [number, string])])}</div></section>`);
       }
-      if (def.captiveService) parts.push(html`<div class="kv"><span>${NEED_NAMES[def.captiveService.need]}</span><span>${b.customers.length}/${def.captiveService.capacity} in use</span></div>`);
+      if (def.captiveService) body.push(html`<section class="sect"><div class="kv"><span>${NEED_NAMES[def.captiveService.need]}</span><span>${b.customers.length} of ${def.captiveService.capacity} places in use</span></div></section>`);
       if (def.house) {
         const o = b.owner ? g.people.get(b.owner) : null;
         const lv = HOUSE_LEVELS[(b.houseLevel ?? 1) - 1];
-        parts.push(html`<div class="kv"><span>Owner</span><span>${o ? html`<a data-act="goto:${o.id}" style="cursor:pointer;text-decoration:underline">${o.name}</a>` : 'Vacant'}</span>
-          <span>Dwelling</span><span>${lv.name}</span><span>Rest</span><span>${pct(lv.rest)}</span><span>Stash fee</span><span>${lv.fee} gold</span></div>
-          <div class="sub">Plots upgrade themselves when the owner rises in rank and can pay.</div>`);
+        body.push(html`<section class="sect"><h4 class="eng">Dwelling</h4><div class="kv"><span>Owner</span><span>${o ? html`<a data-act="goto:${o.id}">${o.name}</a>` : 'Vacant'}</span>
+          <span>Kind</span><span>${lv.name}</span><span>Rest</span><span>${pct(lv.rest)}</span><span>Stash fee</span><span>${lv.fee} gold</span></div>
+          <div class="seg-note">Plots grow into finer homes when the owner rises in rank and can pay.</div></section>`);
       }
       if (def.id === 'dock') {
         const s = b.ship ? g.ships.get(b.ship) : null;
-        parts.push(html`<h3>Berth</h3><div>${s ? html`<a data-act="gotoS:${s.id}" style="cursor:pointer;text-decoration:underline">${SHIPS[s.type].name} ${s.name}</a> (${s.status === 'atsea' ? 'at sea' : s.status})` : 'Empty: ships need a free dock.'}</div>`);
+        body.push(html`<section class="sect"><h4 class="eng">Berth</h4>${s ? html`<button class="pick" data-act="gotoS:${s.id}">${icon('ship', 18)}<span class="nm">${s.name}<small>${SHIPS[s.type].name}</small></span><span class="chip">${s.status === 'atsea' ? 'At sea' : s.status === 'docked' ? 'In port' : s.status}</span></button>` : html`<div class="seg-note">Empty. Every ship needs a free dock.</div>`}</section>`);
       }
       if (def.id === 'boatyard' || def.id === 'shipyard') {
-        if (b.building_ship) parts.push(html`<h3>Building a ${SHIPS[b.building_ship.type].name}</h3><div class="progress"><div style="width:${(b.building_ship.progress * 100).toFixed(0)}%"></div></div>`);
-        else parts.push(html`<h3>Commission a Ship</h3><div class="cards-grid" style="grid-template-columns:repeat(2,1fr);gap:6px">${SHIP_LIST.filter((t) => def.id === 'shipyard' || SHIPS[t].yard === 'boatyard').map((t) => {
+        if (b.building_ship) body.push(html`<section class="sect"><h4 class="eng">On the slipway</h4><div class="meters"><span>${SHIPS[b.building_ship.type].name}</span>${bar(b.building_ship.progress, 'brass')}<span>${pct(b.building_ship.progress)}</span></div></section>`);
+        else body.push(html`<section class="sect"><h4 class="eng">Commission a ship</h4><div class="ship-cards">${SHIP_LIST.filter((t) => def.id === 'shipyard' || SHIPS[t].yard === 'boatyard').map((t) => {
           const d = SHIPS[t];
           const ok = g.treasury >= d.gold && g.lumber() >= d.lumber;
-          return html`<div class="ecard ${ok ? '' : 'disabled'}" style="cursor:pointer;padding:5px 7px" data-act="commission:${t}" data-tip="Crew ${d.men}+${d.officers}+captain · ${d.cannons} cannons · speed ${d.speed} · ${d.rations} rations">
-            <h4 style="font-size:16px">${d.name}</h4><span style="font-size:13px">${d.gold ? html`${icon('coin', 12)} ${d.gold} ` : ''}${icon('lumber', 12)} ${d.lumber}</span></div>`;
-        })}</div>`);
+          return html`<button class="ship-card ${ok ? '' : 'disabled'}" data-act="commission:${t}" data-tip="Crew ${d.men}+${d.officers}+captain · ${d.cannons} cannons · speed ${d.speed} · ${d.rations} rations">
+            <b>${d.name}</b><span class="cost">${d.gold ? html`${icon('coin', 12)} ${d.gold} ` : ''}${icon('lumber', 12)} ${d.lumber}</span><small>${d.men + d.officers + 1} crew · ${d.cannons} guns</small></button>`;
+        })}</div></section>`);
       }
-      if (def.id === 'graveyard') parts.push(html`<div class="kv"><span>Corpses</span><span>${g.graveyard.length}</span></div><button class="btn small" data-act="raise">Raise the Dead (${this.app.edicts.cost('raise_dead')} gold)</button>`);
-      if (def.id === 'smugglers_cove') parts.push(html`<div class="kv">${NATIONS.map((n) => html`<span>${NATION_NAMES[n]}</span><span>${g.ongoing.has(`open_cove:${n}`) ? 'Open for trade' : 'Closed'}</span>`)}</div><div class="sub">Open trade with the Diplomacy edicts.</div>`);
-      if (def.auras) parts.push(html`<div class="sub" style="margin-top:6px">Radiates: ${Object.entries(def.auras).map(([k, [s, r]]) => `${k} ${s} (range ${r})`).join(', ')}</div>`);
-      if (def.upkeep) parts.push(html`<div class="sub">Upkeep: ${def.upkeep} gold/month</div>`);
+      if (def.id === 'graveyard') body.push(html`<section class="sect"><div class="kv"><span>Corpses</span><span>${g.graveyard.length}</span></div><div class="actions"><button class="btn small" data-act="raise">Raise the dead (${this.app.edicts.cost('raise_dead')} gold)</button></div></section>`);
+      if (def.id === 'smugglers_cove') body.push(html`<section class="sect"><h4 class="eng">Trade</h4><div class="kv">${NATIONS.map((n) => html`<span>${NATION_NAMES[n]}</span><span>${g.ongoing.has(`open_cove:${n}`) ? html`<span class="chip ok">Open</span>` : html`<span class="chip">Closed</span>`}</span>`)}</div><div class="seg-note">Open trade with the Diplomacy edicts.</div></section>`);
+      if (def.auras) body.push(html`<section class="sect"><h4 class="eng">Influence</h4><div class="auras">${Object.entries(def.auras).map(([k, [s, r]]) => html`<span class="chip">${AURA_NAMES[k] ?? k} ${s > 0 ? '+' : ''}${s} <i>· ${r} tiles</i></span>`)}</div></section>`);
     }
-    if (def.id !== 'palace') parts.push(html`<div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn small red" data-act="demolish">${icon('bulldoze', 14)} Demolish</button></div>`);
-    return html`<div class="scroll" style="max-height:calc(var(--app-h, 100dvh) - 140px)">${parts}</div>`;
+    const foot = def.id !== 'palace' ? html`<span class="spacer"></span><button class="btn ghost danger small" data-act="demolish">${icon('bulldoze', 14)} Demolish</button>` : null;
+    return { head, body: html`${body}`, foot };
+  }
+
+  private seg(act: string, cur: number | string, opts: [number | string, string][], cls = '') {
+    return html`<div class="seg ${cls}" role="radiogroup">${opts.map(([v, n]) => html`<button class="${String(cur) === String(v) ? 'on' : ''}" data-act="${act}:${v}" role="radio" aria-checked="${String(cur) === String(v) ? 'true' : 'false'}">${n}</button>`)}</div>`;
+  }
+  private prioSeg(b: Building) {
+    return this.seg('prio', b.priority, [[1, 'Lowest'], [2, 'Low'], [3, 'Normal'], [4, 'High'], [5, 'Top']], 'prio');
   }
 
   private slotRow(label: string, count: number, ids: number[], b: Building, pirates = false) {
     const g = this.app.game;
     const blocked = Math.min(b.blocked, Math.max(0, count - ids.length));
-    return html`<div class="row" style="margin:2px 0"><span style="width:84px;font-size:14px">${label}</span><div class="slots">${Array.from({ length: count }, (_, i) => {
+    return html`<div class="slotrow"><span class="lbl">${label}</span><div class="slots">${Array.from({ length: count }, (_, i) => {
       const id = ids[i];
       const p = id ? g.people.get(id) : null;
-      if (p) return html`<div class="slot" data-act="goto:${p.id}" data-tip="${p.name}${p.skilled ? ' (skilled)' : ''}<br>Shift-click in the world to fire">${icon(pirates ? 'pirate' : 'captive', 20)}</div>`;
-      return html`<div class="slot empty ${i >= count - blocked ? 'blocked' : ''}" data-tip="${i >= count - blocked ? 'Blocked' : 'Vacant'}"></div>`;
+      if (p) return html`<button class="slot" data-act="goto:${p.id}" data-tip="${p.name}${p.skilled ? ' (skilled)' : ''}">${icon(pirates ? 'pirate' : 'captive', 18)}</button>`;
+      const bl = i >= count - blocked;
+      return html`<span class="slot empty ${bl ? 'blocked' : ''}" data-tip="${bl ? 'Closed place' : 'Vacant'}"></span>`;
     })}</div></div>`;
   }
 
   // ------------------------------------------------------------------------------------------------ person
-  private person(p: Person) {
+  private person(p: Person): View {
     const g = this.app.game;
-    const kindName = p.captain ? 'Captain' : p.kind === 'pirate' ? RANKS[p.rank - 1].name : p.kind === 'captive' ? (p.skilled ? `Skilled ${JOB_NAMES[p.profession as keyof typeof JOB_NAMES]}` : 'Captive') : p.kind === 'wealthy' ? 'Wealthy Captive' : p.kind === 'soldier' ? `${NATION_ADJ[p.nat]} Soldier` : 'Skeleton';
+    const kindName = p.captain ? 'Captain' : p.kind === 'pirate' ? RANKS[p.rank - 1].name : p.kind === 'captive' ? (p.skilled ? `Skilled ${JOB_NAMES[p.profession as keyof typeof JOB_NAMES]}` : 'Captive') : p.kind === 'wealthy' ? 'Wealthy captive' : p.kind === 'soldier' ? `${NATION_ADJ[p.nat]} soldier` : 'Skeleton';
     const tabs = p.kind === 'pirate' ? ['overview', 'happiness', 'skills', 'thoughts'] : p.kind === 'captive' ? ['overview', 'resignation', 'thoughts'] : ['overview'];
     if (!tabs.includes(this.tab)) this.tab = 'overview';
-    const parts = [];
-    parts.push(html`<div class="head">${raw(portraitIdFor(p) ? portraitImg(portraitIdFor(p)!, 64, 'portrait') : portrait(lookSpec(p), 72))}<div><h2 style="font-size:23px">${p.name}</h2><div class="sub">${kindName} · ${NATION_ADJ[p.nat]} · age ${p.age}${p.mood !== 'ok' && p.kind === 'pirate' ? html` · <b style="color:#a01010">${p.mood}</b>` : ''}</div>
-      <div style="font-size:14px;margin-top:2px">${activityText(this.app, p)}</div></div></div>`);
-    parts.push(html`<div class="tabs">${tabs.map((t) => html`<div class="t ${this.tab === t ? 'on' : ''}" data-act="tab:${t}">${t[0].toUpperCase() + t.slice(1)}</div>`)}</div>`);
+    const chips = [];
+    if (p.kind === 'pirate' && p.mood !== 'ok') chips.push(html`<span class="chip bad">${p.mood[0].toUpperCase() + p.mood.slice(1)}</span>`);
+    if (p.captain) chips.push(html`<span class="chip home">Captain</span>`);
+    if (p.skilled) chips.push(html`<span class="chip ok">Skilled</span>`);
+    if (p.kind === 'soldier') chips.push(html`<span class="chip bad">Enemy</span>`);
+    const pid = portraitIdFor(p);
+    const head = html`<div class="tile">${raw(pid ? portraitImg(pid, 64, 'portrait') : portrait(lookSpec(p), 64))}</div>
+      <div class="hd"><h2>${p.name}</h2><div class="sub">${kindName} · ${NATION_ADJ[p.nat]} · age ${p.age}</div>
+        <div class="doing">${activityText(this.app, p)}</div>${chips.length ? html`<div class="chips">${chips}</div>` : ''}</div>`;
+    const body = [];
+    if (tabs.length > 1) body.push(html`<div class="seg full tabs-seg" role="tablist">${tabs.map((t) => html`<button class="${this.tab === t ? 'on' : ''}" data-act="tab:${t}" role="tab" aria-selected="${this.tab === t ? 'true' : 'false'}">${t[0].toUpperCase() + t.slice(1)}</button>`)}</div>`);
+    const meter = (label: string, v: number, txt = pct(v)) => html`<span>${label}</span>${bar(v)}<span>${txt}</span>`;
     if (this.tab === 'overview') {
       const needs = p.kind === 'pirate' || p.kind === 'wealthy' ? ['feast', 'drink', 'company', 'gamble', 'rest', 'stash'] : p.kind === 'captive' ? ['food', 'rest', 'prayer'] : [];
-      parts.push(html`<div class="needs">${needs.map((n) => html`<span>${NEED_NAMES[n]}</span>${bar(p.needs[n])}<span>${pct(p.needs[n])}</span>`)}</div>`);
+      if (needs.length) body.push(html`<section class="sect"><h4 class="eng">Needs</h4><div class="meters">${needs.map((n) => meter(NEED_NAMES[n], p.needs[n]))}</div></section>`);
       const kv: unknown[] = [];
       if (p.kind === 'pirate') {
-        kv.push(html`<span>Gold</span><span>${fmt(p.gold)} (stashed ${fmt(p.stashed)})</span><span>Lifetime earnings</span><span>${fmt(p.earned)}</span><span>Happiness</span><span>${pct(p.happiness)}</span>`);
+        kv.push(html`<span>Purse</span><span>${fmt(p.gold)} gold <i class="dim">· ${fmt(p.stashed)} stashed</i></span><span>Earned</span><span>${fmt(p.earned)} gold in all</span><span>Happiness</span><span>${pct(p.happiness)}</span>`);
         const ship = p.ship ? g.ships.get(p.ship) : null;
-        kv.push(html`<span>Ship</span><span>${ship ? html`<a data-act="gotoS:${ship.id}" style="cursor:pointer;text-decoration:underline">${ship.name}</a>${p.officer ? ' (officer)' : ''}` : 'None'}</span>`);
+        kv.push(html`<span>Ship</span><span>${ship ? html`<a data-act="gotoS:${ship.id}">${ship.name}</a>${p.officer ? ' (officer)' : ''}` : 'None'}</span>`);
         const home = p.home ? g.buildings.get(p.home) : null;
-        kv.push(html`<span>Home</span><span>${home ? HOUSE_LEVELS[(home.houseLevel ?? 1) - 1].name : 'Homeless'}</span>`);
+        kv.push(html`<span>Home</span><span>${home ? html`<a data-act="gotoB:${home.id}">${HOUSE_LEVELS[(home.houseLevel ?? 1) - 1].name}</a>` : 'Sleeps rough'}</span>`);
         if (p.shoreJob) kv.push(html`<span>Shore job</span><span>${p.shoreRole} at the ${BUILDING[g.buildings.get(p.shoreJob)?.def ?? 'palace'].name}</span>`);
       } else if (p.kind === 'captive') {
         const job = p.job ? g.buildings.get(p.job) : null;
-        kv.push(html`<span>Job</span><span>${job ? html`<a data-act="gotoB:${job.id}" style="cursor:pointer;text-decoration:underline">${JOB_NAMES[p.jobRole!]} at the ${BUILDING[job.def].name}</a>` : 'Unemployed'}</span><span>Resignation</span><span>${pct(p.resignation)}</span>`);
+        kv.push(html`<span>Work</span><span>${job ? html`<a data-act="gotoB:${job.id}">${JOB_NAMES[p.jobRole!]} at the ${BUILDING[job.def].name}</a>` : 'Idle'}</span><span>Resignation</span><span>${pct(p.resignation)}</span>`);
         if (p.skilled) kv.push(html`<span>Ransom</span><span>${fmt(p.ransom)} gold</span>`);
-        kv.push(html`<span>Courage</span><span>${p.traits.courage}</span><span>Leadership</span><span>${p.traits.leadership}</span>`);
+        kv.push(html`<span>Courage</span><span>${p.traits.courage} of 9</span><span>Leadership</span><span>${p.traits.leadership} of 9</span>`);
       } else if (p.kind === 'wealthy') kv.push(html`<span>Ransom</span><span>${fmt(p.ransom + p.credit)} gold</span>`);
-      parts.push(html`<div class="kv" style="margin-top:8px">${kv}</div>`);
+      if (kv.length) body.push(html`<section class="sect"><h4 class="eng">Particulars</h4><div class="kv">${kv}</div></section>`);
+      if (p.kind === 'soldier') body.push(html`<div class="callout bad">${icon('skull', 16)}<span>An enemy soldier. Guards, forts and armed pirates will fight him.</span></div>`);
     } else if (this.tab === 'happiness') {
       const f = pirateFactors(g, p);
-      parts.push(html`<div class="sub">Long-term feelings. Overall happiness is their weighted average.</div><div class="needs" style="margin-top:4px">${Object.entries(f).map(([k, v]) => html`<span>${NEED_NAMES[k] ?? k}</span>${bar(v)}<span>${pct(v)}</span>`)}</div>
-        <div class="needs" style="margin-top:6px"><b>Overall</b>${bar(p.happiness, 'big')}<b>${pct(p.happiness)}</b></div>`);
+      body.push(html`<div class="seg-note">Long-term feelings. Overall happiness is their weighted average.</div>
+        <div class="meters" style="margin-top:6px">${Object.entries(f).map(([k, v]) => meter(NEED_NAMES[k] ?? k, v))}</div>
+        <div class="meters total">${meter('Overall', p.happiness)}</div>`);
     } else if (this.tab === 'resignation') {
-      parts.push(html`<div class="needs">${(['food', 'rest', 'prayer'] as const).map((k) => html`<span>${NEED_NAMES[k]}</span>${bar(p.opinion[k] ?? 0.5)}<span>${pct(p.opinion[k] ?? 0.5)}</span>`)}
-        <span>Fear</span>${bar(Math.min(1, p.env.fear))}<span>${pct(Math.min(1, p.env.fear))}</span>
-        <span>Order</span>${bar(Math.max(0, Math.min(1, 0.4 + p.env.order)))}<span>${pct(Math.max(0, Math.min(1, 0.4 + p.env.order)))}</span>
-        <span>Awe</span>${bar(Math.min(1, 0.15 + p.env.awe))}<span>${pct(Math.min(1, 0.15 + p.env.awe))}</span>
-        <b>Overall</b>${bar(p.resignation)}<b>${pct(p.resignation)}</b></div>`);
+      body.push(html`<div class="meters">${(['food', 'rest', 'prayer'] as const).map((k) => meter(NEED_NAMES[k], p.opinion[k] ?? 0.5))}
+        ${meter('Fear', Math.min(1, p.env.fear))}${meter('Order', Math.max(0, Math.min(1, 0.4 + p.env.order)))}${meter('Awe', Math.min(1, 0.15 + p.env.awe))}</div>
+        <div class="meters total">${meter('Overall', p.resignation)}</div>`);
     } else if (this.tab === 'skills') {
-      parts.push(html`<div class="needs">${Object.entries(p.skills).map(([k, v]) => html`<span>${k[0].toUpperCase() + k.slice(1)}</span>${bar(v / 5)}<span>${v.toFixed(1)}</span>`)}</div><hr class="rule">
-        <div class="needs">${Object.entries(p.traits).map(([k, v]) => html`<span>${k[0].toUpperCase() + k.slice(1)}</span>${bar(v / 9)}<span>${Math.round(v)}</span>`)}</div>
-        <div class="sub">${[p.accessories.pegleg ? 'Peg leg' : '', p.accessories.hat ? 'Fine hat' : '', p.accessories.parrot ? 'Parrot' : ''].filter(Boolean).join(' · ')}</div>`);
+      body.push(html`<section class="sect"><h4 class="eng">Skills</h4><div class="meters">${Object.entries(p.skills).map(([k, v]) => meter(k[0].toUpperCase() + k.slice(1), v / 5, v.toFixed(1)))}</div></section>
+        <section class="sect"><h4 class="eng">Traits</h4><div class="meters">${Object.entries(p.traits).map(([k, v]) => meter(k[0].toUpperCase() + k.slice(1), v / 9, String(Math.round(v))))}</div></section>
+        ${p.accessories.pegleg || p.accessories.hat || p.accessories.parrot ? html`<div class="chips">${[p.accessories.pegleg ? 'Peg leg' : '', p.accessories.hat ? 'Fine hat' : '', p.accessories.parrot ? 'Parrot' : ''].filter(Boolean).map((x) => html`<span class="chip">${x}</span>`)}</div>` : ''}`);
     } else if (this.tab === 'thoughts') {
-      parts.push(html`${this.thoughts(p).map(([t, bad]) => html`<div class="thought ${bad ? 'bad' : ''}">"${t}"</div>`)}`);
+      body.push(html`<div class="thoughts">${this.thoughts(p).map(([t, bad]) => html`<blockquote class="thought ${bad ? 'bad' : ''}">${t}</blockquote>`)}</div>`);
     }
-    // actions
-    const acts = [];
-    acts.push(html`<button class="btn small" data-act="follow">${icon('follow', 14)} Follow</button>`);
+    // actions: ordinary ones first, the deadly ones apart on the right
+    const acts = [html`<button class="btn ghost small" data-act="follow">${icon('follow', 14)} Follow</button>`];
+    const deadly = [];
     if (p.kind === 'pirate') {
-      acts.push(html`<button class="btn small" data-act="edict:donate" data-tip="Give 100 gold">Donate</button>`);
-      if (!p.captain) acts.push(html`<button class="btn small red" data-act="edict:assassinate">Assassinate</button>`);
-      for (const a of ['pegleg', 'hat', 'parrot'] as const) if (g.goodTotal(a) > 0 && !p.accessories[a]) acts.push(html`<button class="btn small" data-act="edict:outfit|${a}">Give ${a === 'pegleg' ? 'peg leg' : a}</button>`);
+      acts.push(html`<button class="btn ghost small" data-act="edict:donate" data-tip="Give 100 gold">${icon('coin', 14)} Give 100 gold</button>`);
+      for (const a of ['pegleg', 'hat', 'parrot'] as const) if (g.goodTotal(a) > 0 && !p.accessories[a]) acts.push(html`<button class="btn ghost small" data-act="edict:outfit|${a}">Give ${a === 'pegleg' ? 'peg leg' : a}</button>`);
       for (const b of g.buildings.values()) {
         const sc = BUILDING[b.def].school;
-        if (sc && b.built >= 1) acts.push(html`<button class="btn small" data-act="edict:educate|${sc}">Train ${sc}</button>`);
+        if (sc && b.built >= 1) acts.push(html`<button class="btn ghost small" data-act="edict:educate|${sc}">Train ${sc}</button>`);
       }
+      if (!p.captain) deadly.push(html`<button class="btn ghost danger small" data-act="edict:assassinate">${icon('skull', 14)} Assassinate</button>`);
     }
     if (p.kind === 'captive') {
-      if (!p.skilled) acts.push(html`<button class="btn small" data-act="edict:press_gang">Press-gang</button>`);
-      if (p.skilled) acts.push(html`<button class="btn small" data-act="edict:ransom">Ransom (${fmt(p.ransom)})</button>`);
-      acts.push(html`<button class="btn small" data-act="edict:free_captive">Free</button><button class="btn small red" data-act="edict:assassinate">Kill</button>`);
+      if (!p.skilled) acts.push(html`<button class="btn ghost small" data-act="edict:press_gang">Press-gang</button>`);
+      if (p.skilled) acts.push(html`<button class="btn ghost small" data-act="edict:ransom">${icon('coin', 14)} Ransom for ${fmt(p.ransom)}</button>`);
+      acts.push(html`<button class="btn ghost small" data-act="edict:free_captive">Set free</button>`);
+      deadly.push(html`<button class="btn ghost danger small" data-act="edict:assassinate">${icon('skull', 14)} Kill</button>`);
     }
-    if (p.kind === 'wealthy') acts.push(html`<button class="btn small green" data-act="edict:ransom">Ransom (${fmt(p.ransom + p.credit)})</button>`);
-    parts.push(html`<div class="row" style="margin-top:8px">${acts}</div>`);
-    return html`<div class="scroll" style="max-height:calc(var(--app-h, 100dvh) - 140px)">${parts}</div>`;
+    if (p.kind === 'wealthy') acts.unshift(html`<button class="btn primary small" data-act="edict:ransom">${icon('coin', 14)} Ransom for ${fmt(p.ransom + p.credit)}</button>`);
+    const foot = html`${acts}${deadly.length ? html`<span class="spacer"></span>${deadly}` : ''}`;
+    return { head, body: html`${body}`, foot };
   }
 
   private thoughts(p: Person): [string, boolean][] {
@@ -423,58 +459,64 @@ export class Inspector {
   }
 
   // ------------------------------------------------------------------------------------------------ ship
-  private ship(s: Ship) {
+  private ship(s: Ship): View {
     const g = this.app.game;
     const d = SHIPS[s.type];
     const cap = g.people.get(s.captain);
-    const parts = [];
     const region = g.regions[s.region];
-    const statusText = { docked: 'In port', boarding: 'Ringing the bell. Crew coming aboard', departing: 'Setting sail', atsea: 'At sea', returning: 'Returning to port', repairing: 'Under repair', building: 'Being built', lost: 'Lost' }[s.status];
-    parts.push(html`<div class="head"><div style="width:72px;height:72px;display:grid;place-items:center;border:1px solid var(--ink);background:#1e2c34;color:#e2c88e;box-shadow:0 0 0 3px rgba(226,210,170,.6),0 0 0 4px var(--ink2)">${icon('ship', 56)}</div>
-      <div><h2>${s.name}</h2><div class="sub">${d.name} · ${statusText}</div><div style="font-size:14px">Captain: ${cap ? html`<a data-act="goto:${cap.id}" style="cursor:pointer;text-decoration:underline">${cap.name}</a>` : html`<b style="color:#a01010">none!</b>`}</div></div></div>`);
+    const statusText = { docked: 'In port', boarding: 'Boarding', departing: 'Setting sail', atsea: 'At sea', returning: 'Homeward bound', repairing: 'Under repair', building: 'Being built', lost: 'Lost' }[s.status];
+    const head = html`<div class="tile ship">${icon('ship', 46)}</div>
+      <div class="hd"><h2>${s.name}</h2><div class="sub">${d.name} · ${d.cannons} guns · crew of ${d.men + d.officers + 1}</div>
+        <div class="chips"><span class="chip ${s.status === 'docked' ? 'ok' : s.status === 'repairing' ? 'warn' : ''}">${statusText}</span>${cap ? html`<button class="chip link" data-act="goto:${cap.id}">${icon('pirate', 12)} ${cap.name}</button>` : html`<span class="chip bad">No captain</span>`}</div></div>`;
+    const body = [];
     const supp = (label: string, have: number, max: number) => html`<span>${label}</span>${bar(have / Math.max(1, max))}<span>${Math.floor(have)}/${max}</span>`;
-    const crewAbove = s.crew.filter((id) => g.people.get(id)?.task.kind === 'atsea').length;
-    parts.push(html`<div class="needs" style="grid-template-columns:90px 1fr 50px;margin-top:6px">
-      ${supp('Crew', s.crew.length, d.men + d.officers)}${supp('Hull', s.hull * 100, 100)}${supp('Rations', s.rations, d.rations)}${supp('Cutlasses', s.cutlasses, d.cutlasses)}${supp('Muskets', s.muskets, d.muskets)}${supp('Cannons', s.cannons, d.cannons)}</div>`);
-    if (s.status === 'boarding') parts.push(html`<div class="sub">${crewAbove}/${s.crew.length} hands aboard</div>`);
+    const crewAboard = s.crew.filter((id) => g.people.get(id)?.task.kind === 'atsea').length;
+    body.push(html`<section class="sect"><h4 class="eng">Crew & stores</h4><div class="meters">
+      ${supp('Crew', s.crew.length, d.men + d.officers)}${supp('Hull', s.hull * 100, 100)}${supp('Rations', s.rations, d.rations)}${supp('Cutlasses', s.cutlasses, d.cutlasses)}${supp('Muskets', s.muskets, d.muskets)}${supp('Cannons', s.cannons, d.cannons)}</div>
+      ${s.status === 'boarding' ? html`<div class="seg-note">${crewAboard} of ${s.crew.length} hands aboard.</div>` : ''}</section>`);
     if (s.status === 'atsea' && s.voyage) {
       const v = s.voyage;
       const total = v.out + v.back + Math.max(0, (s.rations - v.back * v.rationRate) / Math.max(1e-6, v.rationRate));
-      parts.push(html`<h3>Voyage: ${MISSION_NAMES[s.mission]} in the ${region.name}</h3><div class="progress"><div style="width:${Math.min(100, (v.t / Math.max(1, total)) * 100).toFixed(0)}%"></div></div>
-        <div class="sub">${v.lost ? 'Lost at sea!' : v.t < v.out ? 'Sailing out' : 'On station'} · loot so far: ${fmt(v.loot.gold)} gold, ${v.loot.captives} captives</div>
-        ${s.log.slice(-4).map((e) => html`<div style="font-size:13px">${e.date}: ${e.text}</div>`)}`);
+      body.push(html`<section class="sect"><h4 class="eng">Voyage</h4>
+        <div class="kv"><span>Mission</span><span>${MISSION_NAMES[s.mission]}</span><span>Waters</span><span>${region.name}</span>
+        <span>Plunder</span><span>${fmt(v.loot.gold)} gold, ${v.loot.captives} captives</span></div>
+        <div class="meters" style="margin-top:6px"><span>${v.lost ? 'Lost!' : v.t < v.out ? 'Sailing out' : 'On station'}</span>${bar(Math.min(1, v.t / Math.max(1, total)), 'brass')}<span>${pct(Math.min(1, v.t / Math.max(1, total)))}</span></div>
+        ${s.log.length ? html`<ol class="log">${s.log.slice(-4).map((e) => html`<li><i>${e.date}</i> ${e.text}</li>`)}</ol>` : ''}</section>`);
     }
+    let foot = null;
     if (s.status === 'docked' || s.status === 'boarding' || s.status === 'repairing') {
       const mission = s.mission;
-      parts.push(html`<h3>Orders</h3>
-        <div class="row" style="font-size:14px">${(['cruise', 'raid', 'kidnap', 'explore', 'foster_war'] as const).map((m) => html`<button class="btn small ${mission === m ? 'on' : ''}" data-act="mission:${m}" data-tip="${missionTip(m)}">${MISSION_NAMES[m]}</button>`)}</div>`);
-      if (mission === 'cruise') {
-        parts.push(html`<div class="row" style="font-size:14px;margin-top:4px">Tactics: ${(['board', 'pound', 'harass'] as const).map((o) => html`<button class="btn small ${s.orders === o ? 'on' : ''}" data-act="orders:${o}" data-tip="${ordersTip(o)}">${ORDERS_NAMES[o]}</button>`)}</div>`);
-      }
+      const missions: [string, string, string][] = [['cruise', 'Cruise', 'ship'], ['raid', 'Raid', 'flag'], ['kidnap', 'Kidnap', 'chain'], ['explore', 'Explore', 'telescope'], ['foster_war', 'Foster war', 'scroll']];
+      const orders = [html`<div class="seg full wrap4 missions" role="radiogroup" aria-label="Mission">${missions.map(([m, n, ic]) => html`<button class="${mission === m ? 'on' : ''}" data-act="mission:${m}" role="radio" aria-checked="${mission === m ? 'true' : 'false'}">${icon(ic, 16)}${n}</button>`)}</div>
+        <div class="seg-note">${missionTip(mission)}</div>`];
+      if (mission === 'cruise') orders.push(html`<div class="field-row"><span class="lbl">Tactics</span>${this.seg('orders', s.orders, [['board', 'Board'], ['pound', 'Pound'], ['harass', 'Harass']], 'full')}</div><div class="seg-note">${ordersTip(s.orders)}</div>`);
       if (mission === 'cruise' || mission === 'explore' || mission === 'foster_war') {
         const reach = regionReachable(g, s, s.region);
         const months = (transitTime(g, s, s.region) / MONTH).toFixed(1);
-        parts.push(html`<div class="row" style="font-size:14px;margin-top:4px">Region: <b>${region.name}</b> <button class="btn small" data-act="chart">${icon('telescope', 14)} Choose on chart</button></div>
-          <div class="sub">${reach.ok ? `${months} months' sail each way` : reach.reason}</div>`);
+        orders.push(html`<div class="field-row"><span class="lbl">Waters</span><div class="dest"><b>${region.name}</b>${s.region === g.homeRegion ? html` <i class="dim">(home)</i>` : ''}<button class="btn ghost small" data-act="chart">${icon('telescope', 14)} Chart</button></div></div>
+          <div class="callout ${reach.ok ? 'ok' : 'bad'}">${icon(reach.ok ? 'compass' : 'info', 16)}<span>${reach.ok ? `${months} months' sail each way.` : reach.reason}</span></div>`);
       }
       if (mission === 'kidnap') {
         const jobs = ['shipwright', 'engineer', 'gunsmith', 'distiller', 'tobacconist', 'courtesan', 'surgeon', 'priest', 'trader', 'server', 'cook', 'farmer', 'wench', 'hatter', 'carpenter', 'birdhandler'] as const;
-        parts.push(html`<div class="sub">Costs 250 gold. Always succeeds.</div><div class="row" style="font-size:13px">${jobs.map((j) => html`<button class="btn small ${s.kidnapJob === j ? 'on' : ''}" data-act="kidnap:${j}">${JOB_NAMES[j]}</button>`)}</div>`);
+        orders.push(html`<div class="field-row top"><span class="lbl">Target</span>${this.seg('kidnap', s.kidnapJob ?? '', jobs.map((j) => [j, JOB_NAMES[j]] as [string, string]), 'wrap')}</div><div class="seg-note">Costs 250 gold. Always succeeds.</div>`);
       }
-      if (mission === 'foster_war') parts.push(html`<div class="row" style="font-size:14px">Provoke: ${NATIONS.map((n) => html`<button class="btn small ${s.foster === n ? 'on' : ''}" data-act="foster:${n}">${NATION_NAMES[n]}</button>`)}</div>`);
-      parts.push(html`<div class="row" style="font-size:14px;margin-top:4px">Spoils: ${(['miserly', 'selfish', 'generous', 'bigspender'] as const).map((o) => html`<button class="btn small ${s.spoils === o ? 'on' : ''}" data-act="spoils:${o}">${SPOILS_NAMES[o]}</button>`)}</div>
-        <div class="sub">How much of the plunder goes to the treasury. Stingy captains attract fewer recruits.</div>`);
-      parts.push(html`<div class="row" style="margin-top:8px">
-        <button class="btn green" data-act="sail">${icon('bell', 16)} ${s.status === 'boarding' ? 'Leave now!' : 'Set Sail'}</button>
-        ${g.findBuilding('black_market') ? html`<button class="btn small" data-act="bm" data-tip="Buy rations and weapons instantly">Black Market</button>` : ''}
-        <button class="btn small" data-act="shipEdict:donate_crew">Donate to crew</button>
-        <button class="btn small" data-act="follow">${icon('follow', 14)}</button>
-        <button class="btn small red" data-act="scuttle">Scuttle</button></div>`);
-      if (s.log.length) parts.push(html`<h3>Last Voyage</h3>${s.log.slice(-5).map((e) => html`<div style="font-size:13px">${e.date}: ${e.text}</div>`)}`);
-    }
-    return html`<div class="scroll" style="max-height:calc(var(--app-h, 100dvh) - 140px)">${parts}</div>`;
+      if (mission === 'foster_war') orders.push(html`<div class="field-row"><span class="lbl">Provoke</span>${this.seg('foster', s.foster ?? '', NATIONS.map((n) => [n, NATION_NAMES[n]] as [string, string]), 'full')}</div>`);
+      body.push(html`<section class="sect"><h4 class="eng">Orders</h4>${orders}</section>`);
+      body.push(html`<section class="sect"><h4 class="eng">Spoils</h4>${this.seg('spoils', s.spoils, [['miserly', 'Miserly'], ['selfish', 'Selfish'], ['generous', 'Generous'], ['bigspender', 'Big spender']], 'full')}
+        <div class="seg-note">The treasury keeps ${Math.round(SPOILS_TREASURY[s.spoils] * 100)}% of the plunder, the crew shares ${Math.round((1 - SPOILS_TREASURY[s.spoils]) * 100)}%. Stingy captains attract fewer recruits.</div></section>`);
+      if (s.log.length) body.push(html`<section class="sect"><h4 class="eng">Last voyage</h4><ol class="log">${s.log.slice(-5).map((e) => html`<li><i>${e.date}</i> ${e.text}</li>`)}</ol></section>`);
+      foot = html`<button class="btn primary" data-act="sail">${icon('bell', 16)} ${s.status === 'boarding' ? 'Leave now' : 'Set sail'}</button>
+        ${g.findBuilding('black_market') ? html`<button class="btn ghost small" data-act="bm" data-tip="Buy rations and weapons instantly">Black market</button>` : ''}
+        <button class="btn ghost small" data-act="shipEdict:donate_crew">${icon('coin', 14)} Treat the crew</button>
+        <button class="btn ghost small icon-only" data-act="follow" aria-label="Follow" data-tip="Follow the ship">${icon('follow', 15)}</button>
+        <span class="spacer"></span><button class="btn ghost danger small" data-act="scuttle">Scuttle</button>`;
+    } else foot = html`<button class="btn ghost small" data-act="follow">${icon('follow', 14)} Follow</button><button class="btn ghost small" data-act="chart">${icon('telescope', 14)} Sea chart</button>`;
+    return { head, body: html`${body}`, foot };
   }
 }
+
+type View = { head: unknown; body: unknown; foot: unknown };
+const AURA_NAMES: Record<string, string> = { order: 'Order', anarchy: 'Anarchy', fear: 'Fear', defense: 'Defense', awe: 'Awe' };
 
 function missionTip(m: string): string {
   return {

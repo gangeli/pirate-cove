@@ -384,6 +384,7 @@ export class App {
       if (!t) return;
       if (ev.pointerType === 'touch') this.hover = t;
       this.dragStart = t;
+      this.roadPending = null; // a new drag replaces a road still waiting for its tick
       if (this.tool.kind === 'clear') this.cmd({ type: 'clearTrees', x: t.x, y: t.y, r: 1 });
     });
     c.addEventListener('pointerup', (ev) => {
@@ -746,8 +747,10 @@ export class App {
   private updateGhost(): void {
     const tool = this.tool;
     const h = this.hover;
+    const hv = h;
     if (this.state !== 'game' || !h) {
       this.ghost.visible = false;
+      this.placeCtl?.hide();
       return;
     }
     if (tool.kind === 'build') {
@@ -810,12 +813,15 @@ export class App {
       const grid = this.ghost.getObjectByName('grid')!;
       foot.position.y = grid.position.y = 0.06;
       (foot.material as THREE.MeshBasicMaterial).color.set(pl.ok ? 0x40ff40 : 0xff3030);
-      setText(this.cursorTip, gc.text);
-      this.cursorTip.classList.toggle('ok', !gc.reason);
-      this.cursorTip.classList.remove('hidden');
+      // the name/cost tag hangs from the ghost itself (with rotate / confirm / cancel beside it on touch screens)
+      this.cursorTip.classList.add('hidden');
+      this.placeCtl.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight },
+        { x: cx, y: gy, z: cz, w: fw, d: fh, h: Math.max(1.2, Math.min(fw, fh) * 0.8) }, gc.text, !gc.reason, 'build', this.touchMode);
     } else if (tool.kind === 'road' || tool.kind === 'unroad' || tool.kind === 'demolish' || tool.kind === 'clear') {
       this.ghost.visible = false;
-      const ds = tool.kind === 'road' ? this.dragStart : null;
+      const rp = tool.kind === 'road' ? this.roadPending : null;
+      const ds = tool.kind === 'road' ? (rp?.start ?? this.dragStart) : null;
+      const h = rp?.end ?? hv!;
       const pk = `${tool.kind}:${h.x},${h.y}:${ds ? `${ds.x},${ds.y}` : ''}`;
       const pv = (this.previewRes ??= {
         geo: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
@@ -846,6 +852,12 @@ export class App {
           this.roadPreview.add(m);
         });
       }
+      if (rp) {
+        const n = Math.abs(rp.end.x - rp.start.x) + Math.abs(rp.end.y - rp.start.y) + 1;
+        const ex = rp.end.x + 0.5, ez = rp.end.y + 0.5;
+        this.placeCtl.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight },
+          { x: ex, y: Math.max(0.05, this.game.map.heightAt(ex, ez)), z: ez, w: 1, d: 1, h: 0.3 }, `Road · ${n} tile${n > 1 ? 's' : ''}`, true, 'road', true);
+      } else this.placeCtl.hide();
       if (tool.kind === 'demolish') {
         const b = this.game.tileBuilding(h.x, h.y);
         setText(this.cursorTip, b ? `Demolish ${BUILDING[b.def].name}` : 'Demolish');
@@ -853,6 +865,7 @@ export class App {
       } else this.cursorTip.classList.add('hidden');
     } else {
       this.ghost.visible = false;
+      this.placeCtl.hide();
       if (tool.kind === 'target') {
         setText(this.cursorTip, `Click a ${tool.what} (right-click to cancel)`);
         this.cursorTip.classList.add('ok');

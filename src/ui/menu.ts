@@ -146,7 +146,7 @@ export class MainMenu {
         ${field('Starting gold', 'startGold', [[1200, '1,200'], [2500, '2,500'], [5000, '5,000']])}
         <div class="field"><label>Island location</label><select data-region>${REGION_NAMES.map((n, i) => html`<option value="${i}" ${s.region === i ? raw('selected') : ''}>${n}</option>`)}</select>
           <div class="hintx">Small ships can only reach seas near home, so location matters.</div></div>
-        <div class="field"><label>Map seed</label><div class="row"><span class="chip">${s.seed}</span><button class="btn small" data-act="seed">Reroll</button></div></div></div>`;
+        <div class="field"><label>Map seed</label><div class="row"><span class="chip">${s.seed}</span><button class="btn ghost small" data-act="seed">Reroll</button></div></div></div>`;
     } else if (this.tab === 'conditions') {
       body = html`<div class="grid2">
         ${field('Length of reign', 'years', [[10, '10 years'], [20, '20 years'], [30, '30 years']], 'At normal speed a year lasts about 30 minutes.')}
@@ -168,14 +168,14 @@ export class MainMenu {
             <b>${BACKGROUNDS[k.bg].name}</b><span>${BACKGROUNDS[k.bg].desc}</span>
             ${k.q.map((q) => html`<b>${QUALITIES[q].name}</b><span>${QUALITIES[q].desc}</span>`)}
             <b style="color:#8a1a10">${FLAWS[k.flaw].name}</b><span>${FLAWS[k.flaw].desc}</span></div>`}
-          <button class="btn small" style="margin-top:6px" data-act="custom">${this.custom ? 'Done editing' : 'Edit traits'}</button></div></div>`;
+          <button class="btn ghost small" style="margin-top:6px" data-act="custom">${this.custom ? 'Done editing' : 'Edit traits'}</button></div></div>`;
     }
     setHTML(this.setup, html`<button class="close" data-act="close">${icon('close', 14)}</button>
       <h2>A New Reign</h2>
-      <div class="tabs big" style="position:static;transform:none;width:auto;height:auto;display:flex"><div class="t ${this.tab === 'preset' ? 'on' : ''}" data-act="tab:preset">Difficulty</div><div class="t ${this.tab === 'island' ? 'on' : ''}" data-act="tab:island">The Island</div><div class="t ${this.tab === 'conditions' ? 'on' : ''}" data-act="tab:conditions">Conditions</div><div class="t ${this.tab === 'king' ? 'on' : ''}" data-act="tab:king">Pirate ${this.king.sex === 'F' ? 'Queen' : 'King'}</div></div>
+      <nav class="tabs book" role="tablist">${([['preset', 'Difficulty', 'skull'], ['island', 'The island', 'compass'], ['conditions', 'Conditions', 'scroll'], ['king', `Pirate ${this.king.sex === 'F' ? 'queen' : 'king'}`, 'crown']] as const).map(([t, n, ic]) => html`<button class="t ${this.tab === t ? 'on' : ''}" data-act="tab:${t}" role="tab" aria-selected="${this.tab === t ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</nav>
       <div class="content scroll" style="flex:1;margin:8px 0">${body}</div>
       <div class="row" style="justify-content:space-between"><span class="sub">Difficulty: <b>${this.difficulty()}%</b> (your final score is multiplied by this)</span>
-        <div class="row">${this.tab !== 'king' ? html`<button class="btn" data-act="tab:${this.tab === 'preset' ? 'island' : this.tab === 'island' ? 'conditions' : 'king'}">Next</button>` : ''}<button class="btn green" data-act="start">Begin Your Reign</button></div></div>`);
+        <div class="row">${this.tab !== 'king' ? html`<button class="btn ghost" data-act="tab:${this.tab === 'preset' ? 'island' : this.tab === 'island' ? 'conditions' : 'king'}">Next</button>` : ''}<button class="btn primary" data-act="start">Begin your reign</button></div></div>`);
     const sel = this.setup.querySelector<HTMLSelectElement>('[data-region]');
     if (sel) sel.onchange = () => (this.s.region = +sel.value);
     const bg = this.setup.querySelector<HTMLSelectElement>('[data-bg]');

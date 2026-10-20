@@ -24,7 +24,7 @@ export function thumbOrQueue(world: World, id: string, onReady: (id: string, url
     queued.add(id);
     queue.push(id);
   }
-  listener = onReady;
+  listeners.add(onReady);
   if (!pumping) {
     pumping = true;
     const step = () => {
@@ -35,7 +35,7 @@ export function thumbOrQueue(world: World, id: string, onReady: (id: string, url
       }
       queued.delete(next);
       const url = thumb(world, next);
-      listener?.(next, url);
+      for (const l of listeners) l(next, url);
       // one render per frame, after the frame, so opening the menu never stalls on thumbnails
       requestAnimationFrame(() => setTimeout(step, 0));
     };
@@ -43,7 +43,8 @@ export function thumbOrQueue(world: World, id: string, onReady: (id: string, url
   }
   return null;
 }
-let listener: ((id: string, url: string) => void) | null = null;
+/** everyone waiting on thumbnails (pass a stable function: the set keeps one entry per listener) */
+const listeners = new Set<(id: string, url: string) => void>();
 
 export function thumb(world: World, id: string): string {
   const hit = cache.get(id);
