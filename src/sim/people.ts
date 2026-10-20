@@ -232,7 +232,12 @@ function awaitPath(g: Game, p: Person, dt: number): boolean {
     // the way closed while they waited (a building went up across it): give up and think again
     const b = p.task.bld ? g.buildings.get(p.task.bld) : undefined;
     if (b) b.customers = b.customers.filter((c) => c !== p.id);
-    if (p.task.kind === 'haul') p.carrying = undefined;
+    if (p.task.kind === 'haul' && p.carrying) {
+      // as when the way home is shut before setting off: the load goes back where it came from
+      const src = p.task.src ? g.buildings.get(p.task.src) : undefined;
+      if (src) src.inv[p.carrying] = (src.inv[p.carrying] ?? 0) + (p.task.amount ?? 0);
+      p.carrying = undefined;
+    }
     p.path = null;
     setIdle(p, 1);
     return false;

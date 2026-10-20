@@ -182,7 +182,7 @@ export function haulStep(g: Game, p: Person): boolean {
     if (take <= 0) return false;
     src.inv[good] = (src.inv[good] ?? 0) - take;
     p.carrying = good;
-    if (goTo(g, p, home.door[0], home.door[1], { kind: 'haul', bld: home.id, good, amount: take, timer: 2 })) return true;
+    if (goTo(g, p, home.door[0], home.door[1], { kind: 'haul', bld: home.id, src: src.id, good, amount: take, timer: 2 })) return true;
     // can't get home: drop it back
     src.inv[good] = (src.inv[good] ?? 0) + take;
     p.carrying = undefined;
