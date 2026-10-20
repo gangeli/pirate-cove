@@ -21,6 +21,7 @@ import { Modal } from './modal';
 import { MainMenu } from './menu';
 import { Overlays } from './overlays';
 import { saveGame, loadGame, hasSave } from './saves';
+import { PlaceControls, type PlaceAction } from './placectl';
 import type { Profiler } from './profiler';
 
 /** wall-clock milliseconds per frame the simulation may use before it starts dropping backlog */
@@ -275,35 +276,43 @@ export class App {
     this.world.rig.touchPan = !(t.kind === 'road' || t.kind === 'clear' || t.kind === 'unroad');
     // see-through trees while laying roads, so the ground (and existing paths) under the canopy stay visible
     this.world.veg?.setGhost(t.kind === 'road' || t.kind === 'unroad');
-    this.touchPlace?.classList.toggle('hidden', !(t.kind === 'build' && this.touchMode));
+    this.roadPending = null;
   }
 
   /** true once the player has touched the screen (shows touch affordances) */
   touchMode = false;
-  private touchPlace: HTMLElement | null = null;
 
-  private buildTouchBar(): void {
-    const bar = el('div', 'touchbar hidden', this.root);
-    bar.innerHTML = `<button class="btn green" data-act="place">Place</button><button class="btn" data-act="rot">Rotate</button><button class="btn red" data-act="cancel">Cancel</button>`;
-    bar.addEventListener('click', (e) => {
-      const act = (e.target as HTMLElement).closest('[data-act]')?.getAttribute('data-act');
-      const tool = this.tool;
-      if (act === 'cancel') return this.setTool({ kind: 'select' });
-      if (tool.kind !== 'build') return;
-      if (act === 'rot') {
-        tool.rot = (tool.rot + 1) % 4;
-        this.ghostKey = '';
+  /** placement controls beside the ghost (touch: rotate / confirm / cancel; mouse: just the cost tag) */
+  private placeCtl!: PlaceControls;
+  /** a road dragged out on a touch screen, waiting for the player to confirm it */
+  private roadPending: { start: { x: number; y: number }; end: { x: number; y: number } } | null = null;
+
+  private placeAction(a: PlaceAction): void {
+    const tool = this.tool;
+    audio.sfx('ui_click');
+    if (tool.kind === 'road' || tool.kind === 'unroad') {
+      const rp = this.roadPending;
+      this.roadPending = null;
+      this.roadPreview.clear();
+      if (a === 'ok' && rp && this.cmd({ type: 'roadLine', x0: rp.start.x, y0: rp.start.y, x1: rp.end.x, y1: rp.end.y })) audio.sfx('build_place');
+      if (a === 'cancel' && !rp) this.setTool({ kind: 'select' });
+      return;
+    }
+    if (tool.kind !== 'build') return;
+    if (a === 'cancel') return this.setTool({ kind: 'select' });
+    if (a === 'rotl' || a === 'rotr') {
+      tool.rot = (tool.rot + (a === 'rotr' ? 1 : 3)) % 4;
+      this.ghostKey = '';
+      return;
+    }
+    if (a === 'ok' && this.hover) {
+      const def = BUILDING[tool.def];
+      const pl = this.placement(def, this.hover, tool.rot);
+      if (this.cmd({ type: 'build', def: def.id, x: pl.x, y: pl.y, rot: pl.rot })) {
+        audio.sfx('build_place');
+        if (!def.decor && def.id !== 'housing_plot') this.setTool({ kind: 'select' });
       }
-      if (act === 'place' && this.hover) {
-        const def = BUILDING[tool.def];
-        const pl = this.placement(def, this.hover, tool.rot);
-        if (this.cmd({ type: 'build', def: def.id, x: pl.x, y: pl.y, rot: pl.rot })) {
-          audio.sfx('build_place');
-          if (!def.decor && def.id !== 'housing_plot') this.setTool({ kind: 'select' });
-        }
-      }
-    });
-    this.touchPlace = bar;
+    }
   }
 
   select(s: Selection): void {
@@ -344,7 +353,7 @@ export class App {
 
   private bindInput(): void {
     const c = this.canvas;
-    this.buildTouchBar();
+    this.placeCtl = new PlaceControls(this.root, (a) => this.placeAction(a));
     let touches = 0;
     c.addEventListener('pointerdown', (ev) => {
       if (ev.pointerType === 'touch') {
@@ -387,9 +396,11 @@ export class App {
         const t = this.tileAt(ev);
         if (!t) return;
         this.hover = t;
-        // building on touch: a tap moves the ghost; the Place button commits it
-        if (this.tool.kind === 'build') {
-          this.touchPlace?.classList.remove('hidden');
+        // building on touch: a tap moves the ghost; the tick beside it commits it
+        if (this.tool.kind === 'build') return;
+        // a road dragged out on touch waits beside its end for a tick (or a cross)
+        if (this.tool.kind === 'road' && start) {
+          this.roadPending = { start, end: t };
           return;
         }
         this.click(ev, t, start ?? t);
