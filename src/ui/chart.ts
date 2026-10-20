@@ -704,7 +704,8 @@ export class SeaChart {
       // no clean spot: minor names give way (they show on hover/tap); home, the inspected sea, the course and seas
       // within reach always get their label
       const important = o.home || o.r.id === this.region || (sel && (sel.region === o.r.id || o.reach?.ok));
-      if (bestLov > 4 && !important) continue;
+      const clipped = best.x < 2 || best.x + best.w > this.geo.cw - 2 || best.y < 2 || best.y + best.h > this.geo.ch - 2;
+      if ((bestLov > 4 || clipped) && !important) continue;
       placed.push(best);
       const cx = best.x + best.w / 2;
       g.textAlign = 'center';

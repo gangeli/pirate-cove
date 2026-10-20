@@ -6,7 +6,7 @@ import { NATIONS, NATION_NAMES, NATION_ADJ, BACKGROUNDS, QUALITIES, FLAWS } from
 import { SHIPS, MISSION_NAMES } from '../sim/data/ships';
 import { computeScore, medalThresholds } from '../sim/score';
 import { relationLevel } from '../sim/diplomacy';
-import { activityText } from './inspector';
+import { activityText, shipStatusName } from './inspector';
 import { audio } from '../audio/audio';
 import { portraitImg } from './portraits';
 
@@ -200,7 +200,7 @@ export class IslandLog {
     const g = this.app.game;
     const list = [...g.ships.values()];
     return html`<div class="table-wrap"><table class="ledger"><tr><th>Ship</th><th>Type</th><th>Captain</th><th>Crew</th><th>Status</th><th>Mission</th><th>Hull</th><th>Cannons</th></tr>
-      ${list.map((s) => html`<tr data-act="ship:${s.id}" style="cursor:pointer"><td>${s.name}</td><td>${SHIPS[s.type].name}</td><td>${g.people.get(s.captain)?.name ?? '-'}</td><td>${s.crew.length}/${SHIPS[s.type].men + SHIPS[s.type].officers}</td><td>${s.status}</td><td>${MISSION_NAMES[s.mission]} (${g.regions[s.region].name})</td><td>${pct(s.hull)}</td><td>${s.cannons}</td></tr>`)}</table></div>
+      ${list.map((s) => html`<tr data-act="ship:${s.id}" style="cursor:pointer"><td>${s.name}</td><td>${SHIPS[s.type].name}</td><td>${g.people.get(s.captain)?.name ?? '-'}</td><td>${s.crew.length}/${SHIPS[s.type].men + SHIPS[s.type].officers}</td><td>${shipStatusName(s.status)}</td><td>${MISSION_NAMES[s.mission]} (${g.regions[s.region].name})</td><td>${pct(s.hull)}</td><td>${s.cannons}</td></tr>`)}</table></div>
       ${!list.length ? html`<div class="sub">No ships. Build a Boatyard (needs a skilled shipwright) and a Dock.</div>` : ''}`;
   }
 

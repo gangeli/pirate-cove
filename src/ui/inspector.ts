@@ -17,6 +17,11 @@ import { MONTH } from '../sim/time';
 
 const NEED_NAMES: Record<string, string> = { feast: 'Grub', drink: 'Grog', company: 'Company', gamble: 'Wagers', rest: 'Rest', stash: 'Stash', food: 'Food', prayer: 'Prayer', anarchy: 'Freedom', defense: 'Safety' };
 
+/** a ship's status in plain words (never the sim's identifiers) */
+export function shipStatusName(st: string): string {
+  return ({ docked: 'In port', boarding: 'Boarding', departing: 'Setting sail', atsea: 'At sea', returning: 'Homeward', repairing: 'Repairing', building: 'Being built', lost: 'Lost' } as Record<string, string>)[st] ?? st;
+}
+
 export function activityText(app: App, p: Person): string {
   const g = app.game;
   const t = p.task;
@@ -293,7 +298,7 @@ export class Inspector {
       const acts: QuickAct[] = [details];
       if (sh.status === 'docked' || sh.status === 'boarding' || sh.status === 'repairing') acts.push({ act: 'sail', icon: 'bell', label: sh.status === 'boarding' ? 'Leave now' : 'Set sail', tone: 'ok' });
       acts.push({ act: 'chart', icon: 'telescope', label: 'Sea chart' }, { act: 'follow', icon: 'follow', label: 'Follow' });
-      return { acts, name: sh.name, box: { x: pos.x, y: 0, z: pos.z, w: 3, d: 3, h: 4 } };
+      return { acts, name: sh.name, box: { x: pos.x, y: 0, z: pos.z, w: 6, d: 6, h: 7 } };
     }
     const p = g.people.get(s.id);
     const pos = p ? w.people.personPosition(s.id) : null;
@@ -390,7 +395,7 @@ export class Inspector {
       }
       if (def.id === 'dock') {
         const s = b.ship ? g.ships.get(b.ship) : null;
-        body.push(html`<section class="sect"><h4 class="eng">Berth</h4>${s ? html`<button class="pick" data-act="gotoS:${s.id}">${icon('ship', 18)}<span class="nm">${s.name}<small>${SHIPS[s.type].name}</small></span><span class="chip">${s.status === 'atsea' ? 'At sea' : s.status === 'docked' ? 'In port' : s.status}</span></button>` : html`<div class="seg-note">Empty. Every ship needs a free dock.</div>`}</section>`);
+        body.push(html`<section class="sect"><h4 class="eng">Berth</h4>${s ? html`<button class="pick" data-act="gotoS:${s.id}">${icon('ship', 18)}<span class="nm">${s.name}<small>${SHIPS[s.type].name}</small></span><span class="chip">${shipStatusName(s.status)}</span></button>` : html`<div class="seg-note">Empty. Every ship needs a free dock.</div>`}</section>`);
       }
       if (def.id === 'boatyard' || def.id === 'shipyard') {
         if (b.building_ship) body.push(html`<section class="sect"><h4 class="eng">On the slipway</h4><div class="meters"><span>${SHIPS[b.building_ship.type].name}</span>${bar(b.building_ship.progress, 'brass')}<span>${pct(b.building_ship.progress)}</span></div></section>`);
