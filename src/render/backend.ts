@@ -29,16 +29,39 @@ export interface BackendChoice {
 }
 
 /**
- * WebGPU passes this game's parity checks (same image as WebGL on every tier, see the webgpu branch notes), so it
- * is the default wherever the browser offers a hardware adapter. ?gpu=webgl|webgpu forces one.
+ * WebGPU is opt-in for now (Settings › WebGPU renderer, or ?gpu=webgpu): low and medium match WebGL exactly, but 'high'
+ * still has an intermittent fault (a building group drawn nearly unlit) under investigation. Flip this to make it the
+ * default wherever the browser offers a hardware adapter. ?gpu=webgl|webgpu forces one either way.
  */
-export const WEBGPU_DEFAULT = true;
+export const WEBGPU_DEFAULT = false;
+
+const PREF_KEY = 'bc.renderer';
+/** the player's renderer choice from Settings ('webgpu'), or null for the default */
+function backendPreference(): string | null {
+  try {
+    return localStorage.getItem(PREF_KEY);
+  } catch {
+    return null;
+  }
+}
+/** remember the renderer choice and reload so it takes effect (a canvas can't switch context types) */
+export function setBackendPreference(v: 'webgpu' | null): void {
+  try {
+    if (v) localStorage.setItem(PREF_KEY, v);
+    else localStorage.removeItem(PREF_KEY);
+  } catch {
+    /* private mode: the URL parameter still works */
+  }
+  const u = new URL(location.href);
+  u.searchParams.delete('gpu');
+  location.replace(u.toString());
+}
 
 /** CPU rasterisers, by renderer / adapter name */
 export const SOFTWARE_GPU = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render|gdi generic|mesa offscreen/i;
 
 export async function chooseBackend(): Promise<BackendChoice> {
-  const force = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('gpu') : null;
+  const force = (typeof location !== 'undefined' ? new URLSearchParams(location.search).get('gpu') : null) ?? backendPreference();
   if (force === 'webgl') return { backend: 'webgl', reason: 'forced (?gpu=webgl)', adapter: null };
   const nav = navigator as Navigator & { gpu?: GPU };
   if (!nav.gpu) return { backend: 'webgl', reason: 'no navigator.gpu', adapter: null };
@@ -49,7 +72,7 @@ export async function chooseBackend(): Promise<BackendChoice> {
     adapter = null;
   }
   if (!adapter) return { backend: 'webgl', reason: 'no WebGPU adapter (blocklisted or unsupported)', adapter: null };
-  if (force === 'webgpu') return { backend: 'webgpu', reason: 'forced (?gpu=webgpu)', adapter };
+  if (force === 'webgpu') return { backend: 'webgpu', reason: new URLSearchParams(location.search).has('gpu') ? 'forced (?gpu=webgpu)' : 'chosen in Settings', adapter };
   const info = (adapter as GPUAdapter & { info?: GPUAdapterInfo & { isFallbackAdapter?: boolean } }).info;
   // a software WebGPU adapter (the browser's fallback flag, or a CPU rasteriser by name): stay on WebGL, which may
   // still have the hardware, and otherwise shows the software-GPU notice

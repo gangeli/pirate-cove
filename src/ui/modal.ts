@@ -6,6 +6,7 @@ import type { Message } from '../sim/types';
 import { audio } from '../audio/audio';
 import { listSaves } from './saves';
 import { portraitImg } from './portraits';
+import { setBackendPreference } from '../render/backend';
 
 export class Modal {
   private wrap: HTMLElement;
@@ -165,6 +166,7 @@ export class Modal {
       <section class="sect"><h4 class="eng">Sound</h4>${slider('master', 'Master')}${slider('music', 'Music')}${slider('voice', 'Voices')}${slider('sfx', 'Effects')}${slider('ambient', 'Ambience')}</section>
       <section class="sect"><h4 class="eng">Graphics</h4><div class="seg full" role="radiogroup">${(['low', 'medium', 'high'] as const).map((x) => html`<button class="${q === x ? 'on' : ''}" data-act="do:q_${x}">${x[0].toUpperCase() + x.slice(1)}</button>`)}</div>
       <div class="sub" style="font-size:12px;margin-top:4px;user-select:text;-webkit-user-select:text">Renderer: ${this.app.world.backend === 'webgpu' ? 'WebGPU (experimental)' : 'WebGL'} &middot; ${this.app.world.gpu.renderer}${this.app.world.gpu.software ? ' (software, no graphics acceleration)' : ''} &middot; resolution ${Math.round(this.app.world.pr * 100)}%</div>
+      ${'gpu' in navigator ? html`<label class="check" style="margin-top:6px"><input type="checkbox" data-webgpu ${this.app.world.backend === 'webgpu' ? 'checked' : ''}><span>WebGPU renderer (experimental; reloads the game, so save first)</span></label>` : ''}
       <div class="row start" style="margin-top:8px;align-items:center;gap:8px"><button class="btn ghost small" data-act="do:profile">Record performance (60 s)</button><span class="sub" style="font-size:12px">Play normally for a minute, then copy the report.</span></div></section>
       <section class="sect"><h4 class="eng">Advisor</h4><div class="seg full" role="radiogroup">${(['full', 'brief', 'off'] as const).map((x) => html`<button class="${adv === x ? 'on' : ''}" data-act="do:a_${x}">${x === 'full' ? 'Chatty' : x === 'brief' ? 'Brief' : 'Silent'}</button>`)}</div>
         <div class="seg-note">${adv === 'full' ? 'Barnaby speaks his mind in full.' : adv === 'brief' ? 'Barnaby keeps it to one line.' : 'Barnaby holds his tongue; important news still arrives as notes.'}</div></section>
@@ -192,6 +194,8 @@ export class Modal {
     }
     const edge = this.box.querySelector<HTMLInputElement>('[data-edge]');
     if (edge) edge.onchange = () => (this.app.world.rig.edgeScroll = edge.checked);
+    const wgpu = this.box.querySelector<HTMLInputElement>('[data-webgpu]');
+    if (wgpu) wgpu.onchange = () => setBackendPreference(wgpu.checked ? 'webgpu' : null);
   }
 
   private setQuality(q: 'low' | 'medium' | 'high'): void {
