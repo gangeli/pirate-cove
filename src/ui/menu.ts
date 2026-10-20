@@ -101,7 +101,7 @@ export class MainMenu {
         <button class="item" data-act="settings">Settings</button>
         <button class="item" data-act="credits">Credits</button>
       </div></div>
-      <div class="foot">A tribute to the pirate island builders of old. ${matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'} anywhere to enable sound.</div>`);
+      <div class="foot">A tribute to the pirate island builders of old.${audio.muted ? ` ${matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'} the speaker for sound.` : ''}</div>`);
     pwaMenuItems(this.root.querySelector('.items'));
     this.root.classList.remove('hidden');
   }

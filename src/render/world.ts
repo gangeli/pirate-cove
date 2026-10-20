@@ -331,6 +331,7 @@ export class World {
     this.ships = new ShipsView(this, game);
     this.effects = new Effects(this, game);
     this.roadTex = undefined; // the new terrain needs it in its own uniforms (the old one is freed below)
+    this.packed = undefined; // likewise the packed roads/overlay texture (WebGL)
     this.updateRoadTex();
     this.overlayTex = undefined;
     this.setOverlay(null);
@@ -361,6 +362,24 @@ export class World {
       await Promise.race([this.renderer.compileAsync(this.scene, this.rig.camera), new Promise((r) => setTimeout(r, ms))]);
     } catch (e) {
       console.warn('shader warm-up', e);
+    }
+    this.reportBrokenShaders();
+  }
+
+  /** shaders that failed to link on this GPU (release builds skip three's per-shader check, so a program that is
+   *  too big for the hardware, e.g. over its texture-unit limit, would otherwise just draw nothing); kept for the
+   *  profiler report */
+  brokenShaders: string[] = [];
+  private reportBrokenShaders(): void {
+    if (isWebGPU(this.renderer)) return;
+    const r = this.renderer as THREE.WebGLRenderer, gl = r.getContext();
+    for (const p of r.info.programs ?? []) {
+      const prog = (p as unknown as { program: WebGLProgram; name: string }).program;
+      if (!prog || gl.getProgramParameter(prog, gl.LINK_STATUS)) continue;
+      const log = `${(p as { name?: string }).name || 'unnamed'}: ${gl.getProgramInfoLog(prog)?.trim().slice(0, 300) ?? ''}`;
+      if (this.brokenShaders.includes(log)) continue;
+      this.brokenShaders.push(log);
+      console.error('Shader program failed to link on this GPU:', log);
     }
   }
 
@@ -543,8 +562,35 @@ export class World {
     }
   }
 
+  /**
+   * WebGL packs the road mask and the overlay tint into ONE texture (roads | gutter | overlay, see packedTex): the
+   * terrain program samples seven ground textures and their normal maps plus three's own maps, and Apple GPUs and most
+   * phones stop at 16 textures per program, beyond which the terrain fails to link and the island vanishes.
+   */
+  private packed?: THREE.DataTexture;
+  private packedTex(): THREE.DataTexture {
+    const n = this.game.map.size, w = 2 * n + 2;
+    if (!this.packed || this.packed.image.width !== w) {
+      this.packed?.dispose();
+      this.packed = new THREE.DataTexture(new Uint8Array(w * n * 4), w, n, THREE.RGBAFormat);
+      this.packed.magFilter = this.packed.minFilter = THREE.LinearFilter;
+      this.terrain.setRoads(this.packed, n);
+    }
+    return this.packed;
+  }
+
   updateRoadTex(): void {
     const m = this.game.map, n = m.size;
+    if (!RB.nodes) {
+      // columns 0..n-1: the road mask (red); column n repeats the last one so filtering never reaches the overlay
+      const t = this.packedTex(), px = t.image.data as Uint8Array, w = 2 * n + 2;
+      for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) px[(y * w + x) * 4] = m.path[y * n + x] ? 255 : 0;
+        px[(y * w + n) * 4] = px[(y * w + n - 1) * 4];
+      }
+      t.needsUpdate = true;
+      return;
+    }
     const data = new Uint8Array(n * n);
     for (let i = 0; i < n * n; i++) data[i] = m.path[i] ? 255 : 0;
     if (!this.roadTex) {
@@ -560,6 +606,18 @@ export class World {
   /** tile-resolution RGBA overlay tint on the terrain (null to clear) */
   setOverlay(data: Uint8Array | null): void {
     const n = this.game.map.size;
+    if (!RB.nodes) {
+      // columns n+2..2n+1: the overlay (sRGB bytes, decoded in the shader); column n+1 repeats its first column
+      const t = this.packedTex(), px = t.image.data as Uint8Array, w = 2 * n + 2;
+      if (data)
+        for (let y = 0; y < n; y++) {
+          px.set(data.subarray(y * n * 4, (y + 1) * n * 4), (y * w + n + 2) * 4);
+          px.copyWithin((y * w + n + 1) * 4, (y * w + n + 2) * 4, (y * w + n + 3) * 4);
+        }
+      t.needsUpdate = true;
+      this.terrain.uniforms.uOverlayOn.value = data ? 1 : 0;
+      return;
+    }
     if (!this.overlayTex || this.overlayTex.image.width !== n) {
       this.overlayTex = new THREE.DataTexture(new Uint8Array(n * n * 4), n, n, THREE.RGBAFormat);
       // the overlay colours are authored like CSS colours (sRGB), so they come out as picked

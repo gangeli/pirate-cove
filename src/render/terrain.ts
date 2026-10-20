@@ -171,7 +171,12 @@ vWNorm = normalize(mat3(modelMatrix) * objectNormal);`,
           '#include <common>',
           `#include <common>
 ${decl}
-uniform float uTime; uniform sampler2D uRoads; uniform float uMapN; uniform sampler2D uOverlay; uniform float uOverlayOn;
+uniform float uTime; uniform sampler2D uRoads; uniform float uMapN; uniform float uOverlayOn;
+// uRoads packs the road mask (left n columns, red) and the overlay tint (right n columns, sRGB) with a gutter between,
+// so the terrain stays within 16 textures per program (see World.packedTex)
+vec2 roadUV(vec2 uv) { return vec2(uv.x * uMapN / (2.0 * uMapN + 2.0), uv.y); }
+vec2 overlayUV(vec2 uv) { return vec2((uMapN + 2.0 + uv.x * uMapN) / (2.0 * uMapN + 2.0), uv.y); }
+vec3 srgbToLinear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }
 varying vec4 vSplat; varying float vDirt; varying vec3 vWPos; varying vec3 vWNorm;
 float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
 float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
@@ -215,9 +220,9 @@ w = max(w, 0.0); w /= max(0.0001, w.x+w.y+w.z+w.w);
 // roads: the tile mask taken as 4 bilinear taps 0.3 tiles apart rounds its outline (no stair steps on diagonals);
 // the single tap's tent profile (1 at the tile centre) places the wheel ruts
 vec2 ruv = vWPos.xz / uMapN; float rh = 0.3 / uMapN;
-float road0 = texture2D(uRoads, ruv).r;
-float roadV = 0.25 * (texture2D(uRoads, ruv + vec2(-rh, -rh)).r + texture2D(uRoads, ruv + vec2(rh, -rh)).r
-  + texture2D(uRoads, ruv + vec2(-rh, rh)).r + texture2D(uRoads, ruv + vec2(rh, rh)).r);
+float road0 = texture2D(uRoads, roadUV(ruv)).r;
+float roadV = 0.25 * (texture2D(uRoads, roadUV(ruv + vec2(-rh, -rh))).r + texture2D(uRoads, roadUV(ruv + vec2(rh, -rh))).r
+  + texture2D(uRoads, roadUV(ruv + vec2(-rh, rh))).r + texture2D(uRoads, roadUV(ruv + vec2(rh, rh))).r);
 float roadW = smoothstep(0.3, 0.5, roadV + (vnoise(vWPos.xz*1.7)-0.5)*0.16);
 float padW = smoothstep(0.3, 0.95, vDirt + (nz-0.5)*0.5) * 0.75;
 float dirtW = max(padW, roadW);
@@ -277,7 +282,8 @@ gW = w;
 if (uOverlayOn > 0.5) {
   // bold, readable overlay: the ground goes grey and dim, the tint goes on nearly opaque and glows a little so
   // shadows and dusk don't swallow it
-  vec4 ov = texture2D(uOverlay, vWPos.xz / uMapN);
+  vec4 ov = texture2D(uRoads, overlayUV(vWPos.xz / uMapN));
+  ov.rgb = srgbToLinear(ov.rgb);
   float lum = dot(col, vec3(0.3, 0.59, 0.11));
   col = mix(vec3(lum * 0.45 + 0.04), ov.rgb, clamp(ov.a * 0.95, 0.0, 1.0));
   gOv = ov.rgb * ov.a * 0.32;

@@ -48,11 +48,12 @@ export class Audio {
   private voiceNode: AudioBufferSourceNode | null = null;
   private loops = new Map<string, { src: AudioBufferSourceNode; gain: GainNode; file: string }>();
   vol = { master: 0.8, music: 0.5, voice: 0.9, sfx: 0.7, ambient: 0.6 };
+  /** sound starts off until the player turns it on with the speaker button (then that choice is remembered) */
   muted = (() => {
     try {
-      return localStorage.getItem('bc_muted') === '1';
+      return localStorage.getItem('bc_muted') !== '0';
     } catch {
-      return false;
+      return true;
     }
   })();
   /** mute or unmute everything; remembered between visits */
