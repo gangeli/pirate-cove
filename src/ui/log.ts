@@ -133,9 +133,9 @@ export class IslandLog {
     const venues = [...g.buildings.values()].filter((b) => BUILDING[b.def].service).sort((a, b) => b.lastIncome - a.lastIncome).slice(0, 12);
     return html`<div class="cols2"><div>
       <h3 style="margin-top:0">Income</h3><table class="ledger"><tr><th>Source</th><th>Last month</th><th>This month</th></tr>
-      ${cats.map((c) => html`<tr><td>${c}</td><td>${fmt(inc[c] ?? 0)}</td><td>${fmt(cur[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(inc))}</b></td><td><b>${fmt(sum(cur))}</b></td></tr></table>
+      ${cats.map((c) => html`<tr><td>${c[0].toUpperCase() + c.slice(1)}</td><td>${fmt(inc[c] ?? 0)}</td><td>${fmt(cur[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(inc))}</b></td><td><b>${fmt(sum(cur))}</b></td></tr></table>
       <h3>Expenses</h3><table class="ledger"><tr><th>Item</th><th>Last month</th><th>This month</th></tr>
-      ${ecats.map((c) => html`<tr><td>${c}</td><td>${fmt(exp[c] ?? 0)}</td><td>${fmt(cure[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(exp))}</b></td><td><b>${fmt(sum(cure))}</b></td></tr></table></div>
+      ${ecats.map((c) => html`<tr><td>${c[0].toUpperCase() + c.slice(1)}</td><td>${fmt(exp[c] ?? 0)}</td><td>${fmt(cure[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(exp))}</b></td><td><b>${fmt(sum(cure))}</b></td></tr></table></div>
       <div><h3 style="margin-top:0">Best Earning Establishments</h3><table class="ledger"><tr><th>Name</th><th>Type</th><th>Last month</th></tr>
       ${venues.map((b) => html`<tr><td>${b.name ?? ''}</td><td>${BUILDING[b.def].name}</td><td>${fmt(b.lastIncome)}</td></tr>`)}</table>
       <h3>Income vs Expenses</h3><canvas data-graph="flow" width="460" height="160" style="width:100%;height:160px"></canvas></div></div>`;
@@ -219,7 +219,7 @@ export class IslandLog {
     ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
     if (h.length < 2) {
       ctx.fillStyle = '#5a4024';
-      ctx.font = 'italic 14px Georgia';
+      ctx.font = 'italic 14px "IM Fell English", Georgia';
       ctx.fillText('Not enough history yet...', 12, H / 2);
       return;
     }
@@ -237,7 +237,7 @@ export class IslandLog {
       vals.forEach((v, i) => (i ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v))));
       ctx.stroke();
       ctx.fillStyle = col;
-      ctx.font = '13px Georgia';
+      ctx.font = '14px "IM Fell English", Georgia';
       ctx.fillText(`${name}: ${fmt(vals[vals.length - 1])}`, 10 + si * 160, 14);
     });
   }

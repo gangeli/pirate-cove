@@ -278,6 +278,11 @@ export class App {
     this.world.veg?.setGhost(t.kind === 'road' || t.kind === 'unroad');
     this.roadPending = null;
     this.roadPick = null;
+    // on touch there is no pointer to follow: a new building starts in the middle of the view, controls beside it
+    if (t.kind === 'build' && this.touchMode && this.state === 'game') {
+      const r = this.canvas.getBoundingClientRect();
+      this.hover = this.tileAt({ clientX: r.left + r.width / 2, clientY: r.top + r.height * 0.45 }) ?? this.hover;
+    }
     // phones hide the minimap while placing, so it never sits under the controls beside the ghost
     this.root.classList.toggle('placing', t.kind === 'build' || t.kind === 'road');
   }

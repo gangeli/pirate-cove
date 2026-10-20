@@ -20,7 +20,9 @@ export function activityText(app: App, p: Person): string {
   const g = app.game;
   const t = p.task;
   const b = t.bld ? g.buildings.get(t.bld) : undefined;
-  const bn = b ? (b.name ?? BUILDING[b.def].name) : '';
+  // "the Tavern", but a named establishment keeps its own article: "The Powder Keg", not "the The Powder Keg"
+  const bn0 = b ? (b.name ?? BUILDING[b.def].name) : '';
+  const bn = /^the /i.test(bn0) ? bn0.slice(4) : bn0;
   const walking = t.phase === 0;
   switch (t.kind) {
     case 'work': return walking ? `Heading to work at the ${bn}` : p.kind === 'pirate' ? `Overseeing the ${bn}` : `Working at the ${bn}`;
@@ -455,7 +457,7 @@ export class Inspector {
       if (!p.job) out.push(['Nothing to do but sit in the stockade.', false]);
       if (p.resignation > 0.6) out.push(['It could be worse, I suppose.', false]);
     } else if (p.kind === 'wealthy') out.push(['When will my family pay this outrageous ransom?', true], ['At least the rum is good.', false]);
-    if (!out.length) out.push(['...', false]);
+    if (!out.length) out.push(["I've nothing to say to the likes of you.", false]);
     return out;
   }
 
