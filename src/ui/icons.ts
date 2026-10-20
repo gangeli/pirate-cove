@@ -28,6 +28,7 @@ const P: Record<string, string> = {
   faster: `<path d="M1.5 6.5l7 5.5-7 5.5zM8.5 6.5l7 5.5-7 5.5zM15.5 6.5l7 5.5-7 5.5z" ${F}/>`,
   rotl: `<g ${S} stroke-width="2"><path d="M5 12.5a7 7 0 1 0 2.5-5.4"/><path d="M4 4v4.5h4.5"/></g>`,
   rotr: `<g ${S} stroke-width="2"><path d="M19 12.5a7 7 0 1 1-2.5-5.4"/><path d="M20 4v4.5h-4.5"/></g>`,
+  compass: `<g ${S}><circle cx="12" cy="12" r="8.5"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></g><circle cx="12" cy="12" r="1" ${F}/>`,
   undo: `<g ${S} stroke-width="1.9"><path d="M8.5 5.5L4 10l4.5 4.5"/><path d="M4.5 10h10a5.5 5.5 0 0 1 0 11H11"/></g>`,
   check: `<path d="M5 12.5l4.5 4.5L19 7" ${S} stroke-width="2.4"/>`,
   plus: `<path d="M12 5v14M5 12h14" ${S} stroke-width="2.2"/>`,
