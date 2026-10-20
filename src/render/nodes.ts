@@ -474,9 +474,18 @@ export function terrainMaterial(tex: Record<string, THREE.Texture>, nrm: Record<
     w.w.addAssign(cliffW.mul(1.5));
     w.assign(max(w, 0.0));
     w.divAssign(max(0.0001, w.x.add(w.y).add(w.z).add(w.w)));
-    const roadV = roads.sample(xz.div(uMapN)).level(0).r.toVar();
-    const roadW = smoothstep(0.32, 0.6, roadV.add(vnoise(xz.mul(2.3)).sub(0.5).mul(0.25))).toVar();
-    const dirtW = max(smoothstep(0.3, 0.95, vDirt.add(nz.sub(0.5).mul(0.5))).mul(0.75), roadW).toVar();
+    // roads (terrain.ts explains): 4 taps 0.3 tiles apart for a round outline, the single tap's tent profile for the ruts
+    const ruv = xz.div(uMapN).toVar();
+    const rh = float(0.3).div(uMapN).toVar();
+    const rtap = (dx: number, dy: number) => roads.sample(ruv.add(vec2(rh.mul(dx), rh.mul(dy)))).level(0).r;
+    const road0 = roads.sample(ruv).level(0).r.toVar();
+    const roadV = rtap(-1, -1).add(rtap(1, -1)).add(rtap(-1, 1)).add(rtap(1, 1)).mul(0.25).toVar();
+    const roadW = smoothstep(0.3, 0.5, roadV.add(vnoise(xz.mul(1.7)).sub(0.5).mul(0.16))).toVar();
+    const padW = smoothstep(0.3, 0.95, vDirt.add(nz.sub(0.5).mul(0.5))).mul(0.75).toVar();
+    const dirtW = max(padW, roadW).toVar();
+    // pebble cells, faded out once a cell is only a few pixels (derivatives taken here, in uniform control flow)
+    const pp = xz.mul(6.0).toVar();
+    const pebFade = float(1.0).sub(smoothstep(0.2, 0.45, T.length(T.fwidth(pp)))).toVar();
     const wet = float(1.0).sub(smoothstep(0.0, 0.45, wpos.y)).toVar();
     const col = vec3(0.0).toVar();
     If(w.x.greaterThan(0.0), () => {
@@ -503,10 +512,23 @@ export function terrainMaterial(tex: Record<string, THREE.Texture>, nrm: Record<
       col.addAssign(rock.mul(w.w));
     });
     If(dirtW.greaterThan(0.0), () => {
-      col.assign(mix(col, AT(tex.dirt, 0.9).rgb.mul(vec3(1.05, 0.92, 0.78)), dirtW.mul(0.95)));
+      const dirt = AT(tex.dirt, 0.9).rgb.toVar();
+      col.assign(mix(col, dirt.mul(vec3(1.05, 0.92, 0.78)), padW.mul(0.95)));
+      If(roadW.greaterThan(0.0), () => {
+        // packed earth, ruts, a compacted rim (not across doorways) and pebbles: see terrain.ts
+        const road = mix(vec3(dot(dirt, vec3(0.333))), dirt, 0.6).mul(vec3(0.8, 0.64, 0.47)).toVar();
+        const rut = smoothstep(0.6, 0.7, road0).mul(float(1.0).sub(smoothstep(0.78, 0.88, road0)));
+        road.mulAssign(float(1.0).sub(rut.mul(vnoise(xz.mul(3.1)).mul(0.45).add(0.55)).mul(0.16)));
+        const rim = smoothstep(0.3, 0.6, roadW).mul(float(1.0).sub(smoothstep(0.65, 0.98, roadW))).toVar();
+        road.mulAssign(float(1.0).sub(rim.mul(0.18).mul(float(1.0).sub(padW.mul(1.33)))));
+        const pc = floor(pp).toVar();
+        const pr = hash12(pc).toVar();
+        const po = pc.add(0.25).add(vec2(hash12(pc.add(17.3)), hash12(pc.add(41.7))).mul(0.5));
+        const peb = float(1.0).sub(smoothstep(0.1, 0.2, T.length(pp.sub(po)))).mul(T.step(float(0.8).sub(rim.mul(0.25)), pr)).mul(pebFade);
+        road.assign(mix(road, road.mul(select(fract(pr.mul(13.7)).greaterThan(0.45), float(1.32), float(0.68))), peb.mul(0.7)));
+        col.assign(mix(col, road, roadW));
+      });
     });
-    // worn wheel ruts darken the road centre slightly
-    col.mulAssign(float(1.0).sub(roadW.mul(smoothstep(0.75, 1.0, roadV)).mul(0.12)));
     // underwater tint + caustics
     const depth = wpos.y.negate().toVar();
     If(depth.greaterThan(0.0), () => {
@@ -540,6 +562,7 @@ export function terrainMaterial(tex: Record<string, THREE.Texture>, nrm: Record<
     If(w.w.greaterThan(0.0), () => { tn.addAssign(nm('rock', 0.6).mul(w.w).mul(1.4)); });
     tn.assign(normalize(tn));
     If(dirtW.greaterThan(0.0), () => { tn.assign(normalize(mix(tn, nm('dirt', 0.9), dirtW.mul(0.9)))); });
+    tn.assign(normalize(mix(tn, vec3(0.0, 0.0, 1.0), roadW.mul(0.45))));
     tn.x.mulAssign(0.9);
     tn.y.mulAssign(0.9);
     const Nw = normalize(vWNorm).toVar();

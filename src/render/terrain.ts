@@ -212,9 +212,18 @@ float slope = 1.0 - clamp(vWNorm.y, 0.0, 1.0);
 float cliffW = smoothstep(0.35, 0.6, slope);
 w.w += cliffW*1.5;
 w = max(w, 0.0); w /= max(0.0001, w.x+w.y+w.z+w.w);
-float roadV = texture2D(uRoads, vWPos.xz / uMapN).r;
-float roadW = smoothstep(0.32, 0.6, roadV + (vnoise(vWPos.xz*2.3)-0.5)*0.25);
-float dirtW = max(smoothstep(0.3, 0.95, vDirt + (nz-0.5)*0.5) * 0.75, roadW);
+// roads: the tile mask taken as 4 bilinear taps 0.3 tiles apart rounds its outline (no stair steps on diagonals);
+// the single tap's tent profile (1 at the tile centre) places the wheel ruts
+vec2 ruv = vWPos.xz / uMapN; float rh = 0.3 / uMapN;
+float road0 = texture2D(uRoads, ruv).r;
+float roadV = 0.25 * (texture2D(uRoads, ruv + vec2(-rh, -rh)).r + texture2D(uRoads, ruv + vec2(rh, -rh)).r
+  + texture2D(uRoads, ruv + vec2(-rh, rh)).r + texture2D(uRoads, ruv + vec2(rh, rh)).r);
+float roadW = smoothstep(0.3, 0.5, roadV + (vnoise(vWPos.xz*1.7)-0.5)*0.16);
+float padW = smoothstep(0.3, 0.95, vDirt + (nz-0.5)*0.5) * 0.75;
+float dirtW = max(padW, roadW);
+// pebble cells (6 per tile), faded out once a cell gets smaller than a few pixels (no shimmer when zoomed out)
+vec2 pp = vWPos.xz * 6.0;
+float pebFade = 1.0 - smoothstep(0.2, 0.45, length(fwidth(pp)));
 float wet = 1.0 - smoothstep(0.0, 0.45, vWPos.y);
 // only layers with weight are sampled (most ground has one or two): same result, far fewer texture reads
 vec3 col = vec3(0.0);
@@ -236,9 +245,27 @@ if (w.w > 0.0) {
   if (cliffW > 0.0) rock = mix(rock, AT(t_cliff, 0.35).rgb * vec3(0.85,0.8,0.72), cliffW);
   col += rock * w.w;
 }
-if (dirtW > 0.0) col = mix(col, AT(t_dirt, 0.9).rgb * vec3(1.05,0.92,0.78), dirtW*0.95);
-// worn wheel ruts darken the road centre slightly
-col *= 1.0 - roadW * smoothstep(0.75, 1.0, roadV) * 0.12;
+if (dirtW > 0.0) {
+  vec3 dirt = AT(t_dirt, 0.9).rgb;
+  col = mix(col, dirt * vec3(1.05,0.92,0.78), padW*0.95);
+  if (roadW > 0.0) {
+    // packed earth: darker and warmer than the building pads, its grain toned down
+    vec3 road = mix(vec3(dot(dirt, vec3(0.333))), dirt, 0.6) * vec3(0.80, 0.64, 0.47);
+    // two worn wheel ruts either side of the centre line, broken up
+    float rut = smoothstep(0.6, 0.7, road0) * (1.0 - smoothstep(0.78, 0.88, road0));
+    road *= 1.0 - rut * (0.55 + 0.45 * vnoise(vWPos.xz * 3.1)) * 0.16;
+    // a compacted, slightly darker rim marks the edge (not across doorways, where the pad carries on)
+    float rim = smoothstep(0.3, 0.6, roadW) * (1.0 - smoothstep(0.65, 0.98, roadW));
+    road *= 1.0 - rim * 0.18 * (1.0 - padW * 1.33);
+    // scattered pebbles, denser toward the edge
+    vec2 pc = floor(pp);
+    float pr = hash12(pc);
+    vec2 po = pc + 0.25 + 0.5 * vec2(hash12(pc + 17.3), hash12(pc + 41.7));
+    float peb = (1.0 - smoothstep(0.1, 0.2, length(pp - po))) * step(0.8 - rim * 0.25, pr) * pebFade;
+    road = mix(road, road * (fract(pr * 13.7) > 0.45 ? 1.32 : 0.68), peb * 0.7);
+    col = mix(col, road, roadW);
+  }
+}
 // underwater tint + caustics
 float depth = -vWPos.y;
 if (depth > 0.0) {
@@ -268,6 +295,8 @@ diffuseColor.rgb *= col;
   if (gW.w > 0.0) tn += (AT(n_rock, 0.6).xyz*2.0-1.0) * gW.w * 1.4;
   tn = normalize(tn);
   if (dirtW > 0.0) tn = normalize(mix(tn, AT(n_dirt, 0.9).xyz*2.0-1.0, dirtW*0.9));
+  // packed road surface: flatter
+  tn = normalize(mix(tn, vec3(0.0, 0.0, 1.0), roadW * 0.45));
   tn.xy *= 0.9;
   // world-aligned tangent frame (terrain uv = world xz)
   vec3 Nw = normalize(vWNorm);
@@ -283,7 +312,7 @@ diffuseColor.rgb *= col;
           `float roughnessFactor = mix(0.95, 0.55, wet*w.x);`,
         );
     };
-    mat.customProgramCacheKey = () => 'terrain-v3';
+    mat.customProgramCacheKey = () => 'terrain-v4';
     return mat;
   }
 }
