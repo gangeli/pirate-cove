@@ -507,7 +507,7 @@ export class Inspector {
       if (s.log.length) body.push(html`<section class="sect"><h4 class="eng">Last voyage</h4><ol class="log">${s.log.slice(-5).map((e) => html`<li><i>${e.date}</i> ${e.text}</li>`)}</ol></section>`);
       foot = html`<button class="btn primary" data-act="sail">${icon('bell', 16)} ${s.status === 'boarding' ? 'Leave now' : 'Set sail'}</button>
         ${g.findBuilding('black_market') ? html`<button class="btn ghost small" data-act="bm" data-tip="Buy rations and weapons instantly">Black market</button>` : ''}
-        <button class="btn ghost small" data-act="shipEdict:donate_crew">${icon('coin', 14)} Treat the crew</button>
+        <button class="btn ghost small" data-act="shipEdict:donate_crew">${icon('coin', 14)} Treat crew</button>
         <button class="btn ghost small icon-only" data-act="follow" aria-label="Follow" data-tip="Follow the ship">${icon('follow', 15)}</button>
         <span class="spacer"></span><button class="btn ghost danger small" data-act="scuttle">Scuttle</button>`;
     } else foot = html`<button class="btn ghost small" data-act="follow">${icon('follow', 14)} Follow</button><button class="btn ghost small" data-act="chart">${icon('telescope', 14)} Sea chart</button>`;

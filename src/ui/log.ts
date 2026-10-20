@@ -105,7 +105,7 @@ export class IslandLog {
     const s = computeScore(g);
     const k = g.king;
     return html`<div class="cols2">
-      <div><div class="row" style="align-items:flex-start;gap:12px">${raw(portraitImg(k.portrait, 110))}
+      <div><div class="king-card">${raw(portraitImg(k.portrait, 110))}
         <div><h3 style="margin-top:0">${k.name}, Pirate ${k.sex === 'F' ? 'Queen' : 'King'}</h3>
         <div style="font-size:14px">${BACKGROUNDS[k.bg].name} · ${k.q.map((q) => QUALITIES[q].name).join(', ')} · <i>${FLAWS[k.flaw].name}</i></div>
         <div class="sub">Reigning since January 1680. ${Math.max(0, g.settings.years - g.yearsElapsed).toFixed(1)} of ${g.settings.years} years remain.</div></div></div>

@@ -23,6 +23,7 @@ export class Hud {
   private advUntil = 0;
   private hintTimer = 0;
   advisorMode: 'full' | 'brief' | 'off' = 'full';
+  private touchHintFor = '';
 
   constructor(private app: App) {
     const ui = app.root;
@@ -90,7 +91,12 @@ export class Hud {
     for (const e of [this.top, this.bar, this.ticker, this.clock]) e.classList.toggle('hidden', !on);
     if (on) setTimeout(() => this.update(), 0);
     this.minimap.show(on);
-    if (!on) this.adv.classList.add('gone');
+    if (!on) {
+      this.adv.classList.add('gone');
+      this.hint.classList.add('hidden');
+      clearTimeout(this.hintTimer);
+      this.hintTimer = 0;
+    }
     // in play the speaker joins the clock's speed row; on the title screen it goes back to its corner
     const sb = this.app.root.querySelector('.soundbtn');
     if (sb) (on ? this.clock.querySelector('.speed')! : this.app.root).appendChild(sb);
@@ -175,13 +181,18 @@ export class Hud {
       build: 'Click to place. R rotates, Shift keeps placing, right-click cancels.',
     };
     const touchHints: Record<string, string> = {
-      road: 'Drag along the ground to lay a road.',
+      road: 'Drag along the ground, then tap the tick to lay the road.',
       clear: 'Drag over trees to clear them.',
       demolish: 'Tap a building or a road to tear it down.',
       build: 'Tap the ground to move the building, then confirm.',
     };
     const h = hints[k];
-    if (h) this.flash(this.app.touchMode ? touchHints[k] ?? h : h, 0);
+    if (!h) this.touchHintFor = '';
+    // on touch the hint is a short reminder, once per tool; the controls beside the ghost do the explaining after that
+    if (h && this.app.touchMode) {
+      if (this.touchHintFor !== k) this.flash(touchHints[k] ?? h, 4);
+      this.touchHintFor = k;
+    } else if (h) this.flash(h, 0);
     else if (this.hintTimer === 0) this.hint.classList.add('hidden');
   }
 
