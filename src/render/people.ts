@@ -151,6 +151,8 @@ export class PeopleView {
   private clipFor(p: Person): [string, number] {
     const t = p.task;
     if (t.kind === 'dead') return ['die', 1];
+    // waiting on the path worker (a handle and an empty path): the person stands still, so don't walk on the spot
+    if (p.pathReq && p.path?.length === 0) return ['idle', 1];
     if (t.phase === 0) {
       if (t.kind === 'escape' || t.kind === 'flee' || t.kind === 'rebel') return ['run', 1];
       if (p.kind === 'soldier') return ['march', 1];
