@@ -122,9 +122,11 @@ export class SeaChart {
   // ------------------------------------------------------------------------------------------------ pan, zoom, pick
   private bindMap(): void {
     const c = this.canvas;
+    // pointer position in the canvas's own CSS pixels (the UI layer may be zoomed on big screens)
     const local = (e: PointerEvent | WheelEvent) => {
       const r = c.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
+      const k = c.clientWidth ? c.clientWidth / r.width : 1;
+      return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
     };
     c.addEventListener('pointerdown', (e) => {
       c.setPointerCapture(e.pointerId);
@@ -465,8 +467,9 @@ export class SeaChart {
   private draw(): void {
     const c = this.canvas;
     const rect = c.getBoundingClientRect();
-    const cw = Math.max(200, Math.round(rect.width)), ch = Math.max(150, Math.round(rect.height));
-    const dpr = Math.min(2, devicePixelRatio || 1);
+    const cw = Math.max(200, c.clientWidth), ch = Math.max(150, c.clientHeight);
+    // device pixels per CSS pixel of the canvas, including any zoom on the UI layer
+    const dpr = Math.min(3, (devicePixelRatio || 1) * (c.clientWidth ? rect.width / c.clientWidth : 1));
     if (c.width !== Math.round(cw * dpr) || c.height !== Math.round(ch * dpr)) {
       c.width = Math.round(cw * dpr);
       c.height = Math.round(ch * dpr);
@@ -656,7 +659,9 @@ export class SeaChart {
     const placed: Box[] = [{ x: this.sx(CARTOUCHE[0] - 0.2), y: this.sy(CARTOUCHE[1] - 0.055), w: 0.4 * this.geo.mw * this.view.z, h: 0.1 * this.geo.mh * this.view.z }];
     const discs = info.map((o) => ({ x: o.x - R, y: o.y - R, w: R * 2, h: R * 2 }));
     const inter = (a: Box, b: Box) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-    const order = [...info].sort((a, b) => (a.home ? -1 : b.home ? 1 : 0) || (a.r.id === this.region ? -1 : b.r.id === this.region ? 1 : 0) || a.y - b.y);
+    // the labels that matter are placed first, so the minor ones are the ones that give way
+    const rank = (o: (typeof info)[number]) => (o.home ? 0 : o.r.id === this.region ? 1 : sel && sel.region === o.r.id ? 2 : o.reach?.ok ? 3 : o.known ? 4 : 5);
+    const order = [...info].sort((a, b) => rank(a) - rank(b) || a.y - b.y);
     for (const o of order) {
       const name = o.home ? 'Your Cove' : o.r.name;
       let line2 = '';
@@ -682,14 +687,19 @@ export class SeaChart {
         { x: o.x - w / 2 + R, y: o.y + off, w, h },
         { x: o.x - w / 2 - R, y: o.y + off, w, h },
       ];
-      let best = cands[0], bs = Infinity;
+      let best = cands[0], bs = Infinity, bestLov = 0;
       cands.forEach((b, i) => {
-        let s = i * 0.5;
-        for (const p of placed) s += inter(b, p) * 10;
+        let s = i * 0.5, lov = 0;
+        for (const p of placed) lov += inter(b, p);
+        s += lov * 10;
         discs.forEach((d, j) => (s += info[j] === o ? 0 : inter(b, d)));
         if (b.x < 2 || b.x + b.w > this.geo.cw - 2 || b.y < 2 || b.y + b.h > this.geo.ch - 2) s += 400;
-        if (s < bs) (bs = s), (best = b);
+        if (s < bs) (bs = s), (best = b), (bestLov = lov);
       });
+      // no clean spot: minor names give way (they show on hover/tap); home, the inspected sea, the course and seas
+      // within reach always get their label
+      const important = o.home || o.r.id === this.region || (sel && (sel.region === o.r.id || o.reach?.ok));
+      if (bestLov > 4 && !important) continue;
       placed.push(best);
       const cx = best.x + best.w / 2;
       g.textAlign = 'center';

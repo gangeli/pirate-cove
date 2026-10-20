@@ -471,9 +471,12 @@ export class Inspector {
     const body = [];
     const supp = (label: string, have: number, max: number) => html`<span>${label}</span>${bar(have / Math.max(1, max))}<span>${Math.floor(have)}/${max}</span>`;
     const crewAboard = s.crew.filter((id) => g.people.get(id)?.task.kind === 'atsea').length;
-    body.push(html`<section class="sect"><h4 class="eng">Crew & stores</h4><div class="meters">
+    const stores = html`<section class="sect"><h4 class="eng">Crew & stores</h4><div class="meters two">
       ${supp('Crew', s.crew.length, d.men + d.officers)}${supp('Hull', s.hull * 100, 100)}${supp('Rations', s.rations, d.rations)}${supp('Cutlasses', s.cutlasses, d.cutlasses)}${supp('Muskets', s.muskets, d.muskets)}${supp('Cannons', s.cannons, d.cannons)}</div>
-      ${s.status === 'boarding' ? html`<div class="seg-note">${crewAboard} of ${s.crew.length} hands aboard.</div>` : ''}</section>`);
+      ${s.status === 'boarding' ? html`<div class="seg-note">${crewAboard} of ${s.crew.length} hands aboard.</div>` : ''}</section>`;
+    const inPort = s.status === 'docked' || s.status === 'boarding' || s.status === 'repairing';
+    // in port the orders come first (that is what the player is here to set); at sea the stores and the voyage
+    if (!inPort) body.push(stores);
     if (s.status === 'atsea' && s.voyage) {
       const v = s.voyage;
       const total = v.out + v.back + Math.max(0, (s.rations - v.back * v.rationRate) / Math.max(1e-6, v.rationRate));
@@ -504,6 +507,7 @@ export class Inspector {
       body.push(html`<section class="sect"><h4 class="eng">Orders</h4>${orders}</section>`);
       body.push(html`<section class="sect"><h4 class="eng">Spoils</h4>${this.seg('spoils', s.spoils, [['miserly', 'Miserly'], ['selfish', 'Selfish'], ['generous', 'Generous'], ['bigspender', 'Big spender']], 'full')}
         <div class="seg-note">The treasury keeps ${Math.round(SPOILS_TREASURY[s.spoils] * 100)}% of the plunder, the crew shares ${Math.round((1 - SPOILS_TREASURY[s.spoils]) * 100)}%. Stingy captains attract fewer recruits.</div></section>`);
+      body.push(stores);
       if (s.log.length) body.push(html`<section class="sect"><h4 class="eng">Last voyage</h4><ol class="log">${s.log.slice(-5).map((e) => html`<li><i>${e.date}</i> ${e.text}</li>`)}</ol></section>`);
       foot = html`<button class="btn primary" data-act="sail">${icon('bell', 16)} ${s.status === 'boarding' ? 'Leave now' : 'Set sail'}</button>
         ${g.findBuilding('black_market') ? html`<button class="btn ghost small" data-act="bm" data-tip="Buy rations and weapons instantly">Black market</button>` : ''}

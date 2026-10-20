@@ -168,7 +168,7 @@ export class IslandLog {
     const g = this.app.game;
     const list = this.sorted(g.pirates(), (p, k) => (k === 'name' ? p.name : k === 'rank' ? p.rank : k === 'gold' ? p.gold : k === 'hap' ? p.happiness : k === 'cour' ? p.traits.courage : k === 'lead' ? p.traits.leadership : k === 'not' ? p.traits.notoriety : activityText(this.app, p)));
     return html`<div class="table-wrap"><table class="ledger"><tr>${this.th('name', 'Name')}${this.th('rank', 'Rank')}${this.th('gold', 'Gold')}${this.th('hap', 'Happiness')}${this.th('cour', 'Courage')}${this.th('lead', 'Leadership')}${this.th('not', 'Notoriety')}${this.th('act', 'Doing')}</tr>
-      ${list.map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>${p.captain ? '⚓ ' : ''}${p.name}</td><td>${RANKS[p.rank - 1].name}</td><td>${fmt(p.gold)}</td><td>${pct(p.happiness)}${p.mood !== 'ok' ? ' ☹' : ''}</td><td>${p.traits.courage}</td><td>${p.traits.leadership}</td><td>${Math.round(p.traits.notoriety)}</td><td>${activityText(this.app, p)}</td></tr>`)}</table></div>`;
+      ${list.map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>${p.captain ? html`<span class="tag-ic" title="Captain">${icon('anchor', 14)}</span> ` : ''}${p.name}</td><td>${RANKS[p.rank - 1].name}</td><td>${fmt(p.gold)}</td><td>${pct(p.happiness)}${p.mood !== 'ok' ? ' ☹' : ''}</td><td>${p.traits.courage}</td><td>${p.traits.leadership}</td><td>${Math.round(p.traits.notoriety)}</td><td>${activityText(this.app, p)}</td></tr>`)}</table></div>`;
   }
 
   private captives() {
@@ -176,7 +176,7 @@ export class IslandLog {
     const list = this.sorted(g.captives(), (p, k) => (k === 'name' ? p.name : k === 'job' ? p.jobRole ?? '' : k === 'res' ? p.resignation : k === 'cour' ? p.traits.courage : k === 'lead' ? p.traits.leadership : k === 'ransom' ? p.ransom : k === 'nat' ? p.nat : p.profession));
     return html`<div class="table-wrap"><table class="ledger"><tr>${this.th('name', 'Name')}${this.th('nat', 'Nation')}${this.th('prof', 'Skill')}${this.th('job', 'Job')}${this.th('res', 'Resignation')}${this.th('cour', 'Courage')}${this.th('lead', 'Leadership')}${this.th('ransom', 'Ransom')}</tr>
       ${list.map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>${p.name}</td><td>${NATION_ADJ[p.nat]}</td><td>${p.kind === 'skeleton' ? 'Skeleton' : p.skilled ? JOB_NAMES[p.profession as keyof typeof JOB_NAMES] : '-'}</td><td>${p.jobRole ? JOB_NAMES[p.jobRole] : 'idle'}</td><td>${pct(p.resignation)}</td><td>${p.traits.courage}</td><td>${p.traits.leadership}</td><td>${p.ransom ? fmt(p.ransom) : '-'}</td></tr>`)}
-      ${[...g.people.values()].filter((p) => p.kind === 'wealthy').map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>💰 ${p.name}</td><td>${NATION_ADJ[p.nat]}</td><td>Wealthy</td><td>-</td><td>-</td><td>-</td><td>-</td><td>${fmt(p.ransom + p.credit)}</td></tr>`)}</table></div>`;
+      ${[...g.people.values()].filter((p) => p.kind === 'wealthy').map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td><span class="tag-ic" title="Wealthy">${icon('coin', 14)}</span> ${p.name}</td><td>${NATION_ADJ[p.nat]}</td><td>Wealthy</td><td>-</td><td>-</td><td>-</td><td>-</td><td>${fmt(p.ransom + p.credit)}</td></tr>`)}</table></div>`;
   }
 
   private nations() {

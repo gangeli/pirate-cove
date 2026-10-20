@@ -65,11 +65,14 @@ export class PlaceControls {
       t = Math.min(t, sy);
       b = Math.max(b, sy);
     }
-    const ui = this.root.parentElement!.getBoundingClientRect();
-    l -= ui.left;
-    r -= ui.left;
-    t -= ui.top;
-    b -= ui.top;
+    const host = this.root.parentElement!;
+    const ui = host.getBoundingClientRect();
+    // the UI layer may be CSS-zoomed on big screens: work in its own (unzoomed) pixels
+    const z = host.offsetWidth ? ui.width / host.offsetWidth : 1;
+    l = (l - ui.left) / z;
+    r = (r - ui.left) / z;
+    t = (t - ui.top) / z;
+    b = (b - ui.top) / z;
     const key = `${Math.round(l)},${Math.round(r)},${Math.round(t)},${Math.round(b)}|${text}|${ok}|${mode}|${touch}|${Math.round(ui.width)}x${Math.round(ui.height)}`;
     if (key === this.key) return;
     this.key = key;
@@ -82,7 +85,7 @@ export class PlaceControls {
     const cx = (l + r) / 2, cy = (t + b) / 2;
     // keep clear of the toolbar (and of the screen edges)
     const tb = document.querySelector('.toolbar')?.getBoundingClientRect();
-    const uw = ui.width, uh = tb && tb.height ? Math.min(ui.height, tb.top - ui.top) : ui.height;
+    const uw = ui.width / z, uh = (tb && tb.height ? Math.min(ui.height, tb.top - ui.top) : ui.height) / z;
     const clampX = (x: number, w: number) => Math.max(6, Math.min(uw - w - 6, x));
     const clampY = (y: number, h: number) => Math.max(6, Math.min(uh - h - 6, y));
     // the tag hangs above the ghost (below it when there is no room)
