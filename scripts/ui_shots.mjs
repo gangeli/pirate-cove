@@ -76,7 +76,8 @@ S.chart_danger = `a.chart.open(h.dockedShip); h.click('[data-act="mode:risk"]')`
 S.overlays = `a.overlays.show()`;
 S.overlays_fert = `a.overlays.show(); h.click('[data-act="pick:corn"]')`;
 S.advisor = `await new Promise((r) => setTimeout(r, 600)); a.hud.message({ id: 9e6, kind: 'advisor', title: 'Lumber is running low', text: 'Cap\\'n, our sawmills have barely a plank to their name. Build another timber camp beside thick jungle, or the builders will stand idle.', date: g.date, focus: { x: 60, y: 60 } })`;
-S.toasts = `for (const [k, t, x] of [['ship', 'The Sloop returns', 'She brings 340 gold and 6 captives from the Windward Passage.'], ['bad', 'A captive escaped', 'Maria Lopez slipped away at night and will tell the Spanish where we are.'], ['good', 'Tavern opened', 'The Rusty Anchor pours its first grog.'], ['alert', 'Invasion rumoured', 'Word is the English are assembling a fleet.']]) a.hud.message({ id: Math.random(), kind: k, title: t, text: x, date: g.date })`;
+S.toasts = `for (const [k, t, x] of [['ship', 'The Sloop returns', 'She brings 340 gold and 6 captives from the Windward Passage.'], ['bad', 'A captive escaped', 'Maria Lopez slipped away at night and will tell the Spanish where we are.'], ['good', 'Tavern opened', 'The Rusty Anchor pours its first grog.'], ['alert', 'Invasion rumoured', 'Word is the English are assembling a fleet at Port Royal, forty sail of the line and two regiments of foot, and mean to hang every one of us.\\n\\nDouble the guard at the stockade and keep the cannon loaded.']]) a.hud.message({ id: Math.random(), kind: k, title: t, text: x, date: g.date })`;
+S.toast_read = `${S.toasts}; await new Promise((r) => setTimeout(r, 400)); h.click('.toast .readon')`;
 S.tooltip = `h.hover('[data-tool="chart"]')`;
 S.menu_game = `a.modal.gameMenu()`;
 S.menu_settings = `a.modal.settings()`;

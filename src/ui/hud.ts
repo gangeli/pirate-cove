@@ -56,6 +56,11 @@ export class Hud {
       },
     });
     delegate(this.ticker, {
+      toastRead: (id, _e, t) => {
+        const m = this.letters.get(+id);
+        t.closest('.toast')?.remove();
+        if (m) app.modal.message(m);
+      },
       toast: (arg, _e, t) => {
         const [x, y] = arg.split(',').map(Number);
         if (!isNaN(x)) app.jumpTo(x, y);
@@ -333,13 +338,21 @@ export class Hud {
     if (m.voice && this.advisorMode !== 'off' && (m.kind === 'alert' || m.kind === 'ship' || m.kind === 'bad' || m.kind === 'good')) audio.voice(m.voice);
   }
 
+  /** toasts too long to show whole, by id, for "Read on" (pruned with the toasts) */
+  private letters = new Map<number, Message>();
+  private letterSeq = 0;
+
   private toast(m: Message): void {
     const t = el('div', `toast ${m.kind}`, this.ticker);
     t.dataset.act = `toast:${m.focus ? `${m.focus.x},${m.focus.y}` : ''}`;
     const ic = m.kind === 'ship' ? 'ship' : m.kind === 'bad' ? 'skull' : m.kind === 'good' ? 'coin' : m.kind === 'alert' ? 'bell' : 'info';
-    setHTML(t, html`${icon(ic, 22)}<div><b>${m.title}</b>${m.text.split('\n')[0].slice(0, 110)}</div>`);
+    // a long letter is clipped to a few lines: "Read on" unfolds the whole of it
+    const long = m.text.length > 84 || m.text.includes('\n');
+    if (long) this.letters.set(++this.letterSeq, m);
+    setHTML(t, html`${icon(ic, 22)}<div><b>${m.title}</b><span class="tx">${m.text.split('\n')[0]}</span>${long ? html`<button class="readon" data-act="toastRead:${this.letterSeq}">Read on…</button>` : ''}</div>`);
     while (this.ticker.children.length > 5) this.ticker.firstElementChild!.remove();
     setTimeout(() => t.remove(), 12000);
+    for (const k of this.letters.keys()) if (k < this.letterSeq - 8) this.letters.delete(k);
   }
 
   private nextAdvisor(): void {
