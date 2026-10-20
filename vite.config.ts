@@ -39,13 +39,16 @@ function pwa(): Plugin {
         const buf = readFileSync(join(outDir, f));
         const hash = createHash('sha256').update(buf).digest('hex').slice(0, 16);
         all.update(`${f}:${hash}\n`);
+        // chunks only some players load (the opt-in WebGPU node materials, SMAA, and three's bundled copies of the Draco
+        // decoder, which the game takes from draco/ instead) are cached when first fetched rather than precached
+        const ONDEMAND = /^assets\/(nodes|SMAAPass|draco_[a-z_]+)-[^/]+\.js$/;
         const isShell =
           f === 'index.html' ||
           f === 'manifest.webmanifest' ||
           f.startsWith('icons/') ||
           f.startsWith('basis/') ||
           f.startsWith('draco/') ||
-          /^assets\/[^/]+\.(js|css|woff2?)$/.test(f) || // Vite's hashed bundles and fonts
+          (/^assets\/[^/]+\.(js|css|woff2?)$/.test(f) && !ONDEMAND.test(f)) || // Vite's hashed bundles and fonts
           f.endsWith('.json');
         // a .jpg with a compressed .ktx2 twin is only a fallback for browsers without KTX2: fetched (and cached) on demand, not bundled for offline
         if (/\.jpg$/.test(f) && files.includes(f.replace(/\.jpg$/, '.ktx2'))) continue;

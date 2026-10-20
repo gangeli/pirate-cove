@@ -60,6 +60,24 @@ export async function createRenderer(canvas: HTMLCanvasElement, forceWebGL = fal
   guardIdentitySwizzle();
   if (location.search.includes('tsltrace')) (THREE.Node as any).captureStackTrace = true;
   const r = new THREE.WebGPURenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance', forceWebGL });
+  // the experimental renderer must never strand a player on a black screen: if the GPU device goes away, save,
+  // forget the WebGPU choice and come back on WebGL (which is the default, so this cannot loop)
+  (r as unknown as { onDeviceLost: (info: unknown) => void }).onDeviceLost = (info) => {
+    console.error('WebGPU device lost; falling back to WebGL', info);
+    const app = (window as unknown as { __app?: { state?: string; save?: (slot: string) => Promise<void> } }).__app;
+    const back = () => {
+      try {
+        localStorage.removeItem('bc.renderer');
+      } catch {
+        /* ignore */
+      }
+      const u = new URL(location.href);
+      u.searchParams.set('gpu', 'webgl');
+      if (app?.state === 'game') u.searchParams.set('continue', '1');
+      location.replace(u.toString());
+    };
+    Promise.race([app?.state === 'game' ? app.save?.('auto') : undefined, new Promise((res) => setTimeout(res, 1500))]).finally(back);
+  };
   await r.init();
   return r;
 }
