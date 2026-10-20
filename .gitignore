@@ -6,3 +6,4 @@ test-results
 shots/
 __pycache__/
 scripts/_*.mjs
+.claude/worktrees/
