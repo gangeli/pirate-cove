@@ -27,4 +27,4 @@ prep tiles clay_roof_tiles_02
 prep palmbark palm_bark
 # whitewashed variant of the plaster for tropical walls
 ffmpeg -loglevel error -y -i $DST/plaster_d.jpg -vf "eq=brightness=0.22:saturation=0.35:contrast=0.9" -q:v 3 $DST/whitewash_d.jpg
-cp $DST/plaster_n.jpg $DST/whitewash_n.jpg
+# (whitewash reuses plaster_n: see ALIAS in src/render/textures.ts)
