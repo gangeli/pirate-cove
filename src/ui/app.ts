@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Game, type Command } from '../sim/game';
 import { BUILDING, type BuildingDef } from '../sim/data/buildings';
 import { canPlace, footprint } from '../sim/placement';
+import { enableAsyncPaths } from '../sim/pathservice';
 import type { Settings } from '../sim/types';
 import type { KingDef } from '../sim/data/kings';
 import { World, type Quality } from '../render/world';
@@ -155,7 +156,11 @@ export class App {
   }
 
   async attach(g: Game): Promise<void> {
+    // one path worker per game: the old game's goes (its waiting people would search synchronously)
+    if (this.game && this.game !== g) this.game.paths?.dispose();
     this.game = g;
+    // long path searches off the main thread; screenshots (and ?paths=sync) keep them deterministic and inline
+    if (!g.paths && !/[?&](shot=1|paths=sync)/.test(location.search)) enableAsyncPaths(g);
     this.world.attach(g);
     await Promise.all([this.world.ships.ready, this.world.people.ready]);
     await this.world.warmShaders();

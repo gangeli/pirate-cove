@@ -181,22 +181,72 @@ export function tileOf(p: Person): [number, number] {
 
 /** start walking to tile; then perform task. returns false if unreachable */
 export function goTo(g: Game, p: Person, tx: number, ty: number, task: Task): boolean {
+  const start = walkStart(g, p);
+  let path: Int32Array | null;
+  if (g.paths) {
+    // asynchronous path finding (browser): a long search answers later; the person waits where they stand
+    const r = g.paths.request(start[0], start[1], tx, ty);
+    if (typeof r === 'number') {
+      p.path = [];
+      p.pathI = 0;
+      p.pathReq = r;
+      p.pathGoal = ty * g.map.size + tx;
+      p.dir = Math.atan2(ty + 0.5 - p.y, tx + 0.5 - p.x);
+      p.task = { ...task, phase: 0 };
+      return true;
+    }
+    path = r;
+  } else path = g.pf.find(start[0], start[1], tx, ty);
+  if (!path) return false;
+  p.path = Array.from(path);
+  p.pathI = 0;
+  if (p.pathReq) p.pathReq = 0;
+  p.task = { ...task, phase: 0 };
+  return true;
+}
+
+/** the tile a walk starts from: the person's own, or the nearest open one if they stand on a blocked tile */
+function walkStart(g: Game, p: Person): [number, number] {
   const [sx, sy] = tileOf(p);
   let start: [number, number] = [sx, sy];
   if (g.pf.cost(sy * g.map.size + sx) === Infinity) {
     const w = g.pf.nearestWalkable(sx, sy, 6);
     if (w) start = w;
   }
-  const path = g.pf.find(start[0], start[1], tx, ty);
-  if (!path) return false;
+  return start;
+}
+
+/** a person waiting on the path worker: pick up the path when it is there (async path finding only) */
+function awaitPath(g: Game, p: Person, dt: number): boolean {
+  const r = g.paths ? g.paths.collect(p.pathReq!) : 'lost';
+  if (r === 'wait') return false;
+  p.pathReq = 0;
+  let path: Int32Array | null;
+  if (r === 'lost') {
+    // a game saved mid-wait, or the worker is gone: search here
+    const n = g.map.size, goal = p.pathGoal ?? 0;
+    const [sx, sy] = walkStart(g, p);
+    path = g.pf.find(sx, sy, goal % n, Math.floor(goal / n));
+  } else path = r;
+  if (!path) {
+    // the way closed while they waited (a building went up across it): give up and think again
+    const b = p.task.bld ? g.buildings.get(p.task.bld) : undefined;
+    if (b) b.customers = b.customers.filter((c) => c !== p.id);
+    if (p.task.kind === 'haul') p.carrying = undefined;
+    p.path = null;
+    setIdle(p, 1);
+    return false;
+  }
   p.path = Array.from(path);
   p.pathI = 0;
-  p.task = { ...task, phase: 0 };
-  return true;
+  return moveAlong(g, p, dt);
 }
 
 function moveAlong(g: Game, p: Person, dt: number): boolean {
-  if (!p.path || p.pathI >= p.path.length) return true;
+  if (!p.path || p.pathI >= p.path.length) {
+    if (p.pathReq && p.path) return awaitPath(g, p, dt);
+    return true;
+  }
   const n = g.map.size;
   const k = p.path[p.pathI];
   const tx = (k % n) + 0.5, ty = Math.floor(k / n) + 0.5;
