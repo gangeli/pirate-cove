@@ -216,12 +216,16 @@ for (const dk of devList) {
         }
         // eslint-disable-next-line no-eval
         const r = await eval(`(async () => { ${/^(await|for)\b/.test(code) || code.includes('; ') ? code : `return ${code}`} })()`);
+        // the frozen view never steps the camera: bring it to where the state put it, so UI that projects from it agrees
+        { const cv = document.getElementById('view'); a.world.rig.update(0, cv.clientWidth, cv.clientHeight); }
         return r === 'missing' ? 'missing' : 'ok';
       }, [S[st], st]);
       if (res === 'missing') { console.log(`[${dk}] ${st}: (nothing to show)`); continue; }
       await p.waitForTimeout(/^(setup|title|credits)/.test(st) ? 2500 : 500);
+      // a fresh selection is framed clear of the inspector on the next frame
+      await p.waitForFunction(() => !window.__app.frameSel, null, { timeout: 3000, polling: 100 }).catch(() => {});
       // the software-rendered 3D view is frozen between shots; draw exactly one fresh frame for this state
-      await p.evaluate(() => { window.__render?.(0.2); return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); });
+      await p.evaluate(() => { const rig = window.__app.world.rig; if (rig.panTo) { rig.target.x = rig.panTo.x; rig.target.z = rig.panTo.z; rig.panTo = null; } window.__render?.(0.2); return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); });
       await p.waitForTimeout(150);
       const tA = Date.now();
       const c = await p.evaluate(CHECK);

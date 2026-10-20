@@ -22,6 +22,7 @@ import { MainMenu } from './menu';
 import { Overlays } from './overlays';
 import { saveGame, loadGame, hasSave } from './saves';
 import { PlaceControls, type PlaceAction } from './placectl';
+import { QuickRing } from './quickring';
 import type { Profiler } from './profiler';
 
 /** wall-clock milliseconds per frame the simulation may use before it starts dropping backlog */
@@ -332,8 +333,71 @@ export class App {
     }
   }
 
+  /** quick-action seals beside the selected building, ship or person */
+  private ring!: QuickRing;
+  /** a new selection waits for the inspector to settle, then the camera frames it clear of the sheets */
+  private frameSel = false;
+  private ray = new THREE.Raycaster();
+  private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+  /** where on the ground (at height y) the screen point lands */
+  private groundAt(clientX: number, clientY: number, y = 0): THREE.Vector3 | null {
+    const r = this.canvas.getBoundingClientRect();
+    if (!r.width) return null;
+    this.ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), this.world.rig.camera);
+    this.plane.constant = -y;
+    const p = new THREE.Vector3();
+    return this.ray.ray.intersectPlane(this.plane, p) ? p : null;
+  }
+
+  /**
+   * The open part of the screen (client pixels): below the top bar, above the toolbar, and beside or above the
+   * inspector, with room under the middle for the quick seals. Things the player is looking at belong in there.
+   */
+  private freeArea(): { l: number; r: number; t: number; b: number } {
+    const q = (sel: string) => {
+      const e = document.querySelector<HTMLElement>(sel);
+      return e && !e.classList.contains('hidden') && e.offsetParent ? e.getBoundingClientRect() : null;
+    };
+    const cr = this.canvas.getBoundingClientRect();
+    const top = q('.topbar'), clock = q('.clock'), tb = q('.toolbar'), ins = q('.panel.inspector');
+    const a = { l: cr.left, r: cr.right, t: Math.max(top?.bottom ?? 0, clock && clock.left < cr.width * 0.6 ? clock.bottom : 0), b: tb?.top ?? cr.bottom };
+    if (ins) {
+      if (ins.left > cr.width * 0.35 && ins.top < cr.height * 0.45) a.r = Math.min(a.r, ins.left);
+      else a.b = Math.min(a.b, ins.top);
+    }
+    return a;
+  }
+
+  /** the camera target that puts world point (x, z) at the middle of the free area */
+  private framedTarget(x: number, z: number, y = 0): { x: number; z: number } {
+    const a = this.freeArea();
+    const cr = this.canvas.getBoundingClientRect();
+    const sx = (a.l + a.r) / 2, sy = a.t + Math.max(40, (a.b - a.t - 70) * 0.5);
+    // the camera only translates when it pans: the offset between the ground under the screen centre (its target)
+    // and under the chosen spot is the same wherever it looks
+    this.world.rig.camera.updateMatrixWorld();
+    const c = this.groundAt(cr.left + cr.width / 2, cr.top + cr.height / 2, y), g = this.groundAt(sx, sy, y);
+    if (!c || !g) return { x, z };
+    return { x: x + c.x - g.x, z: z + c.z - g.z };
+  }
+
+  /** after a new selection: if the inspector covers it (or its seals would not fit), pan it into the free area */
+  private frameSelection(box: { x: number; y: number; z: number }): void {
+    const a = this.freeArea();
+    this.world.rig.camera.updateMatrixWorld();
+    const v = new THREE.Vector3(box.x, box.y, box.z).project(this.world.rig.camera);
+    const cr = this.canvas.getBoundingClientRect();
+    const sx = cr.left + (v.x * 0.5 + 0.5) * cr.width, sy = cr.top + (-v.y * 0.5 + 0.5) * cr.height;
+    if (sx > a.l + 50 && sx < a.r - 50 && sy > a.t + 60 && sy < a.b - 130) return;
+    const t = this.framedTarget(box.x, box.z, box.y);
+    this.world.rig.lookAt(t.x, t.z);
+  }
+
   select(s: Selection): void {
+    const fresh = !!s && (s.type !== this.selection?.type || s.id !== this.selection?.id);
     this.selection = s;
+    if (fresh) this.frameSel = true;
     this.roadPick = null;
     this.world.buildings.select(s?.type === 'building' ? s.id : 0);
     this.world.people.selected = s?.type === 'person' ? s.id : 0;
@@ -355,10 +419,36 @@ export class App {
       const b = this.game.buildings.get(s.id);
       return b ? new THREE.Vector3(b.x + b.w / 2, 0, b.y + b.h / 2) : null;
     };
+    // keep what is followed in the free area, clear of the inspector
+    const f = w.rig.follow;
+    const off = this.framedTarget(0, 0);
+    w.rig.follow = () => {
+      const p = f();
+      return p ? p.set(p.x + off.x, p.y, p.z + off.z) : null;
+    };
   }
 
+  /** pan to a spot, framing it in the free part of the screen (beside or above an open inspector) */
   jumpTo(x: number, y: number): void {
-    this.world.rig.lookAt(x, y);
+    const t = this.framedTarget(x, y);
+    this.frameSel = false;
+    this.world.rig.lookAt(t.x, t.z);
+  }
+
+  /** place (or hide) the quick seals beside the selection; frames a fresh selection */
+  private updateRing(): void {
+    const q = this.state === 'game' && this.tool.kind === 'select' && !this.roadPick && !this.modal.open ? this.inspector.quick() : null;
+    if (!q) {
+      this.ring.hide();
+      this.inspector.setRinged(false);
+      return;
+    }
+    if (this.frameSel) {
+      this.frameSel = false;
+      this.frameSelection(q.box);
+    }
+    this.ring.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight }, q.box, q.acts, this.inspector.folded ? q.name : null, this.touchMode);
+    this.inspector.setRinged(this.ring.visible);
   }
 
   // ------------------------------------------------------------------------------------------------- input
@@ -372,6 +462,7 @@ export class App {
   private bindInput(): void {
     const c = this.canvas;
     this.placeCtl = new PlaceControls(this.root, (a) => this.placeAction(a));
+    this.ring = new QuickRing(this.root, this.inspector.acts, () => audio.sfx('ui_click'));
     let touches = 0;
     c.addEventListener('pointerdown', (ev) => {
       if (ev.pointerType === 'touch') {
@@ -615,6 +706,7 @@ export class App {
       g.advance(dt, SIM_BUDGET_MS);
     }
     this.updateGhost();
+    this.updateRing();
     prof?.lap('sim');
     // nothing advancing: the world may redraw at a low rate until something moves
     this.world.idle = this.state === 'game' && (g.paused || this.modal.pausing);

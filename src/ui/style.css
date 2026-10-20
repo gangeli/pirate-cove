@@ -644,6 +644,49 @@ label.check input { width: 18px; height: 18px; accent-color: var(--blood); }
 .placectl.roadsel .pc-no { background: radial-gradient(circle at 40% 35%, #4a3020, #1a100a); width: 40px; height: 40px; }
 .placectl.roadsel .pc-tag { border-left-color: var(--brass-lo); }
 
+/* ---------- quick seals beside the selected building, ship or person ---------- */
+.quickring { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.quickring > * { position: absolute; left: 0; top: 0; will-change: transform; }
+.qr-row { display: flex; gap: 6px; align-items: flex-start; }
+.qr-seal {
+  pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 58px; padding: 0; border: 0; background: none; cursor: pointer;
+  font: 12.5px/1.05 var(--body); color: var(--ink); transition: transform 0.12s;
+}
+/* a gentle smile: the outer seals ride a little higher than the middle ones (lower when the row sits above) */
+.qr-row > .qr-seal:first-child:not(:only-child), .qr-row > .qr-seal:last-child:not(:only-child) { transform: translateY(-9px); }
+.qr-row.above > .qr-seal:first-child:not(:only-child), .qr-row.above > .qr-seal:last-child:not(:only-child) { transform: translateY(9px); }
+.qr-seal .wax {
+  width: 42px; height: 42px; display: grid; place-items: center; color: #f2dcb0;
+  border-radius: 48% 52% 50% 47% / 52% 47% 53% 48%;
+  background: radial-gradient(circle at 40% 34%, #5a3a24, #24150b 70%); border: 2px solid #a8822e;
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.6), inset 0 0 0 3px rgba(0, 0, 0, 0.25), inset 0 0 0 4px rgba(255, 220, 150, 0.16);
+}
+.qr-seal .wax .ic { filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.6)); }
+.qr-seal .lbl {
+  max-width: 64px; padding: 1px 5px 2px; text-align: center; border-radius: 2px; text-wrap: balance;
+  background: var(--paper) 0 0 / 256px 256px, #e6d6ae; border: 1px solid #3a2410; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.45);
+}
+.qr-seal:hover .wax { filter: brightness(1.2); }
+.qr-seal:active .wax { transform: scale(0.93); }
+.qr-seal:focus-visible { outline: none; }
+.qr-seal:focus-visible .wax { outline: 2px solid var(--brass-hi); outline-offset: 2px; }
+.qr-seal.ok .wax { border-color: #e2c88e; background: radial-gradient(circle at 40% 34%, #4a8a56, #1c3a22 72%); }
+.qr-seal.bad .wax { color: #f4d0b8; border-color: #c88a5a; background: radial-gradient(circle at 40% 34%, #a83226, #4a0a06 72%); }
+.qr-seal.bad .lbl { color: var(--blood); }
+.qr-seal.brass .wax, .qr-seal.on .wax { color: #2a1608; border-color: #4a3018; background: radial-gradient(circle at 40% 34%, #f0d89a, #b08a48 60%, #7a5a28); }
+.qr-seal.on .wax { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6), inset 0 2px 5px rgba(60, 30, 0, 0.5); }
+.quickring.touch .qr-seal .wax { width: 46px; height: 46px; }
+.quickring.touch .qr-seal { width: 62px; font-size: 13px; }
+.qr-tag {
+  white-space: nowrap; font: 17px/1.15 var(--head); color: #2a140a; padding: 3px 12px 4px;
+  background: var(--paper) 0 0 / 256px 256px, #e6d6ae; border: 1px solid #3a2410; border-radius: 2px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45), inset 0 0 12px rgba(90, 55, 20, 0.25);
+}
+.quickring .hidden { display: none; }
+/* footer buttons the seals already offer step aside while the seals show; an empty footer goes too */
+.inspector.ringed .ins-foot .in-ring { display: none; }
+.inspector.ringed .ins-foot:not(:has(> .btn:not(.in-ring))) { display: none; }
+
 /* ---------- touch placement bar ---------- */
 .touchbar { position: absolute; left: 50%; bottom: calc(var(--tb-h) + 8px); transform: translateX(-50%); display: flex; gap: 8px; z-index: 12; pointer-events: auto; }
 .touchbar .btn { font-size: 18px; padding: 8px 18px; }

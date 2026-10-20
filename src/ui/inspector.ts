@@ -1,5 +1,6 @@
 import type { App } from './app';
-import { el, html, patchHTML, delegate, fmt, pct, bar, raw } from './dom';
+import { el, html, patchHTML, delegate, fmt, pct, bar, raw, toggleClass, type ActionHandler } from './dom';
+import type { QuickAct } from './quickring';
 import { icon } from './icons';
 import { BUILDING, HOUSE_LEVELS, JOB_NAMES, RANKS, PRICE_LEVELS, type PirateNeed } from '../sim/data/buildings';
 import { GOOD_NAMES, type Good } from '../sim/data/goods';
@@ -98,10 +99,16 @@ export class Inspector {
   private panel: HTMLElement;
   private tab = 'overview';
   private lastKey = '';
+  /** the actions behind data-act names, shared with the quick-action seals beside the selection */
+  readonly acts: Record<string, ActionHandler>;
+  /** inspector folded away (the quick seals and a name tag stay beside the selection); reset by a new selection */
+  folded = false;
+  /** the quick seals are showing beside the selection: footer buttons they duplicate are hidden */
+  private ringed = false;
 
   constructor(private app: App) {
     this.panel = el('div', 'panel inspector hidden', app.root);
-    delegate(this.panel, {
+    this.acts = {
       close: () => app.select(null),
       tab: (t) => {
         this.tab = t;
@@ -180,7 +187,13 @@ export class Inspector {
           this.refresh(true);
         });
       },
-    }, () => audio.sfx('ui_click'));
+      details: () => this.fold(!this.folded),
+      prioUp: () => {
+        const b = app.game.buildings.get(this.sel());
+        if (b) this.bcmd({ type: 'setPriority', id: b.id, priority: b.priority >= 5 ? 1 : b.priority + 1 });
+      },
+    };
+    delegate(this.panel, this.acts, () => audio.sfx('ui_click'));
   }
 
   private onThumb = (): void => this.refresh(true);
@@ -212,6 +225,7 @@ export class Inspector {
     if (changed) {
       if (this.lastKey && !this.lastKey.startsWith(`${s.type}:`)) this.tab = 'overview';
       this.lastKey = key;
+      this.folded = false;
     }
     let v: View;
     if (s.type === 'building') {
@@ -227,12 +241,68 @@ export class Inspector {
       if (!sh) return this.app.select(null);
       v = this.ship(sh);
     }
-    this.panel.classList.remove('hidden');
+    toggleClass(this.panel, 'hidden', this.folded);
+    if (this.folded) return;
     patchHTML(this.panel, html`<button class="close" data-act="close" aria-label="Close">${icon('close', 14)}</button>
       <header class="ins-head">${v.head}</header>
       <div class="ins-body scroll">${v.body}</div>
       ${v.foot ? html`<footer class="ins-foot">${v.foot}</footer>` : ''}`);
     if (changed) this.panel.querySelector('.ins-body')?.scrollTo(0, 0);
+  }
+
+  /** fold the inspector away (the seals beside the selection stay), or unfold it */
+  fold(on: boolean): void {
+    this.folded = on;
+    this.refresh(true);
+  }
+
+  /** the quick seals are (not) showing: footer buttons they duplicate hide while they are */
+  setRinged(on: boolean): void {
+    if (on === this.ringed) return;
+    this.ringed = on;
+    toggleClass(this.panel, 'ringed', on);
+  }
+
+  /**
+   * The quick actions for the seals beside the selection, its name (for the tag shown while the inspector is folded)
+   * and its world box; null when it isn't in the world (a ship at sea, someone indoors).
+   */
+  quick(): { acts: QuickAct[]; name: string; box: { x: number; y: number; z: number; w: number; d: number; h: number } } | null {
+    const s = this.app.selection;
+    if (!s) return null;
+    const g = this.app.game, w = this.app.world;
+    const details: QuickAct = { act: 'details', icon: 'book', label: this.folded ? 'Details' : 'Hide details', tone: this.folded ? 'brass' : 'on', tip: this.folded ? 'Open the ledger for this' : 'Fold the ledger away' };
+    if (s.type === 'building') {
+      const b = g.buildings.get(s.id);
+      if (!b) return null;
+      const def = BUILDING[b.def];
+      const acts: QuickAct[] = [details];
+      const staffed = def.workers.length > 0 || !!def.overseer || !!def.guards || !!def.haulers;
+      if (b.built < 1 || staffed) acts.push({ act: 'prioUp', icon: 'flag', label: `${['Lowest', 'Low', 'Normal', 'High', 'Top'][b.priority - 1] ?? 'Normal'} priority`, tip: 'Raise the priority (wraps round to lowest)' });
+      if (def.service && b.built >= 1) acts.push({ act: 'rename', icon: 'quill', label: 'Rename' });
+      if (def.id === 'dock' && b.ship && g.ships.get(b.ship)) acts.push({ act: `gotoS:${b.ship}`, icon: 'ship', label: 'Her ship' });
+      if (def.id !== 'palace') acts.push({ act: 'demolish', icon: 'bulldoze', label: 'Demolish', tone: 'bad' });
+      const title = def.service && b.name ? b.name : def.name;
+      const hy = Math.max(0.05, g.map.heightAt(b.x + b.w / 2, b.y + b.h / 2));
+      return { acts, name: title, box: { x: b.x + b.w / 2, y: hy, z: b.y + b.h / 2, w: b.w, d: b.h, h: Math.max(1.4, Math.min(b.w, b.h) * 0.9) } };
+    }
+    if (s.type === 'ship') {
+      const sh = g.ships.get(s.id);
+      const pos = sh && sh.status !== 'atsea' ? w.ships.shipPosition(s.id) : null;
+      if (!sh || !pos) return null;
+      const acts: QuickAct[] = [details];
+      if (sh.status === 'docked' || sh.status === 'boarding' || sh.status === 'repairing') acts.push({ act: 'sail', icon: 'bell', label: sh.status === 'boarding' ? 'Leave now' : 'Set sail', tone: 'ok' });
+      acts.push({ act: 'chart', icon: 'telescope', label: 'Sea chart' }, { act: 'follow', icon: 'follow', label: 'Follow' });
+      return { acts, name: sh.name, box: { x: pos.x, y: 0, z: pos.z, w: 3, d: 3, h: 4 } };
+    }
+    const p = g.people.get(s.id);
+    const pos = p ? w.people.personPosition(s.id) : null;
+    if (!p || !pos) return null;
+    const acts: QuickAct[] = [details, { act: 'follow', icon: 'follow', label: 'Follow' }];
+    if (p.kind === 'pirate') acts.push({ act: 'edict:donate', icon: 'coin', label: 'Give gold', tip: 'Give 100 gold' });
+    if (p.kind === 'captive' && !p.skilled) acts.push({ act: 'edict:press_gang', icon: 'pirate', label: 'Press-gang' });
+    if ((p.kind === 'captive' && p.skilled) || p.kind === 'wealthy') acts.push({ act: 'edict:ransom', icon: 'coin', label: `Ransom ${fmt(p.kind === 'wealthy' ? p.ransom + p.credit : p.ransom)}`, tone: 'ok' });
+    return { acts, name: p.name, box: { x: pos.x, y: Math.max(0.05, g.map.heightAt(pos.x, pos.z)), z: pos.z, w: 0.6, d: 0.6, h: 1.6 } };
   }
 
   // ------------------------------------------------------------------------------------------------ building
@@ -335,7 +405,7 @@ export class Inspector {
       if (def.id === 'smugglers_cove') body.push(html`<section class="sect"><h4 class="eng">Trade</h4><div class="kv">${NATIONS.map((n) => html`<span>${NATION_NAMES[n]}</span><span>${g.ongoing.has(`open_cove:${n}`) ? html`<span class="chip ok">Open</span>` : html`<span class="chip">Closed</span>`}</span>`)}</div><div class="seg-note">Open trade with the Diplomacy edicts.</div></section>`);
       if (def.auras) body.push(html`<section class="sect"><h4 class="eng">Influence</h4><div class="auras">${Object.entries(def.auras).map(([k, [s, r]]) => html`<span class="chip">${AURA_NAMES[k] ?? k} ${s > 0 ? '+' : ''}${s} <i>· ${r} tiles</i></span>`)}</div></section>`);
     }
-    const foot = def.id !== 'palace' ? html`<span class="spacer"></span><button class="btn ghost danger small" data-act="demolish">${icon('bulldoze', 14)} Demolish</button>` : null;
+    const foot = def.id !== 'palace' ? html`<span class="spacer"></span><button class="btn ghost danger small in-ring" data-act="demolish">${icon('bulldoze', 14)} Demolish</button>` : null;
     return { head, body: html`${body}`, foot };
   }
 
@@ -412,10 +482,10 @@ export class Inspector {
       body.push(html`<div class="thoughts">${this.thoughts(p).map(([t, bad]) => html`<blockquote class="thought ${bad ? 'bad' : ''}">${t}</blockquote>`)}</div>`);
     }
     // actions: ordinary ones first, the deadly ones apart on the right
-    const acts = [html`<button class="btn ghost small" data-act="follow">${icon('follow', 14)} Follow</button>`];
+    const acts = [html`<button class="btn ghost small in-ring" data-act="follow">${icon('follow', 14)} Follow</button>`];
     const deadly = [];
     if (p.kind === 'pirate') {
-      acts.push(html`<button class="btn ghost small" data-act="edict:donate" data-tip="Give 100 gold">${icon('coin', 14)} Give 100 gold</button>`);
+      acts.push(html`<button class="btn ghost small in-ring" data-act="edict:donate" data-tip="Give 100 gold">${icon('coin', 14)} Give 100 gold</button>`);
       for (const a of ['pegleg', 'hat', 'parrot'] as const) if (g.goodTotal(a) > 0 && !p.accessories[a]) acts.push(html`<button class="btn ghost small" data-act="edict:outfit|${a}">Give ${a === 'pegleg' ? 'peg leg' : a}</button>`);
       for (const b of g.buildings.values()) {
         const sc = BUILDING[b.def].school;
@@ -424,12 +494,12 @@ export class Inspector {
       if (!p.captain) deadly.push(html`<button class="btn ghost danger small" data-act="edict:assassinate">${icon('skull', 14)} Assassinate</button>`);
     }
     if (p.kind === 'captive') {
-      if (!p.skilled) acts.push(html`<button class="btn ghost small" data-act="edict:press_gang">Press-gang</button>`);
-      if (p.skilled) acts.push(html`<button class="btn ghost small" data-act="edict:ransom">${icon('coin', 14)} Ransom for ${fmt(p.ransom)}</button>`);
+      if (!p.skilled) acts.push(html`<button class="btn ghost small in-ring" data-act="edict:press_gang">Press-gang</button>`);
+      if (p.skilled) acts.push(html`<button class="btn ghost small in-ring" data-act="edict:ransom">${icon('coin', 14)} Ransom for ${fmt(p.ransom)}</button>`);
       acts.push(html`<button class="btn ghost small" data-act="edict:free_captive">Set free</button>`);
       deadly.push(html`<button class="btn ghost danger small" data-act="edict:assassinate">${icon('skull', 14)} Kill</button>`);
     }
-    if (p.kind === 'wealthy') acts.unshift(html`<button class="btn primary small" data-act="edict:ransom">${icon('coin', 14)} Ransom for ${fmt(p.ransom + p.credit)}</button>`);
+    if (p.kind === 'wealthy') acts.unshift(html`<button class="btn primary small in-ring" data-act="edict:ransom">${icon('coin', 14)} Ransom for ${fmt(p.ransom + p.credit)}</button>`);
     const foot = html`${acts}${deadly.length ? html`<span class="spacer"></span>${deadly}` : ''}`;
     return { head, body: html`${body}`, foot };
   }
@@ -513,10 +583,10 @@ export class Inspector {
         <div class="seg-note">The treasury keeps ${Math.round(SPOILS_TREASURY[s.spoils] * 100)}% of the plunder, the crew shares ${Math.round((1 - SPOILS_TREASURY[s.spoils]) * 100)}%. Stingy captains attract fewer recruits.</div></section>`);
       body.push(stores);
       if (s.log.length) body.push(html`<section class="sect"><h4 class="eng">Last voyage</h4><ol class="log">${s.log.slice(-5).map((e) => html`<li><i>${e.date}</i> ${e.text}</li>`)}</ol></section>`);
-      foot = html`<button class="btn primary" data-act="sail">${icon('bell', 16)} ${s.status === 'boarding' ? 'Leave now' : 'Set sail'}</button>
+      foot = html`<button class="btn primary in-ring" data-act="sail">${icon('bell', 16)} ${s.status === 'boarding' ? 'Leave now' : 'Set sail'}</button>
         ${g.findBuilding('black_market') ? html`<button class="btn ghost small" data-act="bm" data-tip="Buy rations and weapons instantly">Black market</button>` : ''}
         <button class="btn ghost small" data-act="shipEdict:donate_crew">${icon('coin', 14)} Treat crew</button>
-        <button class="btn ghost small icon-only" data-act="follow" aria-label="Follow" data-tip="Follow the ship">${icon('follow', 15)}</button>
+        <button class="btn ghost small icon-only in-ring" data-act="follow" aria-label="Follow" data-tip="Follow the ship">${icon('follow', 15)}</button>
         <span class="spacer"></span><button class="btn ghost danger small" data-act="scuttle">Scuttle</button>`;
     } else foot = html`<button class="btn ghost small" data-act="follow">${icon('follow', 14)} Follow</button><button class="btn ghost small" data-act="chart">${icon('telescope', 14)} Sea chart</button>`;
     return { head, body: html`${body}`, foot };
