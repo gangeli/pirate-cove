@@ -63,6 +63,8 @@ export const SOFTWARE_GPU = /swiftshader|llvmpipe|softpipe|lavapipe|software|bas
 export async function chooseBackend(): Promise<BackendChoice> {
   const force = (typeof location !== 'undefined' ? new URLSearchParams(location.search).get('gpu') : null) ?? backendPreference();
   if (force === 'webgl') return { backend: 'webgl', reason: 'forced (?gpu=webgl)', adapter: null };
+  // WebGPU is opt-in: unless it was asked for, don't even probe for an adapter (that costs start-up time and logs warnings)
+  if (force !== 'webgpu' && !WEBGPU_DEFAULT) return { backend: 'webgl', reason: 'WebGL is the default', adapter: null };
   const nav = navigator as Navigator & { gpu?: GPU };
   if (!nav.gpu) return { backend: 'webgl', reason: 'no navigator.gpu', adapter: null };
   let adapter: GPUAdapter | null = null;
