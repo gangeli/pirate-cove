@@ -7,6 +7,9 @@ import { M, sign, flag } from './kit';
 import { markSharedTree } from './dispose';
 import { gpu } from './backend';
 
+/** the browser's Float16Array (Chrome 135+, Safari 18.2+, Firefox 129+), if it has one */
+const F16 = (globalThis as unknown as { Float16Array?: new (a: ArrayLike<number>) => ArrayLike<number> }).Float16Array;
+
 /**
  * Building models made in Blender (scripts/blender/bld). Each GLB names its material slots after the shared
  * materials in kit.ts; those are swapped in (cloned once per model to carry its baked ambient-occlusion map
@@ -59,9 +62,16 @@ function quantize(root: THREE.Object3D): void {
         // half floats resolve 1/1024 of a repeat below 2 repeats (half a texel of a 1024 map at worst); wider
         // ranges stay full float
         if (m <= 2) {
-          const hq = new Uint16Array(uv.array.length);
-          for (let i = 0; i < hq.length; i++) hq[i] = THREE.DataUtils.toHalfFloat(uv.array[i]);
-          g.setAttribute('uv', new THREE.Float16BufferAttribute(hq, 2));
+          if (!gpu()) {
+            const hq = new Uint16Array(uv.array.length);
+            for (let i = 0; i < hq.length; i++) hq[i] = THREE.DataUtils.toHalfFloat(uv.array[i]);
+            g.setAttribute('uv', new THREE.Float16BufferAttribute(hq, 2));
+          } else if (F16) {
+            // WebGPU: three r186 widens a Float16BufferAttribute's Uint16Array to 32-bit integers on upload while still
+            // declaring float16x2 (garbage UVs); a real Float16Array goes up untouched as float16x2
+            g.setAttribute('uv', new THREE.BufferAttribute(new F16(uv.array) as unknown as Float32Array, 2));
+          }
+          // (WebGPU without Float16Array: the UVs stay 32-bit floats)
         }
       }
       const uv1 = g.getAttribute('uv1') as THREE.BufferAttribute | undefined;
