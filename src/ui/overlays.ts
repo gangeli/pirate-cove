@@ -7,14 +7,26 @@ import type { Good } from '../sim/data/goods';
 import { audio } from '../audio/audio';
 
 type Kind = 'none' | 'order' | 'fear' | 'defense' | 'awe' | 'corn' | 'banana' | 'papaya' | 'sugarcane' | 'tobacco' | 'ore' | 'happiness';
-const LIST: [Kind, string, string][] = [
-  ['order', 'Order & Anarchy', 'Blue is orderly (captives like it), red is anarchic (pirates like it).'],
-  ['fear', 'Fear', 'Fear keeps captives in line.'],
-  ['defense', 'Defense', 'Pirates feel safe in well-defended areas.'],
-  ['awe', 'Awe', 'Impressive buildings resign captives to their fate.'],
-  ['corn', 'Corn fertility', ''], ['banana', 'Banana fertility', ''], ['papaya', 'Papaya fertility', ''], ['sugarcane', 'Sugarcane fertility', ''], ['tobacco', 'Tobacco fertility', ''],
-  ['ore', 'Iron deposits', 'Mines must be built next to dark red patches.'],
+/** [kind, name, short name, icon, what it shows, low end, high end] in three groups */
+const GROUPS: [string, [Kind, string, string, string, string, string, string][]][] = [
+  ['Rule of the island', [
+    ['order', 'Order & Anarchy', 'Order', 'scales', 'Blue is orderly (captives like it), red is anarchic (pirates like it).', 'Anarchy', 'Order'],
+    ['fear', 'Fear', 'Fear', 'skull', 'Fear keeps captives in line.', 'None', 'Terror'],
+    ['defense', 'Defense', 'Defense', 'shield', 'Pirates feel safe in well-defended areas.', 'Exposed', 'Safe'],
+    ['awe', 'Awe', 'Awe', 'crown', 'Impressive buildings resign captives to their fate.', 'None', 'Awed'],
+  ]],
+  ['Soil for crops', [
+    ['corn', 'Corn', 'Corn', 'sprout', 'Where corn grows best. Farms on rich (green) soil yield more.', 'Poor', 'Rich'],
+    ['banana', 'Bananas', 'Bananas', 'sprout', 'Where bananas grow best. Farms on rich (green) soil yield more.', 'Poor', 'Rich'],
+    ['papaya', 'Papayas', 'Papayas', 'sprout', 'Where papayas grow best. Farms on rich (green) soil yield more.', 'Poor', 'Rich'],
+    ['sugarcane', 'Sugarcane', 'Sugar', 'sprout', 'Where sugarcane grows best. Farms on rich (green) soil yield more.', 'Poor', 'Rich'],
+    ['tobacco', 'Tobacco', 'Tobacco', 'sprout', 'Where tobacco grows best. Farms on rich (green) soil yield more.', 'Poor', 'Rich'],
+  ]],
+  ['Under the ground', [
+    ['ore', 'Iron deposits', 'Iron', 'pick', 'Mines must be built next to dark red patches.', 'None', 'Rich vein'],
+  ]],
 ];
+const ALL = GROUPS.flatMap(([, l]) => l);
 
 // overlay palette (sRGB)
 const NEUTRAL = [120, 120, 128], ORDER = [30, 110, 255], ANARCHY = [240, 40, 20];
@@ -61,15 +73,20 @@ export class Overlays {
     this.render();
   }
   private render(): void {
-    setHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button><h3 style="margin-top:0">Overlays</h3>
-      ${LIST.map(([k, n, d]) => html`<div class="row" style="cursor:pointer;padding:2px 4px;border-radius:4px;${this.kind === k ? 'background:rgba(200,160,72,0.4)' : ''}" data-act="pick:${k}" data-tip="${d}">${n}</div>`)}
-      <div class="grad" style="background:${this.legend()}"></div>
-      <div class="row" style="justify-content:space-between;font-size:12px"><span>${this.kind === 'order' ? 'Anarchy' : 'Low'}</span><span>${this.kind === 'order' ? 'Order' : 'High'}</span></div>`);
+    const cur = ALL.find((x) => x[0] === this.kind);
+    setHTML(this.panel, html`<button class="close" data-act="close" aria-label="Close overlays">${icon('close', 14)}</button>
+      <header class="sheet-head"><h3>Overlays</h3><div class="sub">Tint the ground to see what the island hides.</div></header>
+      <div class="ov-groups">${GROUPS.map(([g, list]) => html`<div class="ov-group"><h4 class="eng">${g}</h4>
+        <div class="ov-list" role="radiogroup" aria-label="${g}">${list.map(([k, n, sh, ic]) => html`<button class="ov ${this.kind === k ? 'on' : ''}" data-act="pick:${k}" role="radio" aria-checked="${this.kind === k ? 'true' : 'false'}">
+          <i class="sw" style="background:${this.legend(k)}"></i>${icon(ic, 15)}<span class="full">${n}</span><span class="short">${sh}</span></button>`)}</div></div>`)}</div>
+      ${cur ? html`<div class="ov-key"><div class="ov-now"><b>${cur[1]}</b> <span>${cur[4]}</span></div>
+        <div class="grad" style="background:${this.legend(cur[0])}"></div>
+        <div class="ends"><span>${cur[5]}</span><span>${cur[6]}</span></div></div>` : ''}
+      <div class="actions"><button class="btn ghost small" data-act="close">${icon('close', 13)} Hide overlay</button></div>`);
   }
 
   /** legend gradient matching the colours drawn on the ground */
-  private legend(): string {
-    const k = this.kind;
+  private legend(k: Kind = this.kind): string {
     if (k === 'order') return `linear-gradient(90deg,${css(ANARCHY)},${css(NEUTRAL)},${css(ORDER)})`;
     if (k === 'fear' || k === 'defense' || k === 'awe' || k === 'ore') return `linear-gradient(90deg,${css(LOW)},${css(k === 'fear' ? FEAR : k === 'defense' ? DEFENSE : k === 'awe' ? AWE : ORE)})`;
     return `linear-gradient(90deg,${css(POOR)},${css(FAIR)},${css(RICH)})`;

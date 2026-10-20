@@ -385,9 +385,28 @@ table.ledger tr.sel td { background: color-mix(in srgb, var(--blood) 12%, transp
 .power { font-size: 14.5px; margin-bottom: 6px; }
 .power .sub { font-size: 13px; }
 
-/* overlays legend */
-.legend { position: absolute; right: 14px; top: 96px; padding: 10px 14px; width: 266px; }
-.legend .grad { height: 8px; margin: 4px 0; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3); }
+/* ---------- overlays chooser ---------- */
+.legend { position: absolute; right: 14px; top: 96px; padding: 12px 14px 12px; width: 300px; z-index: 6; display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - var(--tb-h) - 110px); }
+.legend .sheet-head h3 { margin: 0; padding: 0; border: 0; font-size: 21px; }
+.legend .sheet-head .sub { font-size: 13px; }
+.ov-groups { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.ov-group .eng { font-size: 13.5px; margin-bottom: 4px; }
+.ov-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.ov { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 3px 8px 3px 5px; font: 14.5px/1.1 var(--body); color: var(--ink); text-align: left; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--ink2) 40%, transparent); border-radius: 3px; background: rgba(250, 242, 220, 0.35); }
+.ov .sw { display: block; width: 6px; align-self: stretch; border-radius: 1px; box-shadow: inset 0 0 0 1px rgba(40, 20, 5, 0.35); flex: none; }
+.ov .ic { color: var(--ink2); }
+.ov .short { display: none; }
+.ov:hover { background: rgba(255, 248, 228, 0.75); }
+.ov.on { color: #f8e8c6; background: linear-gradient(#8a2418, #5e140c); border-color: #3a0806; box-shadow: inset 0 1px 0 rgba(255, 190, 150, 0.25); }
+.ov.on .ic { color: #f2d8a8; }
+.ov:focus-visible { outline: 2px solid var(--blood-hi); outline-offset: 1px; }
+.ov-key { border-top: 1px solid color-mix(in srgb, var(--ink2) 30%, transparent); padding-top: 8px; }
+.ov-now { font-size: 13.5px; line-height: 1.3; color: var(--ink2); }
+.ov-now b { font-family: var(--head); font-weight: normal; font-size: 15px; color: var(--ink); letter-spacing: 0.03em; margin-right: 4px; }
+.legend .grad { height: 10px; margin: 6px 0 2px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35); border-radius: 1px; }
+.legend .ends { display: flex; justify-content: space-between; font-size: 12.5px; font-style: italic; color: var(--ink3); }
+.legend .actions { margin-top: 0; justify-content: flex-end; }
 
 /* ---------- placement hint ---------- */
 .hint { position: absolute; left: 50%; bottom: calc(var(--tb-h) + 10px); transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); box-sizing: border-box; text-align: center; z-index: 8; background: rgba(20, 13, 8, 0.92); color: #e4d6b4; border: 1px solid #000; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 50%, transparent); padding: 5px 14px; font-size: 15px; font-style: italic; pointer-events: none; }
@@ -492,7 +511,7 @@ body.touch .cursor-tip { display: none; }
   .btn.small { font-size: 13px; padding: 2px 7px; }
   .big, .setup, .credits { inset: 0; left: 0; top: 0; transform: none; width: auto; height: auto; max-height: none; }
   .big .tabs, .inspector .tabs { overflow-x: auto; flex-wrap: nowrap; }
-  .legend { top: 52px; right: 6px; width: 204px; }
+  .legend { top: 52px; right: 6px; width: 260px; padding: 8px 10px; gap: 6px; }
   .hint { bottom: calc(var(--tb-h) + 6px); font-size: 13px; }
   .touchbar { bottom: calc(var(--tb-h) + 6px); }
   .menu { padding-left: 6vw; }
@@ -531,7 +550,19 @@ body.touch .cursor-tip { display: none; }
   .tool .lbl { font-size: 9px; letter-spacing: -0.03em; }
   .toolbar .sep { display: none; }
   .inspector { left: 6px; right: 6px; width: auto; bottom: calc(var(--tb-h) + 2px); max-height: calc((var(--app-h, 100dvh) - var(--tb-h)) * 0.58); }
-  .legend { top: 72px; }
+  /* overlays: a low sheet over the toolbar, so the tinted ground stays in view above it */
+  .legend { top: auto; left: 6px; right: 6px; width: auto; bottom: calc(var(--tb-h) + 2px); max-height: none; padding: 8px 10px 8px; gap: 6px; }
+  .legend .sheet-head .sub { display: none; }
+  .legend .sheet-head h3 { font-size: 18px; }
+  .ov-groups { flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 4px; padding-bottom: 2px; scrollbar-width: none; }
+  .ov-group { display: contents; }
+  .ov-group .eng { display: none; }
+  .ov-list { display: contents; }
+  .ov { flex: none; min-height: 40px; padding: 3px 10px 3px 5px; }
+  .ov .full { display: none; }
+  .ov .short { display: inline; }
+  .legend .actions { position: absolute; right: 46px; top: 6px; }
+  .legend .actions .btn { min-height: 30px; }
 }
 
 /* sea chart on narrow screens: the map spans the width at its own aspect, the details scroll beneath it */
