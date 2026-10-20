@@ -438,7 +438,8 @@ export class App {
 
   /** place (or hide) the quick seals beside the selection; frames a fresh selection */
   private updateRing(): void {
-    const q = this.state === 'game' && this.tool.kind === 'select' && !this.roadPick && !this.modal.open ? this.inspector.quick() : null;
+    const sheet = this.build.visible || this.edicts.visible || this.chart.visible || this.log.visible;
+    const q = this.state === 'game' && this.tool.kind === 'select' && !this.roadPick && !this.modal.open && !sheet ? this.inspector.quick() : null;
     if (!q) {
       this.ring.hide();
       this.inspector.setRinged(false);

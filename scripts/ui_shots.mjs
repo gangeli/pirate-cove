@@ -48,6 +48,7 @@ S.b_boatyard = bld('boatyard');
 S.b_cave = bld('cave');
 S.b_smuggler = bld('smugglers_cove');
 S.b_tower = bld('watch_tower');
+S.b_folded = `${bld('corn_farm')}; a.inspector.fold(true)`;
 S.b_construction = `(() => { const b = [...g.buildings.values()].find((b) => b.built < 1); if (!b) return 'missing'; a.select({ type: 'building', id: b.id }); h.look(b.x, b.y); })()`;
 S.p_pirate = per(`p.kind === 'pirate' && !p.captain`);
 S.p_pirate_happy = `${per(`p.kind === 'pirate' && !p.captain`)}; h.click('[data-act="tab:happiness"]')`;

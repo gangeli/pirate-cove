@@ -708,6 +708,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--blood); }
   background: var(--paper) 0 0 / 256px 256px, #e6d6ae; border: 1px solid #3a2410; border-radius: 2px;
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45), inset 0 0 12px rgba(90, 55, 20, 0.25);
 }
+.qr-tag::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 10px; height: 10px; margin-left: -5px; transform: rotate(45deg); background: #e0cfa4; border-right: 1px solid #3a2410; border-bottom: 1px solid #3a2410; }
 .quickring .hidden { display: none; }
 /* footer buttons the seals already offer step aside while the seals show; an empty footer goes too */
 .inspector.ringed .ins-foot .in-ring { display: none; }
