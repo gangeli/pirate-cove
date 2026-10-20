@@ -41,7 +41,7 @@ function pwa(): Plugin {
         all.update(`${f}:${hash}\n`);
         // chunks only some players load (the opt-in WebGPU node materials, SMAA, and three's bundled copies of the Draco
         // decoder, which the game takes from draco/ instead) are cached when first fetched rather than precached
-        const ONDEMAND = /^assets\/(nodes|SMAAPass|draco_[a-z_]+)-[^/]+\.js$/;
+        const ONDEMAND = /^assets\/(nodes|SMAAPass|SMAANode|draco_[a-z_]+)-[^/]+\.js$/;
         const isShell =
           f === 'index.html' ||
           f === 'manifest.webmanifest' ||

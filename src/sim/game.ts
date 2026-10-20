@@ -647,6 +647,8 @@ export class Game {
     dec(d.map.occupied, m.occupied); dec(d.map.path, m.path); dec(d.map.fertility, m.fertility); dec(d.map.ore, m.ore);
     g.time = d.time; g.month = d.month; g.treasury = d.treasury; g.hoard = d.hoard; g.hoardRate = d.hoardRate;
     g.people = new Map(d.people.map((p: Person) => [p.id, p]));
+    // a path request saved mid-wait belonged to the old session's worker: -1 is never issued, so the person searches anew
+    for (const p of g.people.values()) if (p.pathReq) p.pathReq = -1;
     g.buildings = new Map(d.buildings.map((b: Building) => [b.id, b]));
     g.ships = new Map(d.ships.map((s: Ship) => [s.id, s]));
     g.regions = d.regions; g.nations = d.nations; g.ongoing = new Set(d.ongoing); g.messages = d.messages; g.nextId = d.nextId;

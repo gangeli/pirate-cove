@@ -103,7 +103,8 @@ self.addEventListener('activate', (e) => {
 
 /** fetch an asset in full and keep it */
 async function fetchAndCache(path, hash) {
-  const res = await fetch(abs(path));
+  // past the browser's HTTP cache (Pages sends max-age=600 on unhashed paths): the bytes must be the ones `hash` names
+  const res = await fetch(abs(path), { cache: 'no-cache' });
   if (res.ok && res.status === 200) {
     const cache = await caches.open(ASSET_CACHE);
     await cache.put(abs(path), stamped(res.clone(), hash));
@@ -153,10 +154,13 @@ self.addEventListener('fetch', (e) => {
   if (path === null || path === 'sw.js') return;
 
   if (req.mode === 'navigate') {
-    // network-first: a fresh index.html points at the newest bundles once the new worker is in
-    // (with a time limit: on a dead or crawling connection the cached shell is served instead)
+    // this worker's own index.html when it has one, so the page always matches the decoders, models and textures this
+    // worker caches; a newer build installs as a waiting worker meanwhile and the game offers "Update ready - restart".
+    // Only with nothing cached (the first visit) does the page come from the network, with a time limit as a guard.
     e.respondWith(
       (async () => {
+        const own = await caches.match(abs('index.html'), { cacheName: SHELL_CACHE });
+        if (own) return own;
         const net = fetch(req).catch(() => null);
         const first = await Promise.race([net, new Promise((r) => setTimeout(() => r('slow'), NAV_TIMEOUT))]);
         if (first && first !== 'slow' && first.ok) return first;

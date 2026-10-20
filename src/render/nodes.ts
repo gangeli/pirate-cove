@@ -76,7 +76,8 @@ export async function createRenderer(canvas: HTMLCanvasElement, forceWebGL = fal
       if (app?.state === 'game') u.searchParams.set('continue', '1');
       location.replace(u.toString());
     };
-    Promise.race([app?.state === 'game' ? app.save?.('auto') : undefined, new Promise((res) => setTimeout(res, 1500))]).finally(back);
+    // the GPU is already gone, so there is no hurry: give a late-game save on a phone time to reach IndexedDB
+    Promise.race([app?.state === 'game' ? app.save?.('auto') : undefined, new Promise((res) => setTimeout(res, 10000))]).finally(back);
   };
   await r.init();
   return r;

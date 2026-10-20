@@ -623,6 +623,8 @@ export class App {
     if ((ev.target as HTMLElement)?.tagName === 'INPUT') return;
     const g = this.game;
     const k = ev.key;
+    // a dialog has the keyboard: only Escape (which closes it, handled by the modal) gets through
+    if (this.modal.open && k !== 'Escape') return;
     if (k === 'Escape') {
       if (this.modal.open) return;
       if (this.tool.kind !== 'select') return this.setTool({ kind: 'select' });
