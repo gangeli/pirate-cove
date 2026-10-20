@@ -45,6 +45,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #070c10; fon
 }
 #ui .pe, #ui button, #ui .panel, #ui .bar, #ui .toolbar, #ui .menu, #ui .modal-wrap { pointer-events: auto; }
 .hidden { display: none !important; }
+/* frames size by their outside edge, so a width like calc(100vw - 12px) really fits the screen */
+.panel, .topbar, .toolbar, .clock, .touchbar, .hint, .tipbox, .toast, .bcard, .ecard { box-sizing: border-box; }
 .ic { display: inline-block; vertical-align: middle; flex: none; }
 h1, h2, h3, h4 { font-family: var(--head); font-weight: normal; margin: 0; letter-spacing: 0.03em; }
 a { color: var(--blood); }
@@ -231,7 +233,7 @@ input[type=range] { accent-color: var(--blood); }
 .modal .seal .ic { opacity: 0.75; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)); }
 
 /* ---------- inspector ---------- */
-.inspector { right: 12px; bottom: 12px; z-index: 5; width: 360px; max-height: calc(100% - 120px); display: flex; flex-direction: column; }
+.inspector { right: 12px; bottom: 12px; z-index: 5; width: 414px; max-height: calc(100% - 120px); display: flex; flex-direction: column; }
 .inspector .head { display: flex; gap: 12px; align-items: center; }
 .inspector .head .portrait { border: 1px solid var(--ink); box-shadow: 0 0 0 3px rgba(226, 210, 170, 0.6), 0 0 0 4px var(--ink2); flex: none; }
 .inspector .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 14px; }
@@ -265,7 +267,7 @@ input[type=range] { accent-color: var(--blood); }
 .buildmenu .cat.on { color: var(--blood); border-color: var(--ink2); background: rgba(250, 240, 210, 0.45); box-shadow: inset 0 2px 0 var(--blood); }
 .buildmenu .cards { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: var(--ink3) transparent; }
 .bcard {
-  width: 118px; flex: none; padding: 5px 4px 4px; cursor: pointer; text-align: center; position: relative;
+  width: 128px; flex: none; padding: 5px 4px 4px; cursor: pointer; text-align: center; position: relative;
   border: 1px solid color-mix(in srgb, var(--ink2) 55%, transparent); background: rgba(250, 242, 220, 0.35); box-shadow: inset 0 0 0 3px rgba(250, 242, 220, 0.25), inset 0 0 0 4px color-mix(in srgb, var(--ink2) 20%, transparent);
 }
 .bcard:hover { border-color: var(--ink); background: rgba(255, 248, 225, 0.65); }
@@ -297,7 +299,7 @@ table.ledger tr.sel td { background: color-mix(in srgb, var(--blood) 12%, transp
 .chart-side { width: 300px; display: flex; flex-direction: column; gap: 8px; }
 
 /* overlays legend */
-.legend { position: absolute; right: 14px; top: 96px; padding: 10px 14px; width: 220px; }
+.legend { position: absolute; right: 14px; top: 96px; padding: 10px 14px; width: 266px; }
 .legend .grad { height: 8px; margin: 4px 0; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3); }
 
 /* ---------- placement hint ---------- */
@@ -371,7 +373,7 @@ body.touch .panel .close { width: 36px; height: 36px; }
   .topbar .res small { display: none; }
   .topbar .mood { display: none; }
   .clock { right: 6px; padding: 4px 6px 5px; }
-  .speed .sp { width: 26px; height: 24px; }
+  .speed .sp, .clock .soundbtn { width: 26px; height: 24px; }
   .date { font-size: 15px; min-width: 92px; }
   .toolbar { padding: 5px 12px; gap: 2px; max-width: 100vw; overflow-x: auto; clip-path: none; }
   .tool { width: 40px; height: 40px; flex: none; }
@@ -390,10 +392,10 @@ body.touch .panel .close { width: 36px; height: 36px; }
   .panel { padding: 10px 12px; border-width: 6px; }
   .buildmenu { left: 0; right: 0; transform: none; width: auto; bottom: 52px; padding: 6px 8px 8px; }
   .buildmenu .cats { overflow-x: auto; flex-wrap: nowrap; }
-  .bcard { width: 92px; }
+  .bcard { width: 102px; }
   .bcard img { width: 84px; height: 60px; }
   .bcard .nm { font-size: 12.5px; height: 28px; }
-  .inspector { right: 6px; left: auto; bottom: 52px; width: min(330px, calc(100vw - 12px)); max-height: calc(100% - 104px); font-size: 13px; }
+  .inspector { right: 6px; left: auto; bottom: 52px; width: min(354px, calc(100vw - 12px)); max-height: calc(100% - 104px); font-size: 13px; }
   .inspector h2 { font-size: 20px !important; }
   .inspector .kv, .needs { font-size: 12.5px; }
   .inspector .head .portrait-img, .inspector .head svg { width: 48px !important; height: 60px !important; }
@@ -403,7 +405,7 @@ body.touch .panel .close { width: 36px; height: 36px; }
   .big .tabs, .inspector .tabs { overflow-x: auto; flex-wrap: nowrap; }
   .chart-wrap { flex-direction: column; }
   .chart-side { width: auto; max-height: 40%; overflow-y: auto; }
-  .legend { top: 52px; right: 6px; width: 180px; }
+  .legend { top: 52px; right: 6px; width: 204px; }
   .hint { bottom: 56px; font-size: 13px; max-width: 90vw; }
   .touchbar { bottom: 58px; }
   .menu { padding-left: 6vw; }
@@ -422,10 +424,25 @@ body.touch .panel .close { width: 36px; height: 36px; }
   .topbar .mood { display: none; }
   .tool { width: 42px; height: 42px; }
   .minimap { width: 130px; height: 130px; }
-  .inspector { width: calc(100vw - 24px); max-height: 45vh; }
+  .inspector { width: calc(100vw - 12px); max-height: 45vh; }
   .advisor { max-width: 92vw; }
   .kings { grid-template-columns: repeat(4, 1fr); }
   .setup .grid2 { grid-template-columns: 1fr; }
+}
+
+/* ---------- portrait phones: the HUD stacks (resources / clock / advisor) and the bars span the width ---------- */
+@media (max-width: 600px) {
+  .topbar { left: 0; right: 0; transform: none; max-width: none; clip-path: none; justify-content: space-around; padding: 3px 2px 4px; height: 32px; }
+  .topbar .res { flex: 1 1 0; min-width: 0; justify-content: center; font-size: 15px; padding: 1px 2px; gap: 3px; }
+  .topbar .res .ic { width: 17px; height: 17px; }
+  .clock { top: 32px; right: 0; flex-direction: row-reverse; gap: 8px; padding: 3px 6px 4px; border-top: 1px solid #000; }
+  .date { min-width: 0; font-size: 14px; text-align: right; }
+  .date small { font-size: 11px; }
+  .advisor { top: 72px; left: 6px; right: 6px; max-width: none; }
+  .toolbar { left: 0; right: 0; transform: none; max-width: none; justify-content: space-between; gap: 2px; padding: 5px 4px; overflow: hidden; }
+  .tool { flex: 1 1 0; width: auto; min-width: 0; max-width: 46px; height: 42px; }
+  .inspector { left: 6px; right: 6px; width: auto; bottom: 56px; max-height: calc((var(--app-h, 100dvh) - 56px) * 0.58); }
+  .legend { top: 72px; }
 }
 
 /* difficulty presets */
@@ -445,6 +462,12 @@ body.touch .panel .close { width: 36px; height: 36px; }
 .soundbtn:hover { filter: brightness(1.2); }
 .soundbtn.off { color: #b98a6a; opacity: 0.85; }
 .soundbtn svg { display: block; }
+/* in play the speaker sits in the clock's speed row, so it can never cover the toolbar or a panel */
+.clock .soundbtn { position: static; width: 32px; height: 28px; border-radius: 0; border: 1px solid rgba(0, 0, 0, 0.6); margin-left: 4px;
+  background: rgba(0, 0, 0, 0.35); color: #a89474; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 20%, transparent); }
+.clock .soundbtn:hover { color: var(--brass-hi); filter: none; }
+.clock .soundbtn.off { color: #8a6a5a; opacity: 1; }
+.clock .soundbtn svg { width: 16px; height: 16px; }
 
 /* dropdowns: a parchment label in a brass-edged frame with an inked chevron, not a browser widget */
 select {
