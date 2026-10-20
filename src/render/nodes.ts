@@ -11,7 +11,7 @@
  */
 import * as THREE from 'three/webgpu';
 import * as TSL from 'three/tsl';
-import { bloom } from 'three/examples/jsm/tsl/display/BloomNode.js';
+import BloomNode from 'three/examples/jsm/tsl/display/BloomNode.js';
 import { fxaa } from 'three/examples/jsm/tsl/display/FXAANode.js';
 import { SimplexNoise } from 'three/examples/jsm/math/SimplexNoise.js';
 import { generateMagicSquareNoise } from 'three/examples/jsm/shaders/GTAOShader.js';
@@ -1105,6 +1105,43 @@ export interface PostSettings {
   bloomScale: number;
   aa: 'smaa' | 'fxaa' | 'none';
 }
+
+/**
+ * BloomNode with r170's blur (legacy/bloom170.ts has the WebGL pass): r186 doubled the kernel radii and set sigma to a
+ * third of them, which spreads highlights into a visible halo. r170 blurs mip i with radius 3, 5, 7, 9, 11 taps,
+ * sigma = radius, the taps normalised to sum to one. (r186's composite already matches r170's.)
+ */
+class Bloom170Node extends (BloomNode as unknown as new (...a: any[]) => any) {
+  _getSeparableBlurMaterial(sharedContext: any, kernelRadius186: number): any {
+    const k = Math.round(kernelRadius186 / 2); // setup() asks for 6, 10, 14, 18, 22: r170 used 3, 5, 7, 9, 11
+    const c: number[] = [];
+    for (let i = 0; i < k; i++) c.push((0.39894 * Math.exp((-0.5 * i * i) / (k * k))) / k);
+    const sum = c[0] + 2 * c.slice(1).reduce((a, b) => a + b, 0);
+    const colorTexture = texture(null);
+    const weights = T.array(c.slice(1).map((x) => x / sum));
+    const invSize = uniform(new THREE.Vector2());
+    const direction = uniform(new THREE.Vector2(0.5, 0.5));
+    const uvNode = uv();
+    const blur = Fn(() => {
+      const acc = colorTexture.sample(uvNode).rgb.mul(c[0] / sum).toVar();
+      T.Loop({ start: int(1), end: int(k), type: 'int', condition: '<' }, ({ i }: any) => {
+        const off = direction.mul(invSize).mul(float(i));
+        acc.addAssign(colorTexture.sample(uvNode.add(off)).rgb.add(colorTexture.sample(uvNode.sub(off)).rgb).mul(weights.element(i.sub(1))));
+      });
+      return vec4(acc, 1.0);
+    });
+    const m: any = new THREE.NodeMaterial();
+    m.contextNode = sharedContext;
+    m.fragmentNode = blur();
+    m.name = 'Bloom_separable170';
+    m.needsUpdate = true;
+    m.colorTexture = colorTexture;
+    m.direction = direction;
+    m.invSize = invSize;
+    return m;
+  }
+}
+const bloom = (node: any, strength: number, radius: number, threshold: number): any => new Bloom170Node(T.nodeObject(node), strength, radius, threshold);
 
 /** bloom's bright pass with the WebGL LuminosityHighPassShader's luma weights (BloomNode uses Rec. 709) */
 const highPass170 = Fn(({ input, threshold, smoothWidth }: any) => {

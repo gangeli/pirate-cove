@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { UnrealBloomPass } from './legacy/bloom170';
 import type { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 
 /**
