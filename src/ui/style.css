@@ -356,6 +356,10 @@ body.touch .field-row > .seg.wrap > button { min-height: 36px; }
 .step button:hover { background: rgba(110, 70, 30, 0.18); color: var(--blood); }
 .step .val { padding: 0 12px; display: grid; place-items: center; font-size: 14.5px; min-width: 70px; border-left: 1px solid color-mix(in srgb, var(--ink2) 35%, transparent); border-right: 1px solid color-mix(in srgb, var(--ink2) 35%, transparent); }
 body.touch .step button { width: 42px; min-height: 40px; }
+body.touch .minimap .mm-btn { width: 34px; height: 34px; }
+body.touch .chip.link { min-height: 32px; padding: 4px 10px; }
+body.touch .icon-link { padding: 8px; margin: -6px 0; }
+body.touch .kv a { display: inline-block; padding: 5px 0; margin: -5px 0; }
 /* meters: label / tube / value */
 .meters { display: grid; grid-template-columns: minmax(78px, auto) 1fr 52px; gap: 5px 10px; align-items: center; font-size: 14px; }
 .meters > span:nth-child(3n + 1) { color: var(--ink2); }

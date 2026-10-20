@@ -254,7 +254,8 @@ export class Inspector {
     if (b.built < 1) {
       body.push(html`<section class="sect"><h4 class="eng">Construction</h4>
         <div class="meters"><span>Built</span>${bar(b.built, 'brass')}<span>${pct(b.built)}</span></div>
-        ${g.buildingCount('construction_tent') ? html`<div class="seg-note">Builders from the construction tents will finish it.</div>` : html`<div class="callout bad">${icon('info', 16)}<span>You need a Construction Tent and builders.</span></div>`}</section>
+        ${g.buildingCount('construction_tent') ? html`<div class="seg-note">Builders from the construction tents will finish it.</div>` : html`<div class="callout bad">${icon('info', 16)}<span>You need a Construction Tent and builders.</span></div>`}
+        ${g.undo.some((e) => e.kind === 'build' && e.id === b.id) ? html`<div class="callout info">${icon('undo', 16)}<span>Changed your mind? <b>Undo</b> takes it back with a full refund.</span></div>` : ''}</section>
         <section class="sect"><h4 class="eng">Priority</h4>${this.prioSeg(b)}<div class="seg-note">Builders go to higher-priority sites first.</div></section>`);
     } else {
       // staff

@@ -764,6 +764,15 @@ export class App {
    *  for treasury, lumber and sim changes) */
   private ghostCheck = { key: '', at: 0, pl: null as ReturnType<App['placement']> | null, reason: '', text: '' };
 
+  private previewResources() {
+    return (this.previewRes ??= {
+      geo: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
+      road: new THREE.MeshBasicMaterial({ color: 0xe0c070, transparent: true, opacity: 0.45, depthWrite: false }),
+      bad: new THREE.MeshBasicMaterial({ color: 0xff5040, transparent: true, opacity: 0.45, depthWrite: false }),
+      pool: [],
+    });
+  }
+
   private updateGhost(): void {
     const tool = this.tool;
     const h = this.hover;
@@ -774,10 +783,26 @@ export class App {
       if (!this.game.map.path[this.game.map.idx(rp.x, rp.y)]) this.roadPick = null;
       else {
         const ex = rp.x + 0.5, ez = rp.y + 0.5;
+        // mark the picked tile in red, like the demolish preview
+        const pk = `pick:${rp.x},${rp.y}`;
+        if (this.previewKey !== pk) {
+          this.previewKey = pk;
+          const pv = this.previewResources();
+          this.roadPreview.clear();
+          const m = (pv.pool[0] ??= new THREE.Mesh(pv.geo, pv.bad));
+          m.material = pv.bad;
+          m.renderOrder = 3;
+          m.position.set(ex, Math.max(0.05, this.game.map.heightAt(ex, ez)) + 0.06, ez);
+          this.roadPreview.add(m);
+        }
         this.placeCtl.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight },
           { x: ex, y: Math.max(0.05, this.game.map.heightAt(ex, ez)), z: ez, w: 1, d: 1, h: 0.3 }, 'Pull up this road?', true, 'roadsel', true);
         return;
       }
+    }
+    if (this.previewKey.startsWith('pick:') && !this.roadPick) {
+      this.previewKey = '';
+      this.roadPreview.clear();
     }
     if (this.state !== 'game' || !h) {
       this.ghost.visible = false;
@@ -854,12 +879,7 @@ export class App {
       const ds = tool.kind === 'road' ? (rp?.start ?? this.dragStart) : null;
       const h = rp?.end ?? hv!;
       const pk = `${tool.kind}:${h.x},${h.y}:${ds ? `${ds.x},${ds.y}` : ''}`;
-      const pv = (this.previewRes ??= {
-        geo: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
-        road: new THREE.MeshBasicMaterial({ color: 0xe0c070, transparent: true, opacity: 0.45, depthWrite: false }),
-        bad: new THREE.MeshBasicMaterial({ color: 0xff5040, transparent: true, opacity: 0.45, depthWrite: false }),
-        pool: [],
-      });
+      const pv = this.previewResources();
       // rebuild the tile preview only when the hovered tile or drag changes (or something cleared it)
       if (pk !== this.previewKey || !this.roadPreview.children.length) {
         this.previewKey = pk;
