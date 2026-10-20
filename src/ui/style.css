@@ -777,6 +777,7 @@ body.touch .cursor-tip { display: none; }
   .topbar .mood { display: none; }
   .clock { right: 6px; padding: 4px 6px 5px; }
   .speed .sp, .clock .soundbtn { width: 26px; height: 24px; }
+  body.touch .speed .sp, body.touch .clock .soundbtn { width: 32px; height: 30px; }
   .date { font-size: 15px; min-width: 92px; }
   .toolbar { padding: 5px 12px; gap: 2px; max-width: 100vw; overflow-x: auto; clip-path: none; }
   .tool { width: 50px; height: 46px; flex: none; }

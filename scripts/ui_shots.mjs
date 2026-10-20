@@ -68,7 +68,7 @@ S.s_atsea = `(() => { const s = [...g.ships.values()].find((s) => s.status === '
 S.build = `a.build.show()`;
 S.build_ent = `a.build.show(); h.click('[data-act="cat:entertainment"]')`;
 // a thin treasury (restored before the next state): unaffordable cards and the placement tag that says so
-S.build_poor = `h.poor(); a.build.show()`;
+S.build_poor = `h.poor(); a.build.show(); h.click('[data-act="cat:infrastructure"]')`;
 S.place_poor = `(() => { h.poor(); a.setTool({ kind: 'build', def: 'black_market', rot: 0 }); const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); h.hoverTile(pal.x + pal.w + 3, pal.y + 1); })()`;
 S.edicts = `a.edicts.show()`;
 S.edicts_dip = `a.edicts.show(); h.click('.tabs [data-act^="tab:"]:nth-child(3)')`;

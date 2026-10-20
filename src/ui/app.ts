@@ -361,12 +361,13 @@ export class App {
       return e && !e.classList.contains('hidden') && e.offsetParent ? e.getBoundingClientRect() : null;
     };
     const cr = this.canvas.getBoundingClientRect();
-    const top = q('.topbar'), clock = q('.clock'), tb = q('.toolbar'), ins = q('.panel.inspector');
+    const top = q('.topbar'), clock = q('.clock'), tb = q('.toolbar'), ins = q('.panel.inspector'), mm = q('.minimap');
     const a = { l: cr.left, r: cr.right, t: Math.max(top?.bottom ?? 0, clock && clock.left < cr.width * 0.6 ? clock.bottom : 0), b: tb?.top ?? cr.bottom };
     if (ins) {
       if (ins.left > cr.width * 0.35 && ins.top < cr.height * 0.45) a.r = Math.min(a.r, ins.left);
       else a.b = Math.min(a.b, ins.top);
     }
+    if (mm && mm.top < cr.height * 0.5) a.l = Math.max(a.l, mm.right + 16);
     return a;
   }
 
@@ -384,14 +385,15 @@ export class App {
   }
 
   /** after a new selection: if the inspector covers it (or its seals would not fit), pan it into the free area */
-  private frameSelection(box: { x: number; y: number; z: number }): void {
+  private frameSelection(box: { x: number; y: number; z: number; h: number }): void {
     const a = this.freeArea();
     this.world.rig.camera.updateMatrixWorld();
-    const v = new THREE.Vector3(box.x, box.y, box.z).project(this.world.rig.camera);
+    const my = box.y + box.h / 2;
+    const v = new THREE.Vector3(box.x, my, box.z).project(this.world.rig.camera);
     const cr = this.canvas.getBoundingClientRect();
     const sx = cr.left + (v.x * 0.5 + 0.5) * cr.width, sy = cr.top + (-v.y * 0.5 + 0.5) * cr.height;
     if (sx > a.l + 50 && sx < a.r - 50 && sy > a.t + 60 && sy < a.b - 130) return;
-    const t = this.framedTarget(box.x, box.z, box.y);
+    const t = this.framedTarget(box.x, box.z, my);
     this.world.rig.lookAt(t.x, t.z);
   }
 
