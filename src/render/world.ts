@@ -3,10 +3,9 @@ import { Sky } from './legacy/sky170';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
-import { FastAO, ScaledBloom } from './post';
+import { FastAO, ScaledBloom, loadSMAA, smaaPass } from './post';
 import type { Game } from '../sim/game';
 import { TerrainMesh } from './terrain';
 import { Water } from './water';
@@ -154,7 +153,9 @@ export class World {
         const renderer = await nodes.createRenderer(canvas, /[?&]gpuwebgl=1/.test(location.search));
         RB.backend = 'webgpu';
         RB.nodes = nodes;
-        return new World(canvas, quality, renderer, detectGpuWebGPU(nodes, renderer, choice.adapter, reason), nodes);
+        const w = new World(canvas, quality, renderer, detectGpuWebGPU(nodes, renderer, choice.adapter, reason), nodes);
+        await w.preloadPost();
+        return w;
       } catch (e) {
         console.warn('WebGPU renderer failed, using WebGL', e);
         reason = `WebGPU failed to start (${String((e as Error)?.message ?? e).slice(0, 120)})`;
@@ -171,7 +172,9 @@ export class World {
     // reading the compile log after every link stalls the thread until the driver finishes each shader in turn;
     // release builds skip it (and so let shaders compile in parallel), ?shadercheck turns it back on
     renderer.debug.checkShaderErrors = !import.meta.env.PROD || location.search.includes('shadercheck');
-    return new World(canvas, quality, renderer, detectGpu(renderer, reason), null);
+    const w = new World(canvas, quality, renderer, detectGpu(renderer, reason), null);
+    await w.preloadPost();
+    return w;
   }
 
   private constructor(readonly canvas: HTMLCanvasElement, quality: Partial<Quality>, renderer: AnyRenderer, gpu: GpuInfo, nodes: NodesModule | null) {
@@ -361,7 +364,28 @@ export class World {
     }
   }
 
+  /** SMAA's code loads on demand (post.ts / nodes.ts loadSMAA); the chain is rebuilt with it once it is in */
+  private ensureSMAA(): void {
+    const q = this.quality;
+    if (!q.post || q.aa !== 'smaa') return;
+    const ready = this.nodes ? this.nodes.smaaReady() : !!this.smaaLoaded;
+    if (ready) return;
+    void (this.nodes ? this.nodes.loadSMAA() : loadSMAA()).then(() => {
+      this.smaaLoaded = true;
+      if (this.quality === q && this.game) this.setupComposer();
+    });
+  }
+  private smaaLoaded = false;
+
+  /** load what the given quality's post chain needs before the first frame (SMAA) */
+  async preloadPost(): Promise<void> {
+    if (!this.quality.post || this.quality.aa !== 'smaa') return;
+    await (this.nodes ? this.nodes.loadSMAA() : loadSMAA());
+    this.smaaLoaded = true;
+  }
+
   private setupComposer(): void {
+    this.ensureSMAA();
     disposeComposer(this.composer);
     this.composer = undefined;
     this.gpuPost?.dispose();
@@ -385,8 +409,9 @@ export class World {
     if (q.ao) this.composer.addPass(new FastAO(this.scene, this.rig.camera, W, H, q.aoScale, q.aoSamples, 0.85, q.aoScale < 1 ? 8 : 16, q.aoDepthNormals));
     if (q.bloom) this.composer.addPass(new ScaledBloom(new THREE.Vector2(W, H), 0.18, 0.5, 0.92, q.bloomScale));
     this.composer.addPass(new OutputPass());
-    if (q.aa === 'smaa') this.composer.addPass(new SMAAPass());
-    else if (q.aa === 'fxaa' && pr < 1.5) {
+    const smaa = q.aa === 'smaa' ? smaaPass() : null;
+    if (smaa) this.composer.addPass(smaa);
+    else if ((q.aa === 'fxaa' || q.aa === 'smaa') && pr < 1.5) {
       this.fxaa = new ShaderPass(FXAAShader);
       this.composer.addPass(this.fxaa);
       this.updateFxaa();

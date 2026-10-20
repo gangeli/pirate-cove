@@ -69,15 +69,16 @@ export default defineConfig({
   plugins: [pwa()],
   server: { host: '0.0.0.0', port: 5173 },
   // the WebGPU path is a dynamic import: pre-bundle its deps up front so the dev server doesn't re-optimise (and reload) on first use
-  optimizeDeps: { include: ['three', 'three/webgpu', 'three/tsl', 'three/examples/jsm/tsl/display/BloomNode.js', 'three/examples/jsm/tsl/display/SMAANode.js', 'three/examples/jsm/tsl/display/FXAANode.js', 'three/examples/jsm/math/SimplexNoise.js', 'three/examples/jsm/shaders/GTAOShader.js'] },
+  optimizeDeps: { include: ['three', 'three/webgpu', 'three/tsl', 'three/examples/jsm/tsl/display/BloomNode.js', 'three/examples/jsm/tsl/display/SMAANode.js', 'three/examples/jsm/postprocessing/SMAAPass.js', 'three/examples/jsm/tsl/display/FXAANode.js', 'three/examples/jsm/math/SimplexNoise.js', 'three/examples/jsm/shaders/GTAOShader.js'] },
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 2000,
     rolldownOptions: {
       // three (core plus the loaders and passes from examples/jsm) in one vendor chunk: it changes far less often
       // than the game, so returning players keep it cached across game updates. The WebGPU renderer and TSL stay
-      // out of it: they load on demand with the node materials (src/render/nodes.ts), never on WebGL
-      output: { codeSplitting: { groups: [{ name: 'three', test: /[\\/]node_modules[\\/]three[\\/](?!build[\\/]three\.(webgpu|tsl)|examples[\\/]jsm[\\/]tsl[\\/])/ }] } },
+      // out of it: they load on demand with the node materials (src/render/nodes.ts), never on WebGL;
+      // SMAA loads on demand too (post.ts)
+      output: { codeSplitting: { groups: [{ name: 'three', test: /[\\/]node_modules[\\/]three[\\/](?!build[\\/]three\.(webgpu|tsl)|examples[\\/]jsm[\\/](tsl[\\/]|postprocessing[\\/]SMAAPass|shaders[\\/]SMAAShader))/ }] } },
     },
   },
   test: { include: ['tests/**/*.test.ts'], testTimeout: 120000 },

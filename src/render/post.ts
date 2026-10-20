@@ -2,6 +2,20 @@ import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import type { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+
+/**
+ * SMAA (its lookup textures make it ~50 KB of script) loads on demand: only 'high' uses it. `smaaPass()` is null until
+ * `loadSMAA()` has resolved; the world falls back to FXAA for the frames in between (see World.setupComposer).
+ */
+let SMAACtor: typeof SMAAPass | null = null;
+let smaaLoad: Promise<unknown> | null = null;
+export function loadSMAA(): Promise<unknown> {
+  return (smaaLoad ??= import('three/examples/jsm/postprocessing/SMAAPass.js').then((m) => (SMAACtor = m.SMAAPass)));
+}
+export function smaaPass(): SMAAPass | null {
+  return SMAACtor ? new SMAACtor() : null;
+}
 
 /**
  * Cheap post passes.

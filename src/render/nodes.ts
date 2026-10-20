@@ -12,7 +12,6 @@
 import * as THREE from 'three/webgpu';
 import * as TSL from 'three/tsl';
 import { bloom } from 'three/examples/jsm/tsl/display/BloomNode.js';
-import { smaa } from 'three/examples/jsm/tsl/display/SMAANode.js';
 import { fxaa } from 'three/examples/jsm/tsl/display/FXAANode.js';
 import { SimplexNoise } from 'three/examples/jsm/math/SimplexNoise.js';
 import { generateMagicSquareNoise } from 'three/examples/jsm/shaders/GTAOShader.js';
@@ -1117,6 +1116,16 @@ const highPass170 = Fn(({ input, threshold, smoothWidth }: any) => {
  * The post chain of world.ts (RenderPass, FastAO, ScaledBloom, OutputPass, SMAA or FXAA) as one RenderPipeline:
  * scene pass (+ AO normals) -> x AO -> + bloom -> ACES / sRGB -> SMAA | FXAA.
  */
+/** the TSL SMAA node, loaded on demand like the WebGL pass (post.ts loadSMAA): only 'high' uses it */
+let smaaFn: ((node: any) => any) | null = null;
+let smaaLoad: Promise<unknown> | null = null;
+export function loadSMAA(): Promise<unknown> {
+  return (smaaLoad ??= import('three/examples/jsm/tsl/display/SMAANode.js').then((m) => (smaaFn = m.smaa)));
+}
+export function smaaReady(): boolean {
+  return !!smaaFn;
+}
+
 export class GpuPost {
   readonly pipeline: THREE.RenderPipeline;
   private nodes: { dispose(): void }[] = [];
@@ -1143,11 +1152,12 @@ export class GpuPost {
       color = color.add(b);
     }
     let out: any = toneMapSRGB(color);
-    if (q.aa === 'smaa') {
-      const s: any = smaa(out);
+    if (q.aa === 'smaa' && smaaFn) {
+      const s: any = smaaFn(out);
       this.nodes.push(s);
       out = s;
-    } else if (q.aa === 'fxaa' && pixelRatio < 1.5) {
+    } else if ((q.aa === 'fxaa' || q.aa === 'smaa') && pixelRatio < 1.5) {
+      // (smaa: FXAA until the SMAA node has loaded and the world rebuilds the chain)
       const f: any = fxaa(out);
       this.nodes.push(f);
       out = f;

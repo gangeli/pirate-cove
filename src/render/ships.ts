@@ -16,50 +16,72 @@ export const NAV_LENGTH = 9;
 /** model forward axis: hulls in the source files are modelled along -X (bow toward -X) */
 const BOW = -1;
 
-/** ship models load once per session and are shared by every game's ShipsView */
-let shipModels: Promise<Map<string, THREE.Object3D>> | null = null;
-function loadShipModels(): Promise<Map<string, THREE.Object3D>> {
-  return (shipModels ??= loadShipModelsNow());
+/**
+ * Ship models load on first need, one file each (the pinnace alone is ~20 MB), and stay for the session, shared by
+ * every game's ShipsView: `models` holds the loaded ones, `loads` the request per model so each file is fetched once.
+ */
+const models = new Map<string, THREE.Object3D>();
+const loads = new Map<string, Promise<THREE.Object3D | null>>();
+let loader: GLTFLoader | null = null;
+
+function loadShipModel(k: string): Promise<THREE.Object3D | null> {
+  let p = loads.get(k);
+  if (!p) {
+    p = loadShipModelNow(k).then(
+      (m) => (models.set(k, m), m),
+      (e) => {
+        console.warn('ship model failed', k, e);
+        loads.delete(k); // asked for again on a later frame
+        return null;
+      },
+    );
+    loads.set(k, p);
+  }
+  return p;
 }
 
-async function loadShipModelsNow(): Promise<Map<string, THREE.Object3D>> {
-  const out = new Map<string, THREE.Object3D>();
-  const loader = withKTX2(new GLTFLoader());
-  await Promise.all(Object.entries(MODEL_FILES).map(async ([k, f]) => {
-    const gltf = await loader.loadAsync(assetUrl(`models/${f}.glb`));
-    const root = gltf.scene;
-    root.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh) {
-        m.castShadow = true;
-        m.receiveShadow = true;
-        const mat = m.material as THREE.MeshStandardMaterial;
-        if (mat.transparent || mat.alphaMap) {
-          mat.alphaTest = 0.5;
-          mat.transparent = false;
-          mat.side = THREE.DoubleSide;
-        }
+async function loadShipModelNow(k: string): Promise<THREE.Object3D> {
+  loader ??= withKTX2(new GLTFLoader());
+  const gltf = await loader.loadAsync(assetUrl(`models/${MODEL_FILES[k]}.glb`));
+  const root = gltf.scene;
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+      const mat = m.material as THREE.MeshStandardMaterial;
+      if (mat.transparent || mat.alphaMap) {
+        mat.alphaTest = 0.5;
+        mat.transparent = false;
+        mat.side = THREE.DoubleSide;
       }
-    });
-    const bb = new THREE.Box3().setFromObject(root);
-    const size = bb.getSize(new THREE.Vector3());
-    const len = Math.max(size.x, size.z);
-    const wrap = new THREE.Group();
-    // waterline: about 28% up from the keel
-    root.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y - size.y * 0.13, -(bb.min.z + bb.max.z) / 2);
-    if (size.z > size.x) root.rotation.y = Math.PI / 2;
-    wrap.add(root);
-    wrap.scale.setScalar(1 / len);
-    wrap.userData.height = size.y / len;
-    markSharedTree(wrap); // cached for the whole session: never freed with a game's views
-    out.set(k, wrap);
-  }));
-  return out;
+    }
+  });
+  const bb = new THREE.Box3().setFromObject(root);
+  const size = bb.getSize(new THREE.Vector3());
+  const len = Math.max(size.x, size.z);
+  const wrap = new THREE.Group();
+  // waterline: about 28% up from the keel
+  root.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y - size.y * 0.13, -(bb.min.z + bb.max.z) / 2);
+  if (size.z > size.x) root.rotation.y = Math.PI / 2;
+  wrap.add(root);
+  wrap.scale.setScalar(1 / len);
+  wrap.userData.height = size.y / len;
+  markSharedTree(wrap); // cached for the whole session: never freed with a game's views
+  return wrap;
+}
+
+/** the loaded model for a ship type, or null (its load is started, and the caller asks again next frame) */
+function shipModel(type: ShipType): THREE.Object3D | null {
+  const k = SHIPS[type].model;
+  const m = models.get(k);
+  if (m) return m;
+  void loadShipModel(k);
+  return null;
 }
 
 export class ShipsView {
   readonly group = new THREE.Group();
-  private src = new Map<string, THREE.Object3D>();
   private views = new Map<number, THREE.Object3D>();
   private invaderViews = new Map<number, THREE.Object3D>();
   private t = 0;
@@ -70,15 +92,19 @@ export class ShipsView {
     this.ready = this.load();
   }
 
+  /** only the models this game's ships (and invaders) use: the rest load when a ship of theirs first appears */
   private async load(): Promise<void> {
-    this.src = await loadShipModels();
+    const g = this.game;
+    const types = new Set<ShipType>([...g.ships.values()].map((s) => s.type));
+    for (const iv of g.invaders ?? []) types.add(iv.soldiers > 6 ? 'galleon' : 'frigate');
+    await Promise.all([...new Set([...types].map((t) => SHIPS[t].model))].map(loadShipModel));
   }
 
-  private instance(type: ShipType, nation?: Nation): THREE.Object3D {
-    const d = SHIPS[type];
-    const src = this.src.get(d.model);
+  /** a ship of this type, or null while its model is still loading */
+  private instance(type: ShipType, nation?: Nation): THREE.Object3D | null {
+    const src = shipModel(type);
+    if (!src) return null;
     const g = new THREE.Group();
-    if (!src) return g;
     const inst = src.clone();
     const L = LENGTH[type];
     inst.scale.multiplyScalar(L);
@@ -95,9 +121,10 @@ export class ShipsView {
     return g;
   }
 
-  /** wooden frame for a ship under construction: same model, clipped by progress */
-  hullFrame(type: ShipType): THREE.Object3D {
+  /** wooden frame for a ship under construction: same model, clipped by progress (null while the model loads) */
+  hullFrame(type: ShipType): THREE.Object3D | null {
     const g = this.instance(type);
+    if (!g) return null;
     const plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
     g.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -142,12 +169,12 @@ export class ShipsView {
 
   update(dt: number): void {
     this.t += dt;
-    if (!this.src.size) return;
     const g = this.game;
     for (const s of g.ships.values()) {
       let v = this.views.get(s.id);
       if (!v) {
-        v = this.instance(s.type);
+        v = this.instance(s.type) ?? undefined;
+        if (!v) continue; // model still loading: next frame
         v.userData.shipId = s.id;
         v.traverse((o) => (o.userData.shipId = s.id));
         this.views.set(s.id, v);
@@ -169,7 +196,8 @@ export class ShipsView {
       live.add(iv.id);
       let v = this.invaderViews.get(iv.id);
       if (!v) {
-        v = this.instance(iv.soldiers > 6 ? 'galleon' : 'frigate', iv.nat);
+        v = this.instance(iv.soldiers > 6 ? 'galleon' : 'frigate', iv.nat) ?? undefined;
+        if (!v) continue;
         this.invaderViews.set(iv.id, v);
         this.group.add(v);
       }

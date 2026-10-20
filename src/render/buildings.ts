@@ -392,14 +392,15 @@ export class BuildingsView {
       }
       // ship under construction on the slipway
       if (b.building_ship && v.model.userData.hullPos) {
-        if (!v.hull) {
-          v.hull = this.world.ships.hullFrame(b.building_ship.type);
+        // (null while the ship model loads: tried again next frame)
+        if (!v.hull) v.hull = this.world.ships.hullFrame(b.building_ship.type) ?? undefined;
+        if (v.hull && !v.hull.parent) {
           const hp = v.model.userData.hullPos as THREE.Vector3;
           v.hull.position.copy(hp.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), v.model.rotation.y));
           v.hull.rotation.y = v.model.rotation.y + Math.PI / 2;
           v.group.add(v.hull);
         }
-        this.world.ships.setHullProgress(v.hull, b.building_ship.progress);
+        if (v.hull) this.world.ships.setHullProgress(v.hull, b.building_ship.progress);
       } else if (v.hull) {
         v.group.remove(v.hull);
         v.hull = undefined;
