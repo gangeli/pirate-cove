@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GameMap } from '../sim/map';
+import { gpu } from './backend';
 
 /** Tropical ocean: gerstner swell, depth-tinted colour from terrain heightmap, shore foam, sun glints. */
 export class Water {
@@ -33,7 +34,9 @@ export class Water {
         uNight: { value: 0 },
       },
     ]);
-    const mat = new THREE.ShaderMaterial({
+    const g = gpu();
+    // WebGPU: the node twin of the shaders below (nodes.ts waterMaterial)
+    const mat = g ? (g.waterMaterial(this.uniforms as any, this.heightTex as any) as unknown as THREE.Material) : new THREE.ShaderMaterial({
       uniforms: this.uniforms,
       transparent: true,
       fog: true,
@@ -153,6 +156,7 @@ void main(){
   #include <fog_fragment>
 }`,
     });
+    mat.userData.textures = [this.heightTex];
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.renderOrder = 2;
     this.mesh.name = 'water';

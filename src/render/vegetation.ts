@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { GameMap } from '../sim/map';
 import { Terrain } from '../sim/map';
 import { loadTex } from './textures';
+import { gpu } from './backend';
 
 /** shared wind uniform */
 export const wind = { uTime: { value: 0 }, uWind: { value: 1 } };
@@ -238,12 +239,17 @@ export class Vegetation {
   constructor(private map: GameMap) {
     const bark = loadTex('tex/palmbark_d.jpg', true);
     const barkN = loadTex('tex/palmbark_n.jpg', false);
-    const trunkMat = new THREE.MeshStandardMaterial({ map: bark, normalMap: barkN, roughness: 0.9, color: 0xc8b8a0 });
-    windify(trunkMat, 2.5);
-    const frondMat = new THREE.MeshStandardMaterial({ map: frondTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75 });
-    windify(frondMat, 1);
-    const leafMat = new THREE.MeshStandardMaterial({ map: leafTexture(), roughness: 0.8, alphaTest: 0.4, side: THREE.DoubleSide, color: 0xffffff });
-    windify(leafMat, 3);
+    // WebGPU: the node twin of windify (nodes.ts windMaterial), which needs the wind data in each chunk's geometry
+    const g = gpu();
+    const sway = (m: THREE.Material, stiff: number): THREE.Material => {
+      if (!g) return windify(m, stiff), m;
+      const n = g.windMaterial(m as any, stiff, wind.uTime, wind.uWind) as unknown as THREE.Material;
+      m.dispose();
+      return n;
+    };
+    const trunkMat = sway(new THREE.MeshStandardMaterial({ map: bark, normalMap: barkN, roughness: 0.9, color: 0xc8b8a0 }), 2.5);
+    const frondMat = sway(new THREE.MeshStandardMaterial({ map: frondTexture(), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.75 }), 1);
+    const leafMat = sway(new THREE.MeshStandardMaterial({ map: leafTexture(), roughness: 0.8, alphaTest: 0.4, side: THREE.DoubleSide, color: 0xffffff }), 3);
     const bTrunkMat = new THREE.MeshStandardMaterial({ map: bark, normalMap: barkN, color: 0x8a7058, roughness: 1 });
     this.mats = { trunkMat, frondMat, leafMat, bTrunkMat };
     this.rebuild();
@@ -273,6 +279,8 @@ export class Vegetation {
     for (const c of [...this.group.children]) {
       this.group.remove(c);
       (c as THREE.InstancedMesh).dispose?.();
+      // WebGPU chunks own a copy of the tree geometry (with their wind data): free it with the chunk
+      if (c.userData.ownGeometry) (c as THREE.Mesh).geometry.dispose();
     }
     const m = this.map, n = m.size;
     const C = Vegetation.CHUNK, cn = Math.ceil(n / C);
@@ -309,9 +317,12 @@ export class Vegetation {
           ch.bushes.push(new THREE.Matrix4().compose(p.set(jx, m.heightAt(jx, jz) - 1.2 * sc, jz), q, s.set(sc, sc * 0.8, sc)));
         }
       }
+    const g = gpu();
     const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, list: THREE.Matrix4[], shadow = true) => {
       if (!list.length) return null;
-      const im = new THREE.InstancedMesh(geo, mat, list.length);
+      const own = !!g && mat !== this.mats.bTrunkMat;
+      const im = new THREE.InstancedMesh(own ? (g!.windGeometry(geo as any, list as any) as unknown as THREE.BufferGeometry) : geo, mat, list.length);
+      im.userData.ownGeometry = own;
       list.forEach((mm, i) => im.setMatrixAt(i, mm));
       im.userData.shadow = shadow;
       im.castShadow = shadow && !this.ghost;

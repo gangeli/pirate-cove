@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { assetUrl, loadTex } from './textures';
 import { M, sign, flag } from './kit';
 import { markSharedTree } from './dispose';
+import { gpu } from './backend';
 
 /**
  * Building models made in Blender (scripts/blender/bld). Each GLB names its material slots after the shared
@@ -220,6 +221,9 @@ class BuildingModels {
         }
         const hide = new URLSearchParams(location.search).get('hide');
         if (hide && hide.split(',').includes(n)) m.visible = false;
+        // WebGPU: the same direct-light AO as a lighting-model override (nodes.ts bakedAOMaterial)
+        const g = gpu();
+        if (g) m = g.bakedAOMaterial(m as any) as unknown as THREE.Material;
         mats.set(n, m);
       }
       return m;

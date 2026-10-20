@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Game } from '../sim/game';
 import type { World } from './world';
+import { gpu } from './backend';
 
 interface Particle {
   p: THREE.Vector3;
@@ -30,17 +31,29 @@ function softTex(): THREE.Texture {
 
 /** Billboard particle system rendered as a single Points cloud per blend mode. */
 class Cloud {
-  readonly points: THREE.Points;
+  readonly points: THREE.Object3D;
   readonly list: Particle[] = [];
   private geo = new THREE.BufferGeometry();
   private cap = 4000;
   private lastN = 0;
+  private readonly scale = { value: 600 };
+  /** WebGPU: instanced quads sized as the points would be (nodes.ts particleCloud) */
+  private quads: { pos: THREE.BufferAttribute; col: THREE.BufferAttribute; size: THREE.BufferAttribute; setCount(n: number): void } | null = null;
   constructor(additive: boolean, tex: THREE.Texture) {
+    const g = gpu();
+    if (g) {
+      const c = g.particleCloud(this.cap, additive, tex as any, this.scale);
+      this.quads = c as unknown as Cloud['quads'];
+      this.points = c.mesh as unknown as THREE.Object3D;
+      this.points.renderOrder = 5;
+      ((c.mesh as unknown as THREE.Mesh).material as THREE.Material).userData.textures = [tex];
+      return;
+    }
     this.geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.cap * 3), 3));
     this.geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(this.cap * 4), 4));
     this.geo.setAttribute('size', new THREE.BufferAttribute(new Float32Array(this.cap), 1));
     const mat = new THREE.ShaderMaterial({
-      uniforms: { map: { value: tex }, scale: { value: 600 } },
+      uniforms: { map: { value: tex }, scale: this.scale },
       vertexShader: `attribute float size; attribute vec4 color; varying vec4 vC; uniform float scale;
         void main(){ vC = color; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = size * scale / -mv.z; gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform sampler2D map; varying vec4 vC; void main(){ vec4 t = texture2D(map, gl_PointCoord); gl_FragColor = vec4(vC.rgb, vC.a * t.a); if (gl_FragColor.a < 0.01) discard; }`,
@@ -53,9 +66,10 @@ class Cloud {
     this.points.renderOrder = 5;
   }
   update(dt: number, h: number): void {
-    const pos = this.geo.getAttribute('position') as THREE.BufferAttribute;
-    const col = this.geo.getAttribute('color') as THREE.BufferAttribute;
-    const size = this.geo.getAttribute('size') as THREE.BufferAttribute;
+    const q0 = this.quads;
+    const pos = q0 ? q0.pos : (this.geo.getAttribute('position') as THREE.BufferAttribute);
+    const col = q0 ? q0.col : (this.geo.getAttribute('color') as THREE.BufferAttribute);
+    const size = q0 ? q0.size : (this.geo.getAttribute('size') as THREE.BufferAttribute);
     let n = 0;
     for (let i = this.list.length - 1; i >= 0; i--) {
       const q = this.list[i];
@@ -76,7 +90,8 @@ class Cloud {
       size.setX(n, q.size + q.grow * q.life);
       n++;
     }
-    this.geo.setDrawRange(0, n);
+    if (q0) q0.setCount(n);
+    else this.geo.setDrawRange(0, n);
     // upload only the live particles (the buffers hold room for 4000)
     if (n || this.lastN) {
       for (const [a, k] of [[pos, 3], [col, 4], [size, 1]] as [THREE.BufferAttribute, number][]) {
@@ -87,7 +102,7 @@ class Cloud {
     }
     this.lastN = n;
     this.points.visible = n > 0;
-    (this.points.material as THREE.ShaderMaterial).uniforms.scale.value = h * 0.6;
+    this.scale.value = h * 0.6;
   }
 }
 

@@ -9,6 +9,7 @@ import { SHIPS } from '../sim/data/ships';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { disposeObject, isShared, markShared } from './dispose';
 import { wind } from './vegetation';
+import { gpu } from './backend';
 
 /**
  * Collapse a building's static meshes into one mesh per material (same look, a fraction of the draw calls and
@@ -77,6 +78,13 @@ function dropSmallCasters(root: THREE.Object3D): void {
 const flagMats = new Map<THREE.Material, THREE.Material>();
 function flagMaterial(base: THREE.Material): THREE.Material {
   let m = flagMats.get(base);
+  const g = gpu();
+  if (!m && g) {
+    // WebGPU: the node twin of the wave below (nodes.ts flagMaterial)
+    m = g.flagMaterial(base as any, wind.uTime) as unknown as THREE.Material;
+    markShared(m);
+    flagMats.set(base, m);
+  }
   if (!m) {
     m = base.clone();
     m.onBeforeCompile = (sh) => {

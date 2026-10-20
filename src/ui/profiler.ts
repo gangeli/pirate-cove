@@ -1,5 +1,7 @@
 import type { App } from './app';
 import { el, html, setHTML } from './dom';
+import type * as THREE from 'three';
+import type { WebGPURenderer } from 'three/webgpu';
 
 /**
  * In-game performance recorder (Settings › Record performance, or ?profile=60). Records a minute of real play on the
@@ -18,6 +20,16 @@ type GpuTimer = {
   gl: WebGL2RenderingContext; ext: { TIME_ELAPSED_EXT: number; GPU_DISJOINT_EXT: number };
   free: WebGLQuery[]; pending: { q: WebGLQuery; sec: number }[]; active: WebGLQuery | null;
 };
+
+/** draw calls, triangles and compiled programs (pipelines on WebGPU) of either renderer since the last reset */
+function counters(r: THREE.WebGLRenderer | WebGPURenderer): { calls: number; tris: number; progs: number } {
+  if ((r as WebGPURenderer).isWebGPURenderer) {
+    const i = (r as WebGPURenderer).info;
+    return { calls: i.render.drawCalls, tris: i.render.triangles, progs: i.memory.programs ?? 0 };
+  }
+  const i = (r as THREE.WebGLRenderer).info;
+  return { calls: i.render.calls, tris: i.render.triangles, progs: i.programs?.length ?? 0 };
+}
 
 const pct = (a: number[], p: number) => (a.length ? a[Math.min(a.length - 1, Math.floor(a.length * p))] : 0);
 const r1 = (x: number) => Math.round(x * 10) / 10;
@@ -38,6 +50,8 @@ export class Profiler {
   private compiles: { t: number; programs: number; frameMs: number }[] = [];
   private progs = 0;
   private gpuT: GpuTimer | null = null;
+  /** WebGPU: timestamp queries around every render pass, resolved once per frame */
+  private gpuTs: { r: WebGPURenderer; busy: boolean } | null = null;
   private obs: PerformanceObserver | null = null;
   private badge: HTMLElement;
   private stopped = false;
@@ -47,10 +61,18 @@ export class Profiler {
     const r = app.world.renderer;
     r.info.autoReset = false; // count every pass of the post chain, not just the last
     r.info.reset();
-    this.progs = r.info.programs?.length ?? 0;
-    const gl = r.getContext() as WebGL2RenderingContext;
-    const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
-    if (ext) this.gpuT = { gl, ext, free: [], pending: [], active: null };
+    this.progs = counters(r).progs;
+    if ((r as WebGPURenderer).isWebGPURenderer) {
+      const b = (r as WebGPURenderer).backend as unknown as { isWebGPUBackend?: boolean; trackTimestamp: boolean; device?: GPUDevice };
+      if (b.isWebGPUBackend && b.device?.features.has('timestamp-query')) {
+        b.trackTimestamp = true;
+        this.gpuTs = { r: r as WebGPURenderer, busy: false };
+      }
+    } else {
+      const gl = (r as THREE.WebGLRenderer).getContext() as WebGL2RenderingContext;
+      const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+      if (ext) this.gpuT = { gl, ext, free: [], pending: [], active: null };
+    }
     for (const ev of ['keydown', 'pointerdown', 'wheel']) window.addEventListener(ev, this.onInput, { capture: true, passive: true });
     try {
       const type = PerformanceObserver.supportedEntryTypes?.includes('long-animation-frame') ? 'long-animation-frame' : 'longtask';
@@ -105,14 +127,14 @@ export class Profiler {
     if (this.stopped) return;
     const now = performance.now();
     const ms = now - this.frameStart;
-    const info = this.app.world.renderer.info;
+    const c = counters(this.app.world.renderer);
     const b = this.bucket;
     b.sim += this.cur.sim;
     b.render += this.cur.render;
     b.ui += this.cur.ui;
-    b.calls += info.render.calls;
-    b.tris += info.render.triangles;
-    const progs = info.programs?.length ?? 0;
+    b.calls += c.calls;
+    b.tris += c.tris;
+    const progs = c.progs;
     if (progs > this.progs && this.compiles.length < 60) this.compiles.push({ t: r1((now - this.t0) / 1000), programs: progs - this.progs, frameMs: Math.round(ms) });
     this.progs = progs;
     if (this.inputPending.length) {
@@ -121,7 +143,7 @@ export class Profiler {
     }
     const iv = b.iv[b.iv.length - 1] ?? 0;
     if (iv > 40) {
-      this.worst.push({ t: r1((now - this.t0) / 1000), ms: Math.round(iv), sim: r1(this.cur.sim), render: r1(this.cur.render), ui: r1(this.cur.ui), calls: info.render.calls, progs: progs });
+      this.worst.push({ t: r1((now - this.t0) / 1000), ms: Math.round(iv), sim: r1(this.cur.sim), render: r1(this.cur.render), ui: r1(this.cur.ui), calls: c.calls, progs: progs });
       this.worst.sort((x, y) => y.ms - x.ms);
       this.worst.length = Math.min(this.worst.length, 15);
     }
@@ -133,6 +155,7 @@ export class Profiler {
     const b = this.bucket, n = Math.max(1, b.iv.length);
     const iv = [...b.iv].sort((x, y) => x - y);
     const a = this.app, w = a.world, info = w.renderer.info;
+    const progsNow = counters(w.renderer).progs;
     const mem = (performance as any).memory;
     const open = [a.build?.visible && 'build', a.edicts?.visible && 'edicts', a.log?.visible && 'log', a.chart?.visible && 'chart', a.overlays?.visible && 'overlays', a.modal?.open && 'modal', a.tool?.kind !== 'select' && `tool:${a.tool?.kind}`].filter(Boolean).join(',');
     this.seconds.push({
@@ -140,7 +163,7 @@ export class Profiler {
       p50: r1(pct(iv, 0.5)), p95: r1(pct(iv, 0.95)), max: r1(iv[iv.length - 1] ?? 0),
       sim: r1(b.sim / n), render: r1(b.render / n), ui: r1(b.ui / n), gpu: b.gpu.length ? r1(b.gpu.reduce((x, y) => x + y, 0) / b.gpu.length) : null,
       calls: Math.round(b.calls / n), tris: Math.round(b.tris / n), pr: r1(w.pr * 100) / 100,
-      heapMB: mem ? Math.round(mem.usedJSHeapSize / 1e6) : null, geoms: info.memory.geometries, tex: info.memory.textures, progs: info.programs?.length ?? 0,
+      heapMB: mem ? Math.round(mem.usedJSHeapSize / 1e6) : null, geoms: info.memory.geometries, tex: info.memory.textures, progs: progsNow,
       speed: a.game?.speed ?? 0, paused: !!a.game?.paused, state: a.state, panels: open,
     });
     this.bucket = { iv: [], sim: 0, render: 0, ui: 0, calls: 0, tris: 0, gpu: [] };
@@ -165,6 +188,15 @@ export class Profiler {
     g.active = null;
   }
   private pollGpu(): void {
+    const ts = this.gpuTs;
+    if (ts && !ts.busy) {
+      // the passes recorded since the last resolve: the previous frame (results arrive a frame or two later)
+      ts.busy = true;
+      ts.r.resolveTimestampsAsync('render').then((ms) => {
+        ts.busy = false;
+        if (typeof ms === 'number' && ms > 0 && !this.stopped) this.bucket.gpu.push(ms);
+      }, () => (ts.busy = false));
+    }
     const g = this.gpuT;
     if (!g) return;
     const disjoint = g.gl.getParameter(g.ext.GPU_DISJOINT_EXT);
@@ -188,6 +220,7 @@ export class Profiler {
     for (const ev of ['keydown', 'pointerdown', 'wheel']) window.removeEventListener(ev, this.onInput, { capture: true } as EventListenerOptions);
     const g = this.gpuT;
     if (g) for (const q of [...g.free, ...g.pending.map((p) => p.q)]) g.gl.deleteQuery(q);
+    if (this.gpuTs) ((this.gpuTs.r.backend as unknown) as { trackTimestamp: boolean }).trackTimestamp = false;
     this.app.world.renderer.info.autoReset = true;
     this.badge.remove();
     this.onDone?.(this.report(now));
@@ -195,8 +228,11 @@ export class Profiler {
 
   private report(now: number): string {
     const a = this.app, w = a.world, s = this.seconds;
-    const gl = w.renderer.getContext() as WebGL2RenderingContext;
-    const has = (e: string) => !!gl.getSupportedExtensions()?.includes(e);
+    const isGpu = !!(w.renderer as WebGPURenderer).isWebGPURenderer;
+    const gl = isGpu ? null : ((w.renderer as THREE.WebGLRenderer).getContext() as WebGL2RenderingContext);
+    const has = (e: string) => !!gl?.getSupportedExtensions()?.includes(e);
+    const dev = isGpu ? (((w.renderer as WebGPURenderer).backend as unknown) as { device?: GPUDevice }).device : undefined;
+    const feat = (f: string) => !!dev?.features.has(f);
     const nav = navigator as any;
     const allIv = s.flatMap((x) => Array(x.frames).fill(x.p50)); // per-second medians weighted by frames
     const fpsAll = s.length ? r1(s.reduce((x, y) => x + y.frames, 0) / ((now - this.t0) / 1000)) : 0;
@@ -207,7 +243,7 @@ export class Profiler {
     const inp = [...this.inputs].sort((x, y) => x - y);
     const g = a.game;
     const rep = {
-      kind: 'buccaneer-cove-profile', v: 1, when: new Date().toISOString(), seconds: Math.round((now - this.t0) / 1000),
+      kind: 'buccaneer-cove-profile', v: 2, backend: w.backend, when: new Date().toISOString(), seconds: Math.round((now - this.t0) / 1000),
       summary: {
         fps: fpsAll, frameP50: r1(pct(allIv.sort((x, y) => x - y), 0.5)), worstSecondP95: Math.max(0, ...s.map((x) => x.p95)), slowSeconds: s.filter((x) => x.fps < 30).length,
         cpuMsPerFrame: { sim: avg('sim'), render: avg('render'), ui: avg('ui') }, gpuMsPerFrame: avg('gpu'), drawCalls: avg('calls'), triangles: avg('tris'),
@@ -218,7 +254,9 @@ export class Profiler {
         ua: navigator.userAgent, platform: nav.userAgentData?.platform ?? navigator.platform, mobile: nav.userAgentData?.mobile ?? null,
         cores: navigator.hardwareConcurrency, memoryGB: nav.deviceMemory ?? null, dpr: devicePixelRatio, screen: `${screen.width}x${screen.height}`,
         viewport: `${innerWidth}x${innerHeight}`, touch: navigator.maxTouchPoints, standalone: matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: window-controls-overlay)').matches,
-        gpu: w.gpu, webgl: { maxTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE), timerQuery: !!this.gpuT, parallelCompile: has('KHR_parallel_shader_compile'), astc: has('WEBGL_compressed_texture_astc'), bc7: has('EXT_texture_compression_bptc'), etc: has('WEBGL_compressed_texture_etc') },
+        gpu: w.gpu, backend: w.backend, backendReason: w.gpu.backendReason,
+        webgl: gl ? { maxTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE), timerQuery: !!this.gpuT, parallelCompile: has('KHR_parallel_shader_compile'), astc: has('WEBGL_compressed_texture_astc'), bc7: has('EXT_texture_compression_bptc'), etc: has('WEBGL_compressed_texture_etc') } : null,
+        webgpu: isGpu ? { webgl2Backend: !dev, maxTexture: dev?.limits.maxTextureDimension2D ?? null, timestampQuery: !!this.gpuTs, astc: feat('texture-compression-astc'), bc: feat('texture-compression-bc'), etc2: feat('texture-compression-etc2'), compatibilityMode: dev ? !feat('core-features-and-limits') : null } : null,
       },
       quality: { tier: a.quality, pixelRatio: w.pr, canvas: `${w.renderer.domElement.width}x${w.renderer.domElement.height}`, settings: w.quality },
       game: g ? { date: g.date, people: g.people.size, buildings: g.buildings.size, ships: g.ships?.size ?? null, speed: g.speed, mapSize: g.map.size } : null,

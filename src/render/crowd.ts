@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { assetUrl, withKTX2 } from './textures';
+import { gpu } from './backend';
 
 /**
  * Instanced, GPU-skinned crowds. Each character model's animation clips are baked into a float texture
@@ -13,7 +14,8 @@ export type ClipName = (typeof CLIPS)[number];
 const BAKE_FPS = 30;
 /** which hand prop (region id) a clip shows */
 const PROP_OF: Record<string, number> = { fight: 11, swing: 12, farm: 13, drink: 14, carry: 15 };
-const DATA_W = 9; // texels per instance
+/** texels per instance: animation, 8 colours; on WebGPU also the instance matrix (4 texels, see nodes.ts crowdMaterial) */
+const dataWidth = () => (gpu() ? 13 : 9);
 
 interface ClipInfo {
   start: number;
@@ -36,7 +38,11 @@ export interface Look {
 }
 
 export class CrowdModel {
-  mesh!: THREE.InstancedMesh;
+  /** an InstancedMesh on WebGL; on WebGPU a plain Mesh drawn `count` times (its instance matrices live in the data texture) */
+  mesh!: THREE.Mesh & { count: number };
+  private inst: THREE.InstancedMesh | null = null;
+  private setData: ((t: THREE.DataTexture) => void) | null = null;
+  private readonly dataW = dataWidth();
   clips = new Map<string, ClipInfo>();
   private boneTex!: THREE.DataTexture;
   private dataTex!: THREE.DataTexture;
@@ -108,17 +114,28 @@ export class CrowdModel {
       map.anisotropy = 4;
       map.needsUpdate = true;
     }
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, map, alphaTest: map ? 0.5 : 0, side: map ? THREE.DoubleSide : THREE.FrontSide });
     this.textured = !!map;
-    this.inject(mat, false);
-    this.mesh = new THREE.InstancedMesh(geo, mat, this.cap);
-    this.mesh.count = 0;
+    const g = gpu();
+    if (g) {
+      // WebGPU: skinning, region colours and the instance transform in one node vertex stage (nodes.ts crowdMaterial)
+      const c = g.crowdMaterial({ boneTex: this.boneTex as any, dataTex: this.dataTex as any, textured: this.textured, map: map as any });
+      this.setData = c.setData as unknown as (t: THREE.DataTexture) => void;
+      const mat = c.material as unknown as THREE.Material;
+      mat.userData.textures = [this.boneTex];
+      this.mesh = Object.assign(new THREE.Mesh(geo, mat), { count: 0 });
+    } else {
+      const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, map, alphaTest: map ? 0.5 : 0, side: map ? THREE.DoubleSide : THREE.FrontSide });
+      this.inject(mat, false);
+      this.inst = new THREE.InstancedMesh(geo, mat, this.cap);
+      this.inst.count = 0;
+      const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+      this.inject(depth, true);
+      this.inst.customDepthMaterial = depth;
+      this.mesh = this.inst;
+    }
     this.mesh.frustumCulled = false;
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
-    const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
-    this.inject(depth, true);
-    this.mesh.customDepthMaterial = depth;
   }
 
   private inject(mat: THREE.Material, depthOnly: boolean): void {
@@ -184,13 +201,15 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
   }
 
   private resizeData(rows: number): void {
-    const data = new Float32Array(DATA_W * rows * 4);
+    const W = this.dataW;
+    const data = new Float32Array(W * rows * 4);
     if (this.data) data.set(this.data.subarray(0, Math.min(this.data.length, data.length)));
     this.data = data;
     this.dataTex?.dispose();
-    this.dataTex = new THREE.DataTexture(data as any, DATA_W, rows, THREE.RGBAFormat, THREE.FloatType);
+    this.dataTex = new THREE.DataTexture(data as any, W, rows, THREE.RGBAFormat, THREE.FloatType);
     this.dataTex.needsUpdate = true;
     this.uData.value = this.dataTex;
+    this.setData?.(this.dataTex);
     this.rows = rows;
   }
 
@@ -209,8 +228,9 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
     const f0 = Math.floor(f), f1 = c.loop ? (f0 + 1) % c.frames : Math.min(c.frames - 1, f0 + 1);
     const i = this.count++;
     if (i >= this.rows) this.resizeData(Math.min(this.cap, this.rows * 2));
-    matrix.toArray(this.mesh.instanceMatrix.array, i * 16);
-    const d = this.data, o = i * DATA_W * 4;
+    const d = this.data, o = i * this.dataW * 4;
+    if (this.inst) matrix.toArray(this.inst.instanceMatrix.array, i * 16);
+    else matrix.toArray(d, o + 36);
     d[o] = c.start + f0;
     d[o + 1] = c.start + f1;
     d[o + 2] = f - f0;
@@ -230,10 +250,12 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
     // nothing drawn now or last frame: no uploads at all
     if (this.count === 0 && this.lastCount === 0) return;
     this.lastCount = this.count;
-    const im = this.mesh.instanceMatrix;
-    im.clearUpdateRanges();
-    im.addUpdateRange(0, Math.max(1, this.count) * 16);
-    im.needsUpdate = true;
+    if (this.inst) {
+      const im = this.inst.instanceMatrix;
+      im.clearUpdateRanges();
+      im.addUpdateRange(0, Math.max(1, this.count) * 16);
+      im.needsUpdate = true;
+    }
     this.dataTex.needsUpdate = true;
   }
 }

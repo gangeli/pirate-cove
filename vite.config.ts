@@ -67,6 +67,8 @@ export default defineConfig({
   base: './',
   plugins: [pwa()],
   server: { host: '0.0.0.0', port: 5173 },
+  // the WebGPU path is a dynamic import: pre-bundle its deps up front so the dev server doesn't re-optimise (and reload) on first use
+  optimizeDeps: { include: ['three', 'three/webgpu', 'three/tsl', 'three/examples/jsm/tsl/display/BloomNode.js', 'three/examples/jsm/tsl/display/SMAANode.js', 'three/examples/jsm/tsl/display/FXAANode.js', 'three/examples/jsm/math/SimplexNoise.js', 'three/examples/jsm/shaders/GTAOShader.js', 'three/examples/jsm/shaders/PoissonDenoiseShader.js'] },
   build: { target: 'es2022', chunkSizeWarningLimit: 2000 },
   test: { include: ['tests/**/*.test.ts'], testTimeout: 120000 },
 } as any);

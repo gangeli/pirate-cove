@@ -3,11 +3,12 @@ import type { World } from '../render/world';
 import { buildPrefab } from '../render/prefabs';
 import { disposeObject } from '../render/dispose';
 import { BUILDING } from '../sim/data/buildings';
+import { isWebGPU } from '../render/backend';
 
 /** Renders building prefabs to small images for the construction menu. */
 const cache = new Map<string, string>();
 let scene: THREE.Scene | null = null;
-let rt: THREE.WebGLRenderTarget | null = null;
+let rt: THREE.RenderTarget | null = null;
 const W = 216, H = 160;
 const GAMMA = Uint8ClampedArray.from({ length: 256 }, (_, v) => Math.min(255, Math.pow(v / 255, 1 / 2.2) * 255));
 /** transparent 1x1 stand-in while a thumbnail is still queued */
@@ -34,10 +35,11 @@ export function thumbOrQueue(world: World, id: string, onReady: (id: string, url
         return;
       }
       queued.delete(next);
-      const url = thumb(world, next);
-      listener?.(next, url);
-      // one render per frame, after the frame, so opening the menu never stalls on thumbnails
-      requestAnimationFrame(() => setTimeout(step, 0));
+      void thumb(world, next).then((url) => {
+        listener?.(next, url);
+        // one render per frame, after the frame, so opening the menu never stalls on thumbnails
+        requestAnimationFrame(() => setTimeout(step, 0));
+      });
     };
     requestAnimationFrame(() => setTimeout(step, 0));
   }
@@ -45,7 +47,7 @@ export function thumbOrQueue(world: World, id: string, onReady: (id: string, url
 }
 let listener: ((id: string, url: string) => void) | null = null;
 
-export function thumb(world: World, id: string): string {
+export async function thumb(world: World, id: string): Promise<string> {
   const hit = cache.get(id);
   if (hit) return hit;
   const r = world.renderer;
@@ -56,7 +58,7 @@ export function thumb(world: World, id: string): string {
     sun.position.set(5, 9, 7);
     scene.add(sun);
     scene.environment = world.scene.environment;
-    rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 });
+    rt = isWebGPU(r) ? new THREE.RenderTarget(W, H, { samples: 4 }) : new THREE.WebGLRenderTarget(W, H, { samples: 4 });
   }
   const def = BUILDING[id];
   const [w, d] = def.size;
@@ -75,13 +77,22 @@ export function thumb(world: World, id: string): string {
   cam.lookAt(c.x, c.y * 0.7, c.z);
   const prevTarget = r.getRenderTarget();
   const prevTM = r.toneMapping;
-  r.setRenderTarget(rt);
+  (r as { setRenderTarget(t: unknown): void }).setRenderTarget(rt);
   r.setClearColor(0x000000, 0);
   r.clear();
   r.render(scene, cam);
-  const px = new Uint8Array(W * H * 4);
-  r.readRenderTargetPixels(rt!, 0, 0, W, H, px);
-  r.setRenderTarget(prevTarget);
+  // WebGL reads rows bottom-up; WebGPU top-down, each row padded to 256 bytes (and only asynchronously)
+  let px: Uint8Array, stride = W * 4, flip = true;
+  if (isWebGPU(r)) {
+    (r as { setRenderTarget(t: unknown): void }).setRenderTarget(prevTarget);
+    px = new Uint8Array(((await r.readRenderTargetPixelsAsync(rt!, 0, 0, W, H)) as Uint8Array).buffer);
+    stride = Math.ceil((W * 4) / 256) * 256;
+    flip = false;
+  } else {
+    px = new Uint8Array(W * H * 4);
+    r.readRenderTargetPixels(rt as THREE.WebGLRenderTarget, 0, 0, W, H, px);
+  }
+  (r as { setRenderTarget(t: unknown): void }).setRenderTarget(prevTarget);
   r.toneMapping = prevTM;
   scene.remove(g);
   disposeObject(g, { keep: world.scene, renderer: r });
@@ -93,7 +104,7 @@ export function thumb(world: World, id: string): string {
   // flip vertically; apply a gentle gamma since the RT is linear
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
-      const si = ((H - 1 - y) * W + x) * 4, di = (y * W + x) * 4;
+      const si = (flip ? H - 1 - y : y) * stride + x * 4, di = (y * W + x) * 4;
       for (let k = 0; k < 3; k++) img.data[di + k] = GAMMA[px[si + k]];
       img.data[di + 3] = px[si + 3];
     }

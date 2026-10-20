@@ -27,7 +27,7 @@ const {
   positionLocal, positionGeometry, positionWorld, positionView, positionViewDirection, normalLocal, normalGeometry, normalView, normalViewGeometry, normalWorld,
   modelWorldMatrix, modelViewMatrix, modelViewProjection, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, cameraWorldMatrix,
   instanceIndex, mix, smoothstep, clamp, max, min, abs, floor, fract, sin, cos, pow, exp, sqrt, acos, dot, cross, normalize, select,
-  dFdx, dFdy, uv, screenSize, Discard, pass, mrt, output, directionToColor, renderOutput, diffuseColor, mat3, mat4, add, mul, sub,
+  dFdx, dFdy, uv, screenSize, Discard, pass, mrt, output, diffuseColor, mat3, mat4, add, mul, sub,
   negateOnBackSide, renderGroup, isolate, roughness, materialEnvIntensity, pmremTexture, BRDF_Lambert, specularColorBlended,
   specularF90, diffuseContribution, instancedBufferAttribute, transformNormalToView,
 } = T;
@@ -37,8 +37,30 @@ export type WebGPURenderer = THREE.WebGPURenderer;
 
 // ================================================================================================= renderer
 
+/**
+ * three r186 passes `swizzle: 'rgba'` in every texture view descriptor. Browsers whose texture-component-swizzle
+ * implementation predates the final string form (Chromium ~141 among them) reject that with a TypeError, so the
+ * identity swizzle (the default anyway) is dropped before it reaches them.
+ */
+function guardIdentitySwizzle(): void {
+  const P = (globalThis as any).GPUTexture?.prototype;
+  if (!P || P.__bcSwizzle) return;
+  const createView = P.createView;
+  P.createView = function (this: GPUTexture, d?: GPUTextureViewDescriptor & { swizzle?: unknown }) {
+    if (d && d.swizzle === 'rgba') {
+      const { swizzle, ...rest } = d;
+      void swizzle;
+      return createView.call(this, rest);
+    }
+    return createView.call(this, d);
+  };
+  P.__bcSwizzle = true;
+}
+
 export async function createRenderer(canvas: HTMLCanvasElement, forceWebGL = false): Promise<THREE.WebGPURenderer> {
   installR170Nodes();
+  guardIdentitySwizzle();
+  if (location.search.includes('tsltrace')) (THREE.Node as any).captureStackTrace = true;
   const r = new THREE.WebGPURenderer({ canvas, antialias: false, alpha: false, powerPreference: 'high-performance', forceWebGL });
   await r.init();
   return r;
@@ -68,6 +90,16 @@ export function setInlineOutput(r: THREE.WebGPURenderer, on: boolean): void {
   r.outputColorSpace = on ? THREE.LinearSRGBColorSpace : THREE.SRGBColorSpace;
 }
 
+/**
+ * ACES (with the renderer's exposure) then sRGB, alpha untouched: WebGL's tonemapping + colorspace chunks and its
+ * OutputPass. (renderOutput() would also un-premultiply the colour, which shifts every translucent pixel.)
+ */
+function toneMapSRGB(color: any, toneMapped = true): any {
+  const c = vec4(color);
+  const t = toneMapped ? c.toneMapping(THREE.ACESFilmicToneMapping) : c;
+  return t.workingToColorSpace(THREE.SRGBColorSpace);
+}
+
 let patched = false;
 function installR170Nodes(): void {
   if (patched) return;
@@ -76,7 +108,7 @@ function installR170Nodes(): void {
   const origOutput = NM.setupOutput;
   NM.setupOutput = function (this: any, builder: any, outputNode: any) {
     if (!inlineOutput || this.userData?.rawOutput || builder.renderer.getRenderTarget() !== null) return origOutput.call(this, builder, outputNode);
-    outputNode = renderOutput(outputNode, this.toneMapped ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping, THREE.SRGBColorSpace);
+    outputNode = toneMapSRGB(outputNode, this.toneMapped);
     if (this.fog === true) outputNode = this.setupFog(builder, outputNode);
     if (this.premultipliedAlpha === true) outputNode = this.setupPremultipliedAlpha(builder, outputNode);
     return outputNode;
@@ -115,7 +147,7 @@ const BRDF_GGX170 = Fn(([lightDirection, f0]: any[]) => {
   const V = float(0.5).div(gv.add(gl)).clamp();
   const D = T.D_GGX({ alpha, dotNH });
   return F.mul(V).mul(D);
-}).setLayout({ name: 'BRDF_GGX170', type: 'vec3', inputs: [{ name: 'lightDirection', type: 'vec3' }, { name: 'f0', type: 'vec3' }] });
+}); // (no layout: it reads the shading globals normalView, roughness, positionViewDirection)
 
 /**
  * The same r170 restorations as legacy/r170.ts, on the node lighting model: direct light without the (1 - F) diffuse
@@ -124,6 +156,13 @@ const BRDF_GGX170 = Fn(([lightDirection, f0]: any[]) => {
  */
 function patchLighting(): void {
   const P = (THREE as any).PhysicalLightingModel.prototype;
+  // r186's start() also samples its DFG lookup table for the multi-scattering terms the r170 model doesn't have; that
+  // texture would be the terrain's 17th (WebGPU allows 16 per stage). Plain materials go straight to the base start().
+  const origStart = P.start, baseStart = Object.getPrototypeOf(P).start;
+  P.start = function (this: any, builder: any) {
+    if (this.clearcoat || this.sheen || this.iridescence || this.transmission) return origStart.call(this, builder);
+    return baseStart.call(this, builder);
+  };
   P.direct = function ({ lightDirection, lightColor, reflectedLight }: any) {
     const dotNL = normalView.dot(lightDirection).clamp();
     const irradiance = dotNL.mul(lightColor).toVar();
@@ -150,6 +189,17 @@ function patchLighting(): void {
     const cosineWeightedIrradiance = iblIrradiance.mul(1 / Math.PI);
     reflectedLight.indirectSpecular.addAssign(radiance.mul(single).add(multi.mul(cosineWeightedIrradiance)));
     reflectedLight.indirectDiffuse.addAssign(diffuse.mul(cosineWeightedIrradiance));
+  };
+  // shadow normal bias along the vertex normal, as WebGL's shadowmap_vertex (r186 nodes offset along the shading
+  // normal: normal-mapped, and flipped on the back of double-sided leaves, which moves their self-shadowing)
+  const SN = (THREE as any).ShadowNode.prototype;
+  const origShadowPos = SN.setupShadowPosition;
+  SN.setupShadowPosition = function (this: any, builder: any) {
+    origShadowPos.call(this, builder);
+    if (builder.material.receivedShadowPositionNode || builder.context.shadowPositionWorld) return;
+    const nb = reference('normalBias', 'float', this.shadow).setGroup(renderGroup);
+    const vtx = T.vertexStage(transformNormalToView(normalLocal).transformNormalByInverseViewMatrix(cameraViewMatrix));
+    T.shadowPositionWorld.addAssign(vtx.sub(normalWorld).mul(nb));
   };
   const E = (THREE as any).EnvironmentNode.prototype;
   E.setup = function (builder: any) {
@@ -180,7 +230,7 @@ function patchLighting(): void {
 // ================================================================================================= r170 shadow filters
 
 /** r170's PCFSoftShadowMap (radius < 0) and PCFShadowMap filters on hardware-compare taps; see legacy/r170.ts */
-export const shadowFilter170 = Fn(({ depthTexture, shadowCoord, shadow }: any) => {
+export const shadowFilter170 = Fn(({ depthTexture, shadowCoord, shadow }: any) => Fn(() => {
   const mapSize = reference('mapSize', 'vec2', shadow).setGroup(renderGroup);
   const radius = reference('radius', 'float', shadow).setGroup(renderGroup);
   const texel = vec2(1).div(mapSize).toVar();
@@ -205,7 +255,7 @@ export const shadowFilter170 = Fn(({ depthTexture, shadowCoord, shadow }: any) =
     s.assign(acc.mul(1 / 17));
   });
   return s;
-});
+})());
 
 // ================================================================================================= sky and environment
 
@@ -291,6 +341,7 @@ export function createSky(): { mesh: THREE.Mesh; uniforms: SkyUniforms } {
  */
 export function bakeEnvironment(params: Record<string, number>, sunDir: GL.Vector3): THREE.DataTexture | null {
   let gl: GL.WebGLRenderer | null = null;
+  if (location.search.includes('nobake')) return null;
   try {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 1;
@@ -484,12 +535,12 @@ export function terrainMaterial(tex: Record<string, THREE.Texture>, nrm: Record<
     // normals: blend the layers' maps, then a world-aligned tangent frame (terrain uv = world xz)
     const tn = vec3(0.0).toVar();
     const nm = (k: string, s: number) => AT(nrm[k], s).xyz.mul(2.0).sub(1.0);
-    If(w.x.greaterThan(0.0), () => tn.addAssign(nm('sand', 0.8).mul(w.x)));
-    If(w.y.greaterThan(0.0), () => tn.addAssign(nm('grass', 1.0).mul(w.y)));
-    If(w.z.greaterThan(0.0), () => tn.addAssign(nm('jungle', 1.2).mul(w.z)));
-    If(w.w.greaterThan(0.0), () => tn.addAssign(nm('rock', 0.6).mul(w.w).mul(1.4)));
+    If(w.x.greaterThan(0.0), () => { tn.addAssign(nm('sand', 0.8).mul(w.x)); });
+    If(w.y.greaterThan(0.0), () => { tn.addAssign(nm('grass', 1.0).mul(w.y)); });
+    If(w.z.greaterThan(0.0), () => { tn.addAssign(nm('jungle', 1.2).mul(w.z)); });
+    If(w.w.greaterThan(0.0), () => { tn.addAssign(nm('rock', 0.6).mul(w.w).mul(1.4)); });
     tn.assign(normalize(tn));
-    If(dirtW.greaterThan(0.0), () => tn.assign(normalize(mix(tn, nm('dirt', 0.9), dirtW.mul(0.9)))));
+    If(dirtW.greaterThan(0.0), () => { tn.assign(normalize(mix(tn, nm('dirt', 0.9), dirtW.mul(0.9)))); });
     tn.x.mulAssign(0.9);
     tn.y.mulAssign(0.9);
     const Nw = normalize(vWNorm).toVar();
@@ -498,7 +549,7 @@ export function terrainMaterial(tex: Record<string, THREE.Texture>, nrm: Record<
     const nw = normalize(Tw.mul(tn.x).sub(Bw.mul(tn.y)).add(Nw.mul(tn.z)));
     outNormal.assign(normalize(cameraViewMatrix.mul(vec4(nw, 0.0)).xyz));
     outRough.assign(mix(0.95, 0.55, wet.mul(w.x)));
-  });
+  }, 'void');
   mat.shade = () => shade();
   mat.normalNode = outNormal;
   mat.roughnessNode = outRough;
@@ -645,7 +696,7 @@ class CrowdNodeMaterial extends THREE.MeshStandardNodeMaterial {
   setupDiffuseColor(): void {
     // no map/colorNode on the material: the shadow pass then draws whole silhouettes, as the WebGL depth material does
     diffuseColor.assign(this.diffuseNode);
-    If(diffuseColor.a.lessThan(this.alphaTest), () => Discard());
+    If(diffuseColor.a.lessThan(this.alphaTest), () => { Discard(); });
   }
 }
 
@@ -668,15 +719,15 @@ export function crowdMaterial(o: { boneTex: THREE.DataTexture; dataTex: THREE.Da
     const reg = int(floor(attribute('color').x.mul(20.0).add(0.5))).toVar();
     const rc = vec3(1.0).toVar();
     const hide = float(0.0).toVar();
-    If(reg.equal(0), () => rc.assign(idat(1).rgb))
-      .ElseIf(reg.equal(1), () => rc.assign(idat(2).rgb))
-      .ElseIf(reg.equal(2), () => rc.assign(idat(3).rgb))
-      .ElseIf(reg.equal(3), () => rc.assign(o.textured ? vec3(0.16, 0.10, 0.065) : vec3(0.13, 0.09, 0.06)))
-      .ElseIf(reg.equal(4), () => rc.assign(idat(4).rgb))
+    If(reg.equal(0), () => { rc.assign(idat(1).rgb); })
+      .ElseIf(reg.equal(1), () => { rc.assign(idat(2).rgb); })
+      .ElseIf(reg.equal(2), () => { rc.assign(idat(3).rgb); })
+      .ElseIf(reg.equal(3), () => { rc.assign(o.textured ? vec3(0.16, 0.10, 0.065) : vec3(0.13, 0.09, 0.06)); })
+      .ElseIf(reg.equal(4), () => { rc.assign(idat(4).rgb); })
       .ElseIf(reg.equal(5), () => { const h = idat(5).toVar(); rc.assign(h.rgb); hide.assign(h.a.oneMinus()); })
-      .ElseIf(reg.equal(6), () => rc.assign(idat(7).rgb))
-      .ElseIf(reg.equal(7), () => rc.assign(idat(8).rgb))
-      .ElseIf(reg.equal(8), () => rc.assign(o.textured ? vec3(1.0) : vec3(0.03)))
+      .ElseIf(reg.equal(6), () => { rc.assign(idat(7).rgb); })
+      .ElseIf(reg.equal(7), () => { rc.assign(idat(8).rgb); })
+      .ElseIf(reg.equal(8), () => { rc.assign(o.textured ? vec3(1.0) : vec3(0.03)); })
       .ElseIf(reg.equal(9), () => { const h = idat(6).toVar(); rc.assign(h.rgb); hide.assign(h.a.oneMinus()); })
       .ElseIf(reg.equal(10), () => { const h = idat(4).toVar(); rc.assign(h.rgb.mul(0.85)); hide.assign(h.a.oneMinus()); })
       .ElseIf(reg.greaterThanEqual(11), () => {
@@ -696,7 +747,7 @@ export function crowdMaterial(o: { boneTex: THREE.DataTexture; dataTex: THREE.Da
     const inst = mat4(idat(9), idat(10), idat(11), idat(12)).toVar();
     const rh = region().toVar();
     const p = skinM.mul(vec4(positionGeometry, 1.0)).xyz.toVar();
-    If(rh.w.greaterThan(0.5), () => p.assign(vec3(0.0, 0.85, 0.0)));
+    If(rh.w.greaterThan(0.5), () => { p.assign(vec3(0.0, 0.85, 0.0)); });
     // normals as three's GLSL instancing does them (non-uniform scale divided out before the rotation)
     const im = mat3(inst).toVar();
     const n = normalize(mat3(skinM).mul(normalGeometry)).toVar();
@@ -743,6 +794,8 @@ export function windMaterial(base: GL.Material, stiff: number, uTime: U<number>,
     const oz = sway.mul(0.03).mul(h).mul(h).div(stiff);
     return positionLocal.add(ax.xyz.mul(ox)).add(az.mul(oz));
   })();
+  // shadows from the unbent tree, as on WebGL (whose shadow pass draws with the plain depth material)
+  (m as any).castShadowPositionNode = positionLocal;
   return m;
 }
 
@@ -772,6 +825,7 @@ export function flagMaterial(base: GL.Material, uTime: U<number>): THREE.Materia
     const ph = w.x.mul(1.7).add(w.z.mul(1.3));
     return positionLocal.add(vec3(0.0, 0.0, sin(t.mul(6.0).sub(fx.mul(6.0)).add(ph)).mul(0.07).mul(fx)));
   })();
+  (m as any).castShadowPositionNode = positionLocal; // shadow of the flat cloth, as on WebGL
   return m;
 }
 
@@ -829,7 +883,7 @@ export function particleCloud(cap: number, additive: boolean, map: GL.Texture, s
   const vC = varying(attribute('iColor', 'vec4'));
   mat.colorNode = Fn(() => {
     const a = vC.a.mul(texture(map, uv()).a).toVar();
-    If(a.lessThan(0.01), () => Discard());
+    If(a.lessThan(0.01), () => { Discard(); });
     return vec4(vC.rgb, a);
   })();
   // particles leave the AO normal buffer alone (as WebGL's AO pass hides points)
@@ -926,7 +980,7 @@ class LegacyAONode extends (THREE.TempNode as unknown as new (type: string) => a
     const DIRECTIONS = this.samples < 30 ? 3 : 5, STEPS = Math.ceil(this.samples / DIRECTIONS);
     const gtao = Fn(() => {
       const depth = depthAt(glUv).toVar();
-      If(depth.greaterThanEqual(1.0), () => Discard());
+      If(depth.greaterThanEqual(1.0), () => { Discard(); });
       const vp = viewPos(glUv, depth).toVar();
       const n = normalAt(glUv).toVar();
       const noise = texture(this.noise1, glUv.mul(res).div(vec2(5, 5))).level(0).toVar();
@@ -974,7 +1028,7 @@ class LegacyAONode extends (THREE.TempNode as unknown as new (type: string) => a
     const pd = Fn(() => {
       const depth = depthAt(glUv).toVar();
       const n = normalAt(glUv).toVar();
-      If(depth.equal(1.0).or(dot(n, n).equal(0.0)), () => Discard());
+      If(depth.equal(1.0).or(dot(n, n).equal(0.0)), () => { Discard(); });
       const center = rt(this.gtaoRT.texture, glUv).rgb.toVar();
       const vp = viewPos(glUv, depth).toVar();
       const nt = texture(this.noise2, glUv.mul(res).div(vec2(64, 64))).level(0).x.mul(2 * Math.PI).toVar();
@@ -997,7 +1051,7 @@ class LegacyAONode extends (THREE.TempNode as unknown as new (type: string) => a
         denoised.addAssign(st.mul(w));
         total.addAssign(w);
       }
-      If(total.greaterThan(0.0), () => denoised.divAssign(total));
+      If(total.greaterThan(0.0), () => { denoised.divAssign(total); });
       return vec4(denoised, 1.0);
     });
     const ctx = T.context(builder.getSharedContext());
@@ -1051,7 +1105,7 @@ export class GpuPost {
     this.pipeline = new THREE.RenderPipeline(renderer);
     const scenePass = (this.scenePass = pass(scene, camera));
     this.nodes.push(scenePass);
-    if (q.ao) scenePass.setMRT(mrt({ output, normal: directionToColor(negateOnBackSide(normalViewGeometry)) }));
+    if (q.ao) scenePass.setMRT(mrt({ output, normal: T.packNormalToRGB(negateOnBackSide(normalViewGeometry)) }));
     let color: any = scenePass.getTextureNode('output');
     if (q.ao) {
       const normalTex = scenePass.getTexture('normal');
@@ -1067,7 +1121,7 @@ export class GpuPost {
       this.nodes.push(b);
       color = color.add(b);
     }
-    let out: any = renderOutput(color, THREE.ACESFilmicToneMapping, THREE.SRGBColorSpace);
+    let out: any = toneMapSRGB(color);
     if (q.aa === 'smaa') {
       const s: any = smaa(out);
       this.nodes.push(s);
