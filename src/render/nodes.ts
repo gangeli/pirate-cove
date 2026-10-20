@@ -515,7 +515,7 @@ export function terrainMaterial(tex: Record<string, THREE.Texture>, nrm: Record<
       col.assign(mix(col, dirt.mul(vec3(1.05, 0.92, 0.78)), padW.mul(0.95)));
       If(roadW.greaterThan(0.0), () => {
         // packed earth, ruts, a compacted rim (not across doorways) and pebbles: see terrain.ts
-        const road = mix(vec3(dot(dirt, vec3(0.333))), dirt, 0.6).mul(vec3(0.8, 0.64, 0.47)).toVar();
+        const road = mix(vec3(dot(dirt, vec3(0.333))), dirt, 0.6).mul(vec3(0.62, 0.47, 0.32)).toVar();
         const rut = smoothstep(0.6, 0.7, road0).mul(float(1.0).sub(smoothstep(0.78, 0.88, road0)));
         road.mulAssign(float(1.0).sub(rut.mul(vnoise(xz.mul(3.1)).mul(0.45).add(0.55)).mul(0.16)));
         const rim = smoothstep(0.3, 0.6, roadW).mul(float(1.0).sub(smoothstep(0.65, 0.98, roadW))).toVar();

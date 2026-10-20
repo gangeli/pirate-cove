@@ -250,7 +250,7 @@ if (dirtW > 0.0) {
   col = mix(col, dirt * vec3(1.05,0.92,0.78), padW*0.95);
   if (roadW > 0.0) {
     // packed earth: darker and warmer than the building pads, its grain toned down
-    vec3 road = mix(vec3(dot(dirt, vec3(0.333))), dirt, 0.6) * vec3(0.80, 0.64, 0.47);
+    vec3 road = mix(vec3(dot(dirt, vec3(0.333))), dirt, 0.6) * vec3(0.62, 0.47, 0.32);
     // two worn wheel ruts either side of the centre line, broken up
     float rut = smoothstep(0.6, 0.7, road0) * (1.0 - smoothstep(0.78, 0.88, road0));
     road *= 1.0 - rut * (0.55 + 0.45 * vnoise(vWPos.xz * 3.1)) * 0.16;
