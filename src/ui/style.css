@@ -570,7 +570,7 @@ table.ledger tr[data-act] { cursor: pointer; }
 .menu .item.disabled { opacity: 0.35; cursor: default; padding-left: 22px; }
 .menu .item.disabled::before { display: none; }
 .menu .foot { position: absolute; bottom: 14px; left: 7vw; right: 76px; color: rgba(216, 200, 164, 0.6); font-size: 13px; font-style: italic; }
-.setup { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(1080px, 96vw); height: min(720px, 92vh); display: flex; flex-direction: column; z-index: 40; }
+.setup { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(940px, 96vw); height: min(660px, 92vh); display: flex; flex-direction: column; z-index: 40; }
 .setup .content { overflow-x: hidden; }
 .setup .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 26px; }
 .setup .field label { font-family: var(--head); font-size: 16px; letter-spacing: 0.05em; display: block; color: #3a1c0c; letter-spacing: 0.02em; }
@@ -798,6 +798,9 @@ body.touch .cursor-tip { display: none; }
   .big, .setup, .credits { inset: 0; left: 0; top: 0; transform: none; width: auto; height: auto; max-height: none; }
   .tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; margin: 8px 0; }
   .tabs .t { padding: 5px 9px 4px; font-size: 14.5px; }
+  /* the four setup tabs fit a phone without scrolling: words only */
+  .setup .tabs .t { padding: 5px 7px 4px; }
+  .setup .tabs .t .ic { display: none; }
   .legend { top: 80px; right: 6px; width: 280px; padding: 8px 10px; gap: 6px; }
   .hint { bottom: calc(var(--tb-h) + 6px); font-size: 13px; }
   .touchbar { bottom: calc(var(--tb-h) + 6px); }
@@ -921,6 +924,18 @@ body.touch .cursor-tip { display: none; }
 .preset .pname { font-family: 'IM Fell English SC', serif; font-size: 20px; display: flex; justify-content: space-between; align-items: baseline; }
 .preset .pdiff { font-size: 16px; opacity: 0.8; }
 .preset .pblurb { font-style: italic; font-size: 15px; margin-top: 2px; }
+.preset .pdiff small { font: italic 12.5px var(--body); color: var(--ink3); margin-right: 3px; }
+.preset .pskulls { display: flex; gap: 2px; color: var(--ink3); margin-top: 6px; }
+.preset .pskulls .ic.lit { color: var(--blood); }
+/* wide screens: the presets as a grid of cards, larger type, so the sheet isn't one long thin list */
+@media (min-width: 760px) and (min-height: 560px) {
+  .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .preset { padding: 14px 18px 12px; display: flex; flex-direction: column; }
+  .preset.on { padding: 14px 18px 12px; }
+  .preset .pname { font-size: 23px; }
+  .preset .pblurb { font-size: 16.5px; line-height: 1.32; margin-top: 4px; flex: 1; }
+  .presets > .hintx { grid-column: 1 / -1; }
+}
 
 /* sound toggle: a brass-rimmed speaker in the bottom-right corner, on the title screen and in play */
 .soundbtn { position: absolute; right: 14px; bottom: 14px; z-index: 35; /* above the title menu, below the setup sheet and modals */
