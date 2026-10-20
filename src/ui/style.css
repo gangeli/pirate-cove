@@ -373,7 +373,8 @@ body.touch .kv a { display: inline-block; padding: 5px 0; margin: -5px 0; }
 .meters > span:nth-child(3n) { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink2); }
 .meters.two { grid-template-columns: minmax(64px, auto) 1fr 44px minmax(64px, auto) 1fr 44px; column-gap: 8px; }
 .meters.two > span:nth-child(3n) { padding-right: 6px; }
-@media (max-width: 340px) { .meters.two { grid-template-columns: minmax(78px, auto) 1fr 52px; } }
+/* narrow phones (under ~380 px) can't fit two tubes a row with readable widths: one pair a row */
+@media (max-width: 379px) { .meters.two { grid-template-columns: minmax(76px, auto) 1fr 52px; } .meters.two > span:nth-child(3n) { padding-right: 0; } }
 .meters.total { margin-top: 8px; padding-top: 6px; border-top: 1px solid color-mix(in srgb, var(--ink2) 25%, transparent); font-weight: bold; }
 .meters.total > span { color: var(--ink) !important; font-family: var(--head); font-weight: normal; font-size: 15px; }
 .meter { height: 8px; border-radius: 1px; background: color-mix(in srgb, var(--ink2) 12%, rgba(250, 242, 220, 0.5)); overflow: hidden; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink2) 50%, transparent), inset 0 1px 2px rgba(60, 30, 10, 0.2); }

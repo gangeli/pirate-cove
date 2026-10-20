@@ -187,7 +187,7 @@ export class Hud {
     };
     const touchHints: Record<string, string> = {
       road: 'Drag along the ground, then tap the tick to lay the road.',
-      clear: 'Drag over trees to clear them.',
+      clear: 'Drag a finger over trees to fell them. Two fingers move the map.',
       demolish: 'Tap a building or a road to tear it down.',
       build: 'Tap the ground to move the building, then confirm.',
     };

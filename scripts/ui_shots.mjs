@@ -20,6 +20,8 @@ const DEV = {
   pix: { ...devices['Pixel 7'], deviceScaleFactor: 2, bar: 56 },
   iph: { ...devices['iPhone 13'], deviceScaleFactor: 2, bar: 0, defaultBrowserType: undefined },
   land: { ...devices['Pixel 7 landscape'], deviceScaleFactor: 2, bar: 0 },
+  // a narrow Android phone (not in the default set): --dev=sm
+  sm: { viewport: { width: 360, height: 740 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, bar: 56 },
   ipad: { ...devices['iPad Mini'], deviceScaleFactor: 1.5, defaultBrowserType: undefined },
 };
 const devList = opt('dev', 'desk,pix,iph,land,ipad,hd').split(',');
@@ -91,6 +93,7 @@ S.place_build = `(() => { a.setTool({ kind: 'build', def: 'tavern', rot: 0 }); c
 S.place_road = `(() => { a.setTool({ kind: 'road' }); const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); h.hoverTile(pal.x + pal.w + 3, pal.y + 1); })()`;
 S.road_pick = `(() => { const m = g.map; const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); let best = null, bd = 1e9; for (let y = 0; y < m.size; y++) for (let x = 0; x < m.size; x++) if (m.path[m.idx(x, y)] && !g.tileBuilding(x, y)) { const d = Math.hypot(x - pal.x, y - pal.y); if (d < bd) (bd = d), (best = { x, y }); } if (!best) return 'missing'; a.roadPick = best; h.look(best.x, best.y); })()`;
 S.road_pending = `(() => { const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); a.setTool({ kind: 'road' }); const s = { x: pal.x + pal.w + 2, y: pal.y + pal.h + 2 }, e = { x: s.x + 6, y: s.y + 2 }; a.roadPending = { start: s, end: e }; a.hover = e; h.look(e.x, e.y); })()`;
+S.tool_clear = `(() => { a.setTool({ kind: 'clear' }); const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); h.hoverTile(pal.x - 4, pal.y - 4); })()`;
 S.tool_demolish = `(() => { a.setTool({ kind: 'demolish' }); const b = [...g.buildings.values()].find((b) => b.def === 'dive'); h.hoverTile(b.x, b.y); })()`;
 S.menu_rename = `(() => { const b = [...g.buildings.values()].find((b) => b.def === 'dive'); a.select({ type: 'building', id: b.id }); setTimeout(() => document.querySelector('[data-act="rename"]')?.click(), 50); })()`;
 S.menu_save = `a.modal.saveDialog()`;
