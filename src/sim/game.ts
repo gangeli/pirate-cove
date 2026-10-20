@@ -2,6 +2,7 @@ import { GameMap, Terrain } from './map';
 import { difficultyOf } from './presets';
 import { Rng } from './rng';
 import { PathFinder } from './path';
+import type { PathService } from './pathservice';
 import { AuraGrid } from './aura';
 import { BUILDING, type BuildingDef, type Job } from './data/buildings';
 import type { Good } from './data/goods';
@@ -56,6 +57,8 @@ export class Game {
   map: GameMap;
   rng: Rng;
   pf: PathFinder;
+  /** browser only: long path searches go to a worker (see pathservice.ts); undefined = synchronous */
+  paths?: PathService;
   aura: AuraGrid;
   time = 0;
   month = 0;
