@@ -132,15 +132,7 @@ export class Inspector {
       quality: (v) => this.bcmd({ type: 'setQuality', id: this.sel(), quality: +v }),
       block: (d) => this.bcmd({ type: 'blockSlot', id: this.sel(), delta: +d }),
       fire: (pid) => this.bcmd({ type: 'fire', id: this.sel(), person: +pid }),
-      demolish: () => {
-        const b = app.game.buildings.get(this.sel());
-        if (!b) return;
-        app.modal.confirm(`Demolish the ${BUILDING[b.def].name}?`, 'Nothing will be refunded.', () => {
-          app.cmd({ type: 'demolish', id: b.id });
-          audio.sfx('demolish');
-          app.select(null);
-        });
-      },
+      demolish: () => app.demolishAsk(this.sel()),
       commission: (t) => {
         if (app.cmd({ type: 'commission', yard: this.sel(), ship: t as ShipType })) audio.sfx('build_place');
         this.refresh(true);

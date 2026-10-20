@@ -10,6 +10,7 @@ import { NATIONS, type Nation, KINGS, type KingDef } from './data/kings';
 import type { Building, KingState, Message, NationState, Person, Region, Settings, Ship } from './types';
 import { canPlace, placeBuilding, removeBuilding, placeRoad, removeRoad, setupStartingIsland, wouldWallOff, type Placement } from './placement';
 import { updatePeople, createPerson, killPerson, rebellionMonthly } from './people';
+import { pushUndo, undoLast, treeTiles, type UndoEntry } from './undo';
 import { updateEconomy, monthlyEconomy, lumberTotal, consumeLumber, goodTotal } from './economy';
 import { updateShips, makeRegions, launchShip, commissionShip, assignCrews } from './sea';
 import { monthlyDiplomacy, updateInvasion, launchInvasion } from './diplomacy';
@@ -44,6 +45,7 @@ export type Command =
   | { type: 'hoardRate'; rate: number }
   | { type: 'blockSlot'; id: number; delta: number }
   | { type: 'fire'; id: number; person: number }
+  | { type: 'undo' }
   | { type: 'cheat'; code: string };
 
 export interface CmdResult {
@@ -95,6 +97,8 @@ export class Game {
   private acc = 0;
   advisorState: Record<string, number> = {};
   cheats = { freebuild: false };
+  /** the player's recent construction commands, newest last (session only, not saved; see undo.ts) */
+  undo: UndoEntry[] = [];
   difficulty = 1;
 
   constructor(settings: Partial<Settings> = {}, king: KingDef | KingState = KINGS[2]) {
@@ -400,13 +404,18 @@ export class Game {
         if (this.lumber() < cost.lumber && !this.cheats.freebuild) return { ok: false, reason: 'Not enough lumber.' };
         if (wouldWallOff(this, def, pl as Placement)) return { ok: false, reason: 'That would wall off part of the island.' };
         if (cost.gold) this.spend(cost.gold, 'construction');
-        consumeLumber(this, cost.lumber);
+        const lumber = consumeLumber(this, cost.lumber);
+        const roads = ((pl as Placement).autoRoad ?? []).map(([x, y]) => this.map.idx(x, y)).filter((k) => !this.map.path[k]);
         const b = placeBuilding(this, def, pl as Placement);
         this.events.push({ type: 'placed', id: b.id });
+        pushUndo(this, { kind: 'build', id: b.id, gold: cost.gold, lumber, roads, label: `build ${def.name}` });
         return { ok: true, id: b.id };
       }
-      case 'road':
-        return placeRoad(this, c.x, c.y);
+      case 'road': {
+        const r = placeRoad(this, c.x, c.y);
+        if (r.ok) pushUndo(this, { kind: 'roads', tiles: [this.map.idx(c.x, c.y)], label: 'lay road' });
+        return r;
+      }
       case 'roadLine': {
         let x = c.x0, y = c.y0;
         let any = false;
@@ -417,26 +426,33 @@ export class Game {
         while (x !== c.x1) (x += sx), pts.push([x, y]);
         while (y !== c.y1) (y += sy), pts.push([x, y]);
         let last: CmdResult = { ok: false, reason: 'Nothing to build' };
+        const laid: number[] = [];
         // place in order; allow pieces adjacent to network as we go
         for (let pass = 0; pass < 2; pass++)
           for (const [px, py] of pts) {
             if (this.map.path[this.map.idx(px, py)]) continue;
             const r = placeRoad(this, px, py);
-            if (r.ok) any = true;
+            if (r.ok) (any = true), laid.push(this.map.idx(px, py));
             else last = r;
           }
+        if (any) pushUndo(this, { kind: 'roads', tiles: laid, label: laid.length > 1 ? `lay ${laid.length} road tiles` : 'lay road' });
         return any ? { ok: true } : last;
       }
-      case 'unroad':
-        return removeRoad(this, c.x, c.y);
+      case 'unroad': {
+        const r = removeRoad(this, c.x, c.y);
+        if (r.ok) pushUndo(this, { kind: 'unroad', tiles: [this.map.idx(c.x, c.y)], label: 'remove road' });
+        return r;
+      }
       case 'demolish': {
         const b = this.buildings.get(c.id);
         if (!b) return { ok: false, reason: 'No such building' };
         if (b.def === 'palace') return { ok: false, reason: 'You cannot demolish your own palace!' };
+        pushUndo(this, { kind: 'demolish', snap: structuredClone(b), label: `demolish ${BUILDING[b.def].name}` });
         removeBuilding(this, b);
         return { ok: true };
       }
       case 'clearTrees': {
+        const before = treeTiles(this, c.x, c.y, c.r);
         let n = 0;
         for (let y = c.y - c.r; y <= c.y + c.r; y++)
           for (let x = c.x - c.r; x <= c.x + c.r; x++)
@@ -448,6 +464,7 @@ export class Game {
         if (n) {
           this.pf.invalidate();
           this.events.push({ type: 'trees', x: c.x - c.r, y: c.y - c.r, w: c.r * 2 + 1, h: c.r * 2 + 1 });
+          pushUndo(this, { kind: 'clear', tiles: before, label: 'clear vegetation' });
         }
         return { ok: n > 0, reason: n ? undefined : 'No vegetation there.' };
       }
@@ -532,6 +549,8 @@ export class Game {
       case 'hoardRate':
         this.hoardRate = Math.max(0, Math.min(0.25, c.rate));
         return { ok: true };
+      case 'undo':
+        return undoLast(this);
       case 'cheat':
         return this.cheat(c.code);
     }
