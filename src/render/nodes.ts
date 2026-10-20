@@ -16,7 +16,6 @@ import { smaa } from 'three/examples/jsm/tsl/display/SMAANode.js';
 import { fxaa } from 'three/examples/jsm/tsl/display/FXAANode.js';
 import { SimplexNoise } from 'three/examples/jsm/math/SimplexNoise.js';
 import { generateMagicSquareNoise } from 'three/examples/jsm/shaders/GTAOShader.js';
-import { generatePdSamplePointInitializer } from 'three/examples/jsm/shaders/PoissonDenoiseShader.js';
 import * as GL from 'three';
 import { Sky as GLSky } from './legacy/sky170';
 import { PMREMGenerator as GLPMREM170 } from './legacy/pmrem170';
@@ -1023,7 +1022,6 @@ class LegacyAONode extends (THREE.TempNode as unknown as new (type: string) => a
     // Poisson denoise: 16 taps (2 rings, radius exponent 1 as GTAOPass leaves them) or 8 (exponent 2) at reduced scale
     const N = this.pdSamples, rings = 2, rexp = N === 16 ? 1 : 2;
     const disk = Array.from({ length: N }, (_, i) => [Math.cos((2 * Math.PI * rings * i) / N), Math.sin((2 * Math.PI * rings * i) / N), Math.pow(i / (N - 1), rexp)]);
-    void generatePdSamplePointInitializer;
     const lum = (c: any) => dot(vec3(0.2125, 0.7154, 0.0721), c);
     const pd = Fn(() => {
       const depth = depthAt(glUv).toVar();

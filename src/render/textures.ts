@@ -145,6 +145,25 @@ function releaseAfterUpload(t: THREE.Texture): void {
   };
 }
 
+/** turn a texture into an R8 data texture holding the image's red channel (mipmaps generated on upload) */
+function toRedData(t: THREE.Texture, img: HTMLImageElement | ImageBitmap): void {
+  const w = img.width, h = img.height;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true })!;
+  g.drawImage(img, 0, 0);
+  const rgba = g.getImageData(0, 0, w, h).data;
+  const red = new Uint8Array(w * h);
+  // flipY is false for these maps: canvas rows top-down = the image's own order, as the image upload would use
+  for (let i = 0; i < red.length; i++) red[i] = rgba[i * 4];
+  const tt = t as THREE.Texture & { isDataTexture: boolean };
+  tt.isDataTexture = true;
+  tt.image = { data: red, width: w, height: h } as unknown as HTMLImageElement;
+  tt.type = THREE.UnsignedByteType;
+  tt.unpackAlignment = 1;
+}
+
 export function loadTex(rel: string, srgb: boolean, repeat = true): THREE.Texture {
   rel = ALIAS[rel] ?? rel;
   const key = rel + srgb;
@@ -162,7 +181,11 @@ export function loadTex(rel: string, srgb: boolean, repeat = true): THREE.Textur
     loader.load(
       assetUrl(rel),
       (tex) => {
-        t.image = tex.image;
+        // single-channel maps (AO, see bldmodels.ts) on WebGPU: upload the red channel as R8 data. WebGPU's
+        // image copy into r8unorm targets is unreliable (it came out black on Dawn/SwiftShader), and RGBA would
+        // quadruple their memory
+        if (gpuRenderer && t.format === THREE.RedFormat) toRedData(t, tex.image as HTMLImageElement);
+        else t.image = tex.image;
         t.needsUpdate = true;
         done(0);
       },

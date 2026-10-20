@@ -1,7 +1,7 @@
 // Browser performance benchmark on a mid-game island, driven through the real UI loop.
 //   node scripts/perfbench.mjs [extraQuery] [label]
 //   e.g. node scripts/perfbench.mjs "q=high"   |   node scripts/perfbench.mjs "q=medium&bot=3"
-// Needs the dev server on :5173. Reports frame times, long tasks, main-thread script/layout/style time,
+// Needs the dev server on :5173 (PORT=... for another; gpu=webgpu|webgl in the query picks the backend). Reports frame times, long tasks, main-thread script/layout/style time,
 // JS heap and input latency (build panel open on 'b', camera pan on held 'w'). Appends to
 // /tmp/perfbench.jsonl so runs can be compared. Note: headless Chromium renders with SwiftShader (on the
 // CPU), so absolute frame times are pessimistic; compare runs against each other.
@@ -10,8 +10,8 @@ import fs from 'node:fs';
 
 const extra = process.argv[2] ?? '';
 const label = process.argv[3] ?? extra;
-const url = `http://localhost:5173/?play=1&bot=1.5&seed=7&${extra}`;
-const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info'] });
+const url = `http://localhost:${process.env.PORT ?? '5173'}/?play=1&bot=1.5&seed=7&${extra}`;
+const b = await chromium.launch({ args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE', '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--use-webgpu-adapter=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info'] });
 const ctx = await b.newContext({ viewport: { width: 1280, height: 720 } });
 const p = await ctx.newPage();
 const errors = [];

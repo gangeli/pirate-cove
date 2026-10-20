@@ -2,12 +2,12 @@
 // geometries/textures/programs and scene object counts while the game is exercised. Something that
 // grows on every repetition of the same action is a leak.
 //   node scripts/leakcheck.mjs [extraQuery]
-// Needs the dev server on :5173.
+// Needs the dev server on :5173 (or pass the base URL); add gpu=webgpu to the query for the WebGPU renderer.
 import { chromium } from 'playwright';
 
 const extra = process.argv[2] ?? 'q=low';
 const base = process.argv[3] ?? 'http://localhost:5173/';
-const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info', '--js-flags=--expose-gc'] });
+const b = await chromium.launch({ args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan,VulkanFromANGLE', '--use-vulkan=swiftshader', '--use-angle=swiftshader', '--use-webgpu-adapter=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--enable-precise-memory-info', '--js-flags=--expose-gc'] });
 const ctx = await b.newContext({ viewport: { width: 1280, height: 720 }, serviceWorkers: 'block' });
 const p = await ctx.newPage();
 const errors = [];
@@ -29,7 +29,9 @@ async function sample(label) {
     w.scene.traverse((o) => { objects++; if (o.isMesh) meshes++; });
     return {
       heapMB: +(performance.memory.usedJSHeapSize / 1e6).toFixed(1),
-      geoms: info.memory.geometries, tex: info.memory.textures, progs: info.programs?.length ?? 0,
+      geoms: info.memory.geometries, tex: info.memory.textures, progs: w.renderer.isWebGPURenderer ? info.memory.programs : info.programs?.length ?? 0,
+      // WebGPU also counts buffers and bytes
+      ...(w.renderer.isWebGPURenderer ? { attrs: info.memory.attributes, bufMB: +((info.memory.attributesSize + info.memory.indexAttributesSize) / 1e6).toFixed(1), texMB: +(info.memory.texturesSize / 1e6).toFixed(1), ubos: info.memory.uniformBuffers } : {}),
       objects, meshes, gameT: Math.round(window.__app.game?.time ?? 0),
     };
   });
@@ -104,7 +106,8 @@ for (const [g, rs] of groups) {
   if (rs.length < 2) continue;
   const a = rs[0], z = rs[rs.length - 1], n = rs.length - 1;
   const d = (k) => ((z[k] - a[k]) / n).toFixed(k === 'heapMB' ? 1 : 0);
-  console.log(`${g.padEnd(10)} per rep: heap ${d('heapMB')}MB geoms ${d('geoms')} tex ${d('tex')} progs ${d('progs')} objects ${d('objects')} nodes ${d('nodes')} listeners ${d('listeners')}`);
+  const gpu = a.attrs !== undefined ? ` attrs ${d('attrs')} bufMB ${d('bufMB')} texMB ${d('texMB')} ubos ${d('ubos')}` : '';
+  console.log(`${g.padEnd(10)} per rep: heap ${d('heapMB')}MB geoms ${d('geoms')} tex ${d('tex')} progs ${d('progs')} objects ${d('objects')} nodes ${d('nodes')} listeners ${d('listeners')}${gpu}`);
 }
 if (errors.length) console.log('errors:', errors.slice(0, 8));
 await b.close();

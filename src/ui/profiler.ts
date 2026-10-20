@@ -281,10 +281,11 @@ export function recordProfile(app: App, seconds = 60): void {
 function showReport(report: string): void {
   const box = el('div', 'panel prof-report', document.body);
   box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:70;width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 64px);display:flex;flex-direction:column;gap:8px';
-  const sum = JSON.parse(report).summary;
+  const rep = JSON.parse(report);
+  const sum = rep.summary;
   const kb = (report.length / 1024).toFixed(1);
   setHTML(box, html`<h3 style="margin:0">Performance report</h3>
-    <div class="sub">${sum.fps} fps average &middot; GPU ${sum.gpuMsPerFrame ?? 'n/a'} ms/frame &middot; ${sum.drawCalls} draw calls &middot; ${kb} KB. Copy it and paste it into the chat, or save the file.</div>
+    <div class="sub">${rep.backend === 'webgpu' ? 'WebGPU' : 'WebGL'} &middot; ${sum.fps} fps average &middot; GPU ${sum.gpuMsPerFrame ?? 'n/a'} ms/frame &middot; ${sum.drawCalls} draw calls &middot; ${kb} KB. Copy it and paste it into the chat, or save the file.</div>
     <textarea readonly style="flex:1;min-height:160px;font:11px/1.3 ui-monospace,monospace;width:100%;box-sizing:border-box;background:#f6efdc;color:#2a1a0c;border:1px solid #8a6a3a">${report}</textarea>
     <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn small" data-k="copy">Copy</button><button class="btn small" data-k="save">Save file</button><button class="btn small green" data-k="close">Close</button></div>`);
   const ta = box.querySelector('textarea')!;
