@@ -84,7 +84,9 @@ export class App {
   }
 
   /**
-   * Render settings per tier. 'high' draws the same image as ever (4096 soft shadows, full-res GTAO, full bloom, SMAA,
+   * Render settings per tier ('high' also lets dynamic resolution step its pixel ratio down, only while the GPU cannot
+   * keep up, so input never waits on slow frames; it climbs back to full as soon as frames make the budget).
+   * 'high' draws the same image as ever (4096 soft shadows, full-res GTAO, full bloom, SMAA,
    * device pixel ratio up to 2); its savings are all lossless (see World). 'medium' and 'low' trade looks for speed and
    * let dynamic resolution keep them inside the frame budget (?dynres=0 turns that off).
    */
@@ -92,7 +94,7 @@ export class App {
     const dyn = !/[?&](dynres=0|shot=1)/.test(location.search);
     if (this.quality === 'low') return { shadows: false, ao: false, bloom: false, post: false, aa: 'none', pixelRatio: 1, minPixelRatio: 0.6, dynamicRes: dyn, flashLights: 0 };
     if (this.quality === 'medium') return { shadows: true, shadowSize: 2048, softShadows: false, shadowHz: 30, ao: false, bloom: true, bloomScale: 0.5, aa: 'fxaa', pixelRatio: 1.25, minPixelRatio: 0.75, dynamicRes: dyn, flashLights: 1 };
-    return { shadows: true, shadowSize: 4096, softShadows: true, shadowHz: 1000, ao: true, aoScale: 1, aoSamples: 12, aoDepthNormals: /[?&]aodepth=1/.test(location.search), bloom: true, bloomScale: 1, aa: 'smaa', propShadows: true, pixelRatio: 2, dynamicRes: false, flashLights: 2 };
+    return { shadows: true, shadowSize: 4096, softShadows: true, shadowHz: 1000, ao: true, aoScale: 1, aoSamples: 12, aoDepthNormals: /[?&]aodepth=1/.test(location.search), bloom: true, bloomScale: 1, aa: 'smaa', propShadows: true, pixelRatio: 2, minPixelRatio: 1, dynamicRes: dyn, flashLights: 2 };
   }
 
   /** switch the graphics tier live (settings) */

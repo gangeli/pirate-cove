@@ -332,6 +332,7 @@ export class World {
     this.effects = new Effects(this, game);
     this.roadTex = undefined; // the new terrain needs it in its own uniforms (the old one is freed below)
     this.packed = undefined; // likewise the packed roads/overlay texture (WebGL)
+    this.terrainTop = -Infinity; // the picking ceiling belongs to the new map
     this.updateRoadTex();
     this.overlayTex = undefined;
     this.setOverlay(null);
@@ -692,11 +693,45 @@ export class World {
     const r = this.canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.rig.camera);
-    const hit = this.raycaster.intersectObject(this.terrain.mesh, false)[0];
-    if (hit && hit.point.y > -0.2) return hit.point;
+    // march the ray over the height field instead of testing every terrain triangle (51k of them: ~5 ms a call, and
+    // the pointer moves up to 120 times a second); a few dozen height lookups give the same tile
+    const hit = this.marchTerrain(this.raycaster.ray);
+    if (hit && hit.y > -0.2) return hit;
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const p = new THREE.Vector3();
-    return this.raycaster.ray.intersectPlane(plane, p) ? p : hit?.point ?? null;
+    return this.raycaster.ray.intersectPlane(plane, p) ? p : hit;
+  }
+
+  private terrainTop = -Infinity;
+  /** first point where a ray dips below the terrain surface (bilinear vertex heights), or null */
+  private marchTerrain(ray: THREE.Ray): THREE.Vector3 | null {
+    const m = this.game.map, n = m.size, o = ray.origin, d = ray.direction;
+    if (this.terrainTop === -Infinity) for (const h of m.vh) this.terrainTop = Math.max(this.terrainTop, h);
+    const top = this.terrainTop + 0.5, bottom = -3;
+    if (d.y >= -1e-4) return null;
+    let t = Math.max(0, (top - o.y) / d.y);
+    const tEnd = (bottom - o.y) / d.y;
+    const flat = Math.hypot(d.x, d.z);
+    const dt = flat > 1e-4 ? Math.min(0.25 / flat, 0.25 / -d.y) : 0.25 / -d.y;
+    const below = (tt: number) => {
+      const x = o.x + d.x * tt, z = o.z + d.z * tt;
+      if (x < 0 || z < 0 || x > n || z > n) return o.y + d.y * tt < -0.25;
+      return o.y + d.y * tt <= m.heightAt(x, z);
+    };
+    let prev = t;
+    for (; t <= tEnd; t += dt) {
+      if (below(t)) {
+        let lo = prev, hi = t;
+        for (let i = 0; i < 10; i++) {
+          const mid = (lo + hi) / 2;
+          if (below(mid)) hi = mid;
+          else lo = mid;
+        }
+        return new THREE.Vector3(o.x + d.x * hi, o.y + d.y * hi, o.z + d.z * hi);
+      }
+      prev = t;
+    }
+    return null;
   }
 
   ndcRay(clientX: number, clientY: number): THREE.Raycaster {
