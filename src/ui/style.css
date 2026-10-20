@@ -321,8 +321,9 @@ input[type=range] { accent-color: var(--blood); }
 .tile.ship { color: var(--brass-hi); background: radial-gradient(circle at 50% 40%, #2c4450, #14222a); }
 .tile .portrait-img, .tile svg.portrait { width: 100%; height: 100%; border: 0; box-shadow: none; }
 .ins-body { flex: 1; min-height: 0; margin-top: 10px; padding: 0 4px 10px 0; margin-right: -4px; -webkit-mask-image: linear-gradient(#000 calc(100% - 14px), transparent); mask-image: linear-gradient(#000 calc(100% - 14px), transparent); }
-.ins-foot { flex: none; display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; align-items: center; margin-top: 10px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--ink2) 30%, transparent); }
-.ins-foot .spacer { flex: 1; }
+.ins-foot { flex: none; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; padding-top: 9px; border-top: 1px solid color-mix(in srgb, var(--ink2) 30%, transparent); }
+.ins-foot .spacer { display: none; }
+.ins-foot .btn.danger { margin-left: auto; }
 .ins-foot .btn { flex: none; }
 .btn.icon-only { padding-left: 8px; padding-right: 8px; }
 .icon-link { border: 0; background: none; padding: 2px; cursor: pointer; color: var(--ink3); display: inline-grid; place-items: center; }
@@ -732,8 +733,7 @@ body.touch .cursor-tip { display: none; }
   .inspector { left: 4px; right: 4px; width: auto; bottom: calc(var(--tb-h) + 2px); max-height: calc((var(--app-h, 100dvh) - var(--tb-h)) * 0.6); padding: 10px 12px 8px; }
   .ins-head .sub { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .field-row > .lbl, .slotrow > .lbl { width: 70px; font-size: 13.5px; }
-  .ins-foot { gap: 5px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .ins-foot .btn { flex: none; }
+  .ins-foot { gap: 5px; }
   .ins-foot .btn.small { padding: 5px 9px; font-size: 14px; }
   .ins-foot .btn.primary { padding: 6px 12px; font-size: 16px; }
   /* overlays: a low sheet over the toolbar, so the tinted ground stays in view above it */
@@ -783,8 +783,7 @@ body.touch .cursor-tip { display: none; }
   .ins-head .chips { margin-top: 3px; }
   .tile { width: 42px; height: 42px; }
   .ins-body { margin-top: 6px; }
-  .ins-foot { margin-top: 6px; padding-top: 6px; gap: 5px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .ins-foot .btn { flex: none; }
+  .ins-foot { margin-top: 6px; padding-top: 6px; gap: 5px; }
   .legend { top: auto; left: 6px; right: auto; width: min(560px, calc(100% - 12px)); bottom: calc(var(--tb-h) + 2px); max-height: none; padding: 8px 10px; gap: 6px; }
   .legend .sheet-head .sub, .legend .actions { display: none; }
   .legend .sheet-head h3 { font-size: 18px; }
@@ -798,8 +797,11 @@ body.touch .cursor-tip { display: none; }
 }
 
 /* big desktop screens: the whole UI scales up a step so panels keep their proportion to the window */
-@media (min-width: 1680px) and (min-height: 940px) { #ui { zoom: 1.2; } }
-@media (min-width: 2400px) and (min-height: 1300px) { #ui { zoom: 1.5; } }
+/* zoom scales the layer's own box too, so its size is divided by the factor to keep it exactly on the screen */
+@media (min-width: 1680px) and (min-height: 940px) {
+  #ui { --z: 1.2; zoom: var(--z); right: auto; width: calc(100vw / var(--z)); height: calc(var(--app-h, 100dvh) / var(--z)); }
+}
+@media (min-width: 2400px) and (min-height: 1300px) { #ui { --z: 1.5; } }
 
 /* difficulty presets */
 .presets { display: flex; flex-direction: column; gap: 8px; }
