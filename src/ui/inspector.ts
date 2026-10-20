@@ -132,15 +132,7 @@ export class Inspector {
       quality: (v) => this.bcmd({ type: 'setQuality', id: this.sel(), quality: +v }),
       block: (d) => this.bcmd({ type: 'blockSlot', id: this.sel(), delta: +d }),
       fire: (pid) => this.bcmd({ type: 'fire', id: this.sel(), person: +pid }),
-      demolish: () => {
-        const b = app.game.buildings.get(this.sel());
-        if (!b) return;
-        app.modal.confirm(`Demolish the ${BUILDING[b.def].name}?`, 'Nothing will be refunded.', () => {
-          app.cmd({ type: 'demolish', id: b.id });
-          audio.sfx('demolish');
-          app.select(null);
-        });
-      },
+      demolish: () => app.demolishAsk(this.sel()),
       commission: (t) => {
         if (app.cmd({ type: 'commission', yard: this.sel(), ship: t as ShipType })) audio.sfx('build_place');
         this.refresh(true);
@@ -321,7 +313,7 @@ export class Inspector {
       if (def.upkeep) parts.push(html`<div class="sub">Upkeep: ${def.upkeep} gold/month</div>`);
     }
     if (def.id !== 'palace') parts.push(html`<div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn small red" data-act="demolish">${icon('bulldoze', 14)} Demolish</button></div>`);
-    return html`<div class="scroll" style="max-height:calc(100vh - 140px)">${parts}</div>`;
+    return html`<div class="scroll" style="max-height:calc(var(--app-h, 100dvh) - 140px)">${parts}</div>`;
   }
 
   private slotRow(label: string, count: number, ids: number[], b: Building, pirates = false) {
@@ -399,7 +391,7 @@ export class Inspector {
     }
     if (p.kind === 'wealthy') acts.push(html`<button class="btn small green" data-act="edict:ransom">Ransom (${fmt(p.ransom + p.credit)})</button>`);
     parts.push(html`<div class="row" style="margin-top:8px">${acts}</div>`);
-    return html`<div class="scroll" style="max-height:calc(100vh - 140px)">${parts}</div>`;
+    return html`<div class="scroll" style="max-height:calc(var(--app-h, 100dvh) - 140px)">${parts}</div>`;
   }
 
   private thoughts(p: Person): [string, boolean][] {
@@ -480,7 +472,7 @@ export class Inspector {
         <button class="btn small red" data-act="scuttle">Scuttle</button></div>`);
       if (s.log.length) parts.push(html`<h3>Last Voyage</h3>${s.log.slice(-5).map((e) => html`<div style="font-size:13px">${e.date}: ${e.text}</div>`)}`);
     }
-    return html`<div class="scroll" style="max-height:calc(100vh - 140px)">${parts}</div>`;
+    return html`<div class="scroll" style="max-height:calc(var(--app-h, 100dvh) - 140px)">${parts}</div>`;
   }
 }
 

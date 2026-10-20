@@ -54,6 +54,10 @@ export interface Person {
   dir: number;
   path: number[] | null;
   pathI: number;
+  /** waiting (with an empty `path`) for this PathService handle (async path finding only) */
+  pathReq?: number;
+  /** the tile index that request is for */
+  pathGoal?: number;
   task: Task;
   /** queued tasks (e.g. walk then act) */
   arrived: number; // game time arrived on island

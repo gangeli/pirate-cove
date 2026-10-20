@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Game, type Command } from '../sim/game';
 import { BUILDING, type BuildingDef } from '../sim/data/buildings';
 import { canPlace, footprint } from '../sim/placement';
+import { enableAsyncPaths } from '../sim/pathservice';
 import type { Settings } from '../sim/types';
 import type { KingDef } from '../sim/data/kings';
 import { World, type Quality } from '../render/world';
@@ -157,7 +158,11 @@ export class App {
   }
 
   async attach(g: Game): Promise<void> {
+    // one path worker per game: the old game's goes (its waiting people would search synchronously)
+    if (this.game && this.game !== g) this.game.paths?.dispose();
     this.game = g;
+    // long path searches off the main thread; screenshots (and ?paths=sync) keep them deterministic and inline
+    if (!g.paths && !/[?&](shot=1|paths=sync)/.test(location.search)) enableAsyncPaths(g);
     this.world.attach(g);
     await Promise.all([this.world.ships.ready, this.world.people.ready]);
     await this.world.warmShaders();
@@ -446,12 +451,8 @@ export class App {
         return;
       case 'demolish': {
         const b = g.tileBuilding(t.x, t.y);
-        if (b) {
-          const def = BUILDING[b.def];
-          this.modal.confirm(`Demolish the ${def.name}?`, 'The building will be torn down and nothing refunded.', () => {
-            if (this.cmd({ type: 'demolish', id: b.id })) audio.sfx('demolish');
-          });
-        }
+        if (b) this.demolishAsk(b.id);
+        else if (g.map.path[g.map.idx(t.x, t.y)] && this.cmd({ type: 'unroad', x: t.x, y: t.y })) audio.sfx('demolish');
         return;
       }
       case 'target': {
@@ -538,6 +539,11 @@ export class App {
         this.jumpTo(p.x, p.y);
       }
     }
+    if ((k === 'z' || k === 'Z') && (ev.ctrlKey || ev.metaKey) && !ev.shiftKey) {
+      ev.preventDefault();
+      this.undo();
+    }
+    if (k === 'Delete' && this.selection?.type === 'building') this.demolishAsk(this.selection.id);
     if (k === 'F5' || (k === 's' && ev.ctrlKey)) {
       ev.preventDefault();
       this.save('quick').then(() => this.hud.flash('Game saved.'));
@@ -614,6 +620,32 @@ export class App {
       prof.lap('ui');
       prof.end();
     }
+  }
+
+  /** take back the last construction command (Ctrl/Cmd+Z, or the Undo button) */
+  undo(): void {
+    if (this.state !== 'game') return;
+    const r = this.game.cmd({ type: 'undo' }) as { ok: boolean; reason?: string; label?: string };
+    this.ghostCheck.key = '';
+    if (r.ok) {
+      audio.sfx('build_place');
+      this.hud.flash(`Undone: ${r.label}`);
+    } else this.hud.flash(r.reason ?? 'Nothing to undo.');
+  }
+
+  /** confirm, then tear a building down (it can be undone) */
+  demolishAsk(id: number): void {
+    const b = this.game.buildings.get(id);
+    if (!b) return;
+    const def = BUILDING[b.def];
+    if (b.def === 'palace') return void this.hud.flash('You cannot demolish your own palace!');
+    const refundable = b.built < 1 && this.game.undo.some((e) => e.kind === 'build' && e.id === id);
+    this.modal.confirm(`Demolish the ${def.name}?`, refundable ? 'It is still a construction site: Undo (Ctrl+Z) instead takes it back with a full refund.' : 'It will be torn down and nothing refunded. Undo (Ctrl+Z) brings it back.', () => {
+      if (this.cmd({ type: 'demolish', id })) {
+        audio.sfx('demolish');
+        if (this.selection?.type === 'building' && this.selection.id === id) this.select(null);
+      }
+    });
   }
 
   private handleEvents(): void {

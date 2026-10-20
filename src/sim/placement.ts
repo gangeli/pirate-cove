@@ -333,10 +333,6 @@ export function placeRoad(g: Game, x: number, y: number): CmdResult {
 export function removeRoad(g: Game, x: number, y: number): CmdResult {
   const m = g.map;
   if (!m.inBounds(x, y) || !m.path[m.idx(x, y)]) return { ok: false, reason: 'No road there.' };
-  // only dead ends can be removed so the network is never split
-  let deg = 0;
-  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (m.inBounds(x + dx, y + dy) && m.path[m.idx(x + dx, y + dy)]) deg++;
-  if (deg > 1) return { ok: false, reason: 'Only the end of a road can be removed.' };
   for (const b of g.buildings.values()) if (b.door[0] === x && b.door[1] === y && !BUILDING[b.def].noRoad) {
     // check another road touches the building
     const alt = ring(b.x, b.y, b.w, b.h).find(([i, j]) => (i !== x || j !== y) && m.inBounds(i, j) && m.path[m.idx(i, j)]);

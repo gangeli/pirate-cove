@@ -50,14 +50,18 @@ export function lumberTotal(g: Game): number {
   for (const b of g.buildings.values()) if (b.def === 'sawmill') t += b.inv.lumber ?? 0;
   return Math.floor(t);
 }
-export function consumeLumber(g: Game, n: number): void {
+/** takes lumber from the sawmills; returns how much came from each (for undo refunds) */
+export function consumeLumber(g: Game, n: number): [number, number][] {
+  const taken: [number, number][] = [];
   for (const b of g.buildings.values()) {
-    if (n <= 0) return;
+    if (n <= 0) break;
     if (b.def !== 'sawmill') continue;
     const take = Math.min(n, b.inv.lumber ?? 0);
     b.inv.lumber = (b.inv.lumber ?? 0) - take;
     n -= take;
+    if (take > 0) taken.push([b.id, take]);
   }
+  return taken;
 }
 export function goodTotal(g: Game, good: Good): number {
   let t = 0;
@@ -182,7 +186,7 @@ export function haulStep(g: Game, p: Person): boolean {
     if (take <= 0) return false;
     src.inv[good] = (src.inv[good] ?? 0) - take;
     p.carrying = good;
-    if (goTo(g, p, home.door[0], home.door[1], { kind: 'haul', bld: home.id, good, amount: take, timer: 2 })) return true;
+    if (goTo(g, p, home.door[0], home.door[1], { kind: 'haul', bld: home.id, src: src.id, good, amount: take, timer: 2 })) return true;
     // can't get home: drop it back
     src.inv[good] = (src.inv[good] ?? 0) + take;
     p.carrying = undefined;

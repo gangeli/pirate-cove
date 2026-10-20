@@ -23,6 +23,7 @@ function pwa(): Plugin {
       const files: string[] = [];
       const walk = (dir: string) => {
         for (const name of readdirSync(dir)) {
+          if (name.startsWith('.')) continue; // .git, .nojekyll and other dotfiles are never served assets
           const p = join(dir, name);
           if (statSync(p).isDirectory()) walk(p);
           else files.push(relative(outDir, p).split(sep).join('/'));

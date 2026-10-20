@@ -90,6 +90,9 @@ export class Hud {
     if (on) setTimeout(() => this.update(), 0);
     this.minimap.show(on);
     if (!on) this.adv.classList.add('gone');
+    // in play the speaker joins the clock's speed row; on the title screen it goes back to its corner
+    const sb = this.app.root.querySelector('.soundbtn');
+    if (sb) (on ? this.clock.querySelector('.speed')! : this.app.root).appendChild(sb);
   }
 
   private buildToolbar(): void {

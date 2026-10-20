@@ -6,6 +6,16 @@ import { Game } from './sim/game';
 import { initPwa, launchShortcut } from './ui/install';
 
 /** Entry point. URL parameters (for testing): ?play=1 starts a game immediately; ?shot=1 renders a still. */
+/** the height the player can actually see: on phones it shrinks while the browser's address bar shows */
+function trackViewportHeight() {
+  const set = () => document.documentElement.style.setProperty('--app-h', `${Math.round(window.visualViewport?.height ?? window.innerHeight)}px`);
+  set();
+  window.visualViewport?.addEventListener('resize', set);
+  window.addEventListener('resize', set);
+  window.addEventListener('orientationchange', () => setTimeout(set, 300));
+}
+trackViewportHeight();
+
 async function boot() {
   installTheme();
   const params = new URLSearchParams(location.search);
