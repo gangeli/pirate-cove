@@ -277,6 +277,7 @@ export class App {
     // see-through trees while laying roads, so the ground (and existing paths) under the canopy stay visible
     this.world.veg?.setGhost(t.kind === 'road' || t.kind === 'unroad');
     this.roadPending = null;
+    this.roadPick = null;
   }
 
   /** true once the player has touched the screen (shows touch affordances) */
@@ -287,9 +288,18 @@ export class App {
   /** a road dragged out on a touch screen, waiting for the player to confirm it */
   private roadPending: { start: { x: number; y: number }; end: { x: number; y: number } } | null = null;
 
+  /** a road tile picked with the select tool (offers "pull up road" beside it) */
+  private roadPick: { x: number; y: number } | null = null;
+
   private placeAction(a: PlaceAction): void {
     const tool = this.tool;
     audio.sfx('ui_click');
+    if (tool.kind === 'select' && this.roadPick) {
+      const rp = this.roadPick;
+      this.roadPick = null;
+      if (a === 'ok' && this.cmd({ type: 'unroad', x: rp.x, y: rp.y })) audio.sfx('demolish');
+      return;
+    }
     if (tool.kind === 'road' || tool.kind === 'unroad') {
       const rp = this.roadPending;
       this.roadPending = null;
@@ -317,6 +327,7 @@ export class App {
 
   select(s: Selection): void {
     this.selection = s;
+    this.roadPick = null;
     this.world.buildings.select(s?.type === 'building' ? s.id : 0);
     this.world.people.selected = s?.type === 'person' ? s.id : 0;
     this.inspector.refresh(true);
@@ -441,6 +452,8 @@ export class App {
         const bid = this.world.buildings.pickBuilding(ray) || g.tileBuilding(t.x, t.y)?.id || 0;
         if (bid) return this.select({ type: 'building', id: bid });
         this.select(null);
+        // a road: offer to pull it up, right there
+        this.roadPick = g.map.path[g.map.idx(t.x, t.y)] ? { x: t.x, y: t.y } : null;
         return;
       }
       case 'build': {
@@ -748,6 +761,17 @@ export class App {
     const tool = this.tool;
     const h = this.hover;
     const hv = h;
+    if (this.state === 'game' && tool.kind === 'select' && this.roadPick) {
+      this.ghost.visible = false;
+      const rp = this.roadPick;
+      if (!this.game.map.path[this.game.map.idx(rp.x, rp.y)]) this.roadPick = null;
+      else {
+        const ex = rp.x + 0.5, ez = rp.y + 0.5;
+        this.placeCtl.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight },
+          { x: ex, y: Math.max(0.05, this.game.map.heightAt(ex, ez)), z: ez, w: 1, d: 1, h: 0.3 }, 'Pull up this road?', true, 'roadsel', true);
+        return;
+      }
+    }
     if (this.state !== 'game' || !h) {
       this.ghost.visible = false;
       this.placeCtl?.hide();

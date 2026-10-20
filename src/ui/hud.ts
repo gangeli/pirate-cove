@@ -354,7 +354,7 @@ export class Hud {
       <div class="panel bubble" style="position:relative">
         <div class="who">${parrot ? 'Polly the parrot' : `${ADVISOR_NAME}, your first mate`}</div>
         <h4>${m.title}</h4><p>${this.advisorMode === 'brief' ? m.text.split('. ')[0] + '.' : m.text}</p>
-        <div class="row">${m.focus ? html`<button class="btn small" data-act="advGo:${m.focus.x},${m.focus.y}">Show me</button>` : ''}<button class="btn small" data-act="advClose">Aye</button></div>
+        <div class="row">${m.focus ? html`<button class="btn ghost small" data-act="advGo:${m.focus.x},${m.focus.y}">${icon('eye', 14)} Show me</button>` : ''}<button class="btn primary small" data-act="advClose">Aye</button></div>
       </div>`);
     this.adv.classList.remove('gone');
     this.advUntil = performance.now() + Math.max(9000, m.text.length * 70);

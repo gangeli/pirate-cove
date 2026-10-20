@@ -217,7 +217,7 @@ export class Modal {
     const s = o.score;
     this.show(html`<div class="gameover"><h2>${o.win ? 'Your Reign Is Complete' : 'Your Reign Has Ended'}</h2>
       <p class="reason">${o.reason}</p>
-      ${o.win ? html`<div class="medal ${s.medal}" role="img" aria-label="${s.medal} medal"><span>${s.medal[0].toUpperCase() + s.medal.slice(1)}</span></div>` : ''}
+      ${o.win ? html`<div class="medal-wrap"><div class="medal ${s.medal}" role="img" aria-label="${s.medal} medal"><span>${s.medal[0].toUpperCase() + s.medal.slice(1)}</span></div></div>` : ''}
       <div class="score kv">
         <span>Hoard</span><span>${fmt(s.hoard)}</span><span>Pirate happiness</span><span>${fmt(s.happiness)}</span>
         <span>Fleet</span><span>${fmt(s.fleet)}</span><span>Captains</span><span>${fmt(s.captains)}</span><span>Pirates</span><span>${fmt(s.pirates)}</span>

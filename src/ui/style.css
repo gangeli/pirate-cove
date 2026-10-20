@@ -104,6 +104,8 @@ hr.rule {
 .btn.red, .btn.danger { background: linear-gradient(rgba(255, 120, 90, 0.1), rgba(0, 0, 0, 0.3)), linear-gradient(var(--blood-hi), var(--blood)); color: #f2dcc0; }
 .btn.green, .btn.primary { background: linear-gradient(rgba(180, 255, 180, 0.06), rgba(0, 0, 0, 0.3)), linear-gradient(#2e5436, var(--bottle)); color: #f0e6c4; }
 .btn.primary { font-size: 17px; padding: 7px 18px; min-height: 38px; }
+.btn.primary.small { font-size: 15px; padding: 3px 14px; min-height: 28px; }
+body.touch .btn.primary.small { min-height: 36px; }
 /* secondary actions on parchment: inked outline, no leather */
 .btn.ghost { background: rgba(250, 242, 220, 0.35); color: var(--ink); text-shadow: none; border: 1px solid color-mix(in srgb, var(--ink2) 70%, transparent); box-shadow: inset 0 0 0 1px rgba(255, 248, 228, 0.5), 0 1px 1px rgba(60, 30, 10, 0.12); }
 .btn.ghost:hover { background: rgba(255, 248, 228, 0.7); color: #000; filter: none; }
@@ -216,6 +218,7 @@ input[type=range] { accent-color: var(--blood); }
 
 .clock { position: absolute; top: 0; right: 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 7px 10px 8px; pointer-events: auto; border-top: 0; }
 .speed { display: flex; gap: 2px; }
+.clock .soundbtn { width: 32px; height: 28px; }
 .speed .sp { width: 32px; height: 28px; display: grid; place-items: center; cursor: pointer; color: #a89474; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(0, 0, 0, 0.6); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 20%, transparent); }
 .speed .sp:hover { color: var(--brass-hi); }
 .speed .sp.on { color: #1c1008; background: linear-gradient(#d8bc80, #a8844a); box-shadow: inset 0 0 0 1px #f0dcaa; }
@@ -564,9 +567,11 @@ body.touch .setup .field .opts .o { min-height: 40px; }
 .gameover .reason { font-size: 16px; line-height: 1.4; margin: 8px 0 12px; }
 .gameover .medal { width: 96px; height: 96px; margin: 4px auto 14px; border-radius: 50%; display: grid; place-items: center; font: 17px var(--head); letter-spacing: 0.06em; color: #2a1606;
   background: radial-gradient(circle at 38% 32%, #fff6d0, #e2b850 35%, #9a7020 75%, #5a3a08); box-shadow: 0 0 0 3px #3a2208, 0 0 0 6px #c8a050, 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 0 0 6px rgba(255, 240, 200, 0.25); position: relative; }
-.gameover .medal::before, .gameover .medal::after { content: ''; position: absolute; top: -26px; width: 22px; height: 34px; background: linear-gradient(var(--blood-hi), var(--blood)); z-index: -1; }
-.gameover .medal::before { left: 22px; transform: skewX(14deg); }
-.gameover .medal::after { right: 22px; transform: skewX(-14deg); }
+.gameover .medal-wrap { position: relative; width: 96px; margin: 22px auto 14px; }
+.gameover .medal-wrap .medal { margin: 0; }
+.gameover .medal-wrap::before, .gameover .medal-wrap::after { content: ''; position: absolute; top: -22px; width: 24px; height: 44px; background: linear-gradient(90deg, var(--blood) 0 30%, var(--blood-hi) 30% 70%, var(--blood) 70%); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+.gameover .medal-wrap::before { left: 18px; transform: skewX(18deg); }
+.gameover .medal-wrap::after { right: 18px; transform: skewX(-18deg); }
 .gameover .medal.silver { background: radial-gradient(circle at 38% 32%, #ffffff, #c8ccd0 35%, #808890 75%, #40464c); box-shadow: 0 0 0 3px #2a2e32, 0 0 0 6px #b0b6bc, 0 4px 14px rgba(0, 0, 0, 0.45); }
 .gameover .medal.bronze { background: radial-gradient(circle at 38% 32%, #ffe0c0, #c08048 35%, #7a4a20 75%, #3a1e08); box-shadow: 0 0 0 3px #2a1606, 0 0 0 6px #b07a48, 0 4px 14px rgba(0, 0, 0, 0.45); }
 .gameover .score { max-width: 340px; margin: 0 auto 6px; text-align: left; grid-template-columns: 1fr auto; font-size: 15px; }
@@ -612,6 +617,11 @@ label.check input { width: 18px; height: 18px; accent-color: var(--blood); }
 .pc-no { background: radial-gradient(circle at 40% 35%, #a83226, #4a0a06); }
 .placectl:not(.touch) .pc-btn, .placectl:not(.touch) .pc-row { display: none; }
 .placectl .hidden { display: none; }
+.pc-ok .i-del, .placectl.roadsel .pc-ok .i-ok { display: none; }
+.placectl.roadsel .pc-ok .i-del { display: block; }
+.placectl.roadsel .pc-ok { background: radial-gradient(circle at 40% 35%, #a83226, #4a0a06); width: 48px; height: 48px; }
+.placectl.roadsel .pc-no { background: radial-gradient(circle at 40% 35%, #4a3020, #1a100a); width: 40px; height: 40px; }
+.placectl.roadsel .pc-tag { border-left-color: var(--brass-lo); }
 
 /* ---------- touch placement bar ---------- */
 .touchbar { position: absolute; left: 50%; bottom: calc(var(--tb-h) + 8px); transform: translateX(-50%); display: flex; gap: 8px; z-index: 12; pointer-events: auto; }
@@ -691,13 +701,14 @@ body.touch .cursor-tip { display: none; }
 
 /* ---------- portrait phones: the HUD stacks (resources / clock / advisor) and the bars span the width ---------- */
 @media (max-width: 600px) {
-  .topbar { left: 0; right: 0; transform: none; max-width: none; clip-path: none; justify-content: space-around; padding: 3px 2px 4px; height: 32px; }
-  .topbar .res { flex: 1 1 0; min-width: 0; justify-content: center; font-size: 15px; padding: 1px 2px; gap: 3px; }
+  .topbar { left: 0; right: 0; transform: none; max-width: none; clip-path: none; justify-content: space-around; padding: 2px 2px 2px; height: 38px; }
+  .topbar .res { flex: 1 1 0; min-width: 0; justify-content: center; font-size: 16px; padding: 1px 2px; gap: 4px; }
   .topbar .res .ic { width: 17px; height: 17px; }
-  .clock { top: 32px; right: 0; flex-direction: row-reverse; gap: 8px; padding: 3px 6px 4px; border-top: 1px solid #000; }
+  .clock { top: 38px; right: 0; flex-direction: row-reverse; gap: 8px; padding: 3px 6px 4px; border-top: 1px solid #000; }
+  .speed .sp, .clock .soundbtn { width: 34px; height: 32px; }
   .date { min-width: 0; font-size: 14px; text-align: right; }
   .date small { font-size: 11px; }
-  .advisor { top: 72px; left: 6px; right: 6px; max-width: none; }
+  .advisor { top: 84px; left: 6px; right: 6px; max-width: none; }
   .toolbar { left: 0; right: 0; transform: none; max-width: none; justify-content: space-between; gap: 2px; padding: 5px 4px; overflow: hidden; }
   .tool { flex: 1 1 0; width: auto; min-width: 0; max-width: 54px; height: 46px; padding: 3px 0 2px; }
   .tool .ic { width: 20px; height: 20px; }
@@ -760,7 +771,7 @@ body.touch .cursor-tip { display: none; }
 .soundbtn.off { color: #b98a6a; opacity: 0.85; }
 .soundbtn svg { display: block; }
 /* in play the speaker sits in the clock's speed row, so it can never cover the toolbar or a panel */
-.clock .soundbtn { position: static; z-index: auto; width: 32px; height: 28px; border-radius: 0; border: 1px solid rgba(0, 0, 0, 0.6); margin-left: 4px;
+.clock .soundbtn { position: static; z-index: auto; border-radius: 0; border: 1px solid rgba(0, 0, 0, 0.6); margin-left: 4px;
   background: rgba(0, 0, 0, 0.35); color: #a89474; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 20%, transparent); }
 .clock .soundbtn:hover { color: var(--brass-hi); filter: none; }
 .clock .soundbtn.off { color: #8a6a5a; opacity: 1; }
