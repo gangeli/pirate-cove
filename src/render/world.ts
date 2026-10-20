@@ -20,7 +20,7 @@ import { Effects } from './effects';
 import { disposeObject, disposeComposer } from './dispose';
 import { installR170Look, SOFT_SHADOW_RADIUS } from './legacy/r170';
 import { PMREMGenerator as PMREM170 } from './legacy/pmrem170';
-import { RB, chooseBackend, isWebGPU, type AnyRenderer, type Backend, type NodesModule } from './backend';
+import { RB, SOFTWARE_GPU, chooseBackend, isWebGPU, type AnyRenderer, type Backend, type NodesModule } from './backend';
 import type { GpuPost } from './nodes';
 
 export interface Quality {
@@ -70,7 +70,7 @@ export interface GpuInfo {
   backendReason: string;
 }
 
-const SOFTWARE = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render|gdi generic|mesa offscreen/i;
+const SOFTWARE = SOFTWARE_GPU;
 
 /** which GPU the browser gave us; software rasterisers make everything crawl */
 function detectGpu(r: THREE.WebGLRenderer, backendReason: string): GpuInfo {

@@ -34,6 +34,9 @@ export interface BackendChoice {
  */
 export const WEBGPU_DEFAULT = true;
 
+/** CPU rasterisers, by renderer / adapter name */
+export const SOFTWARE_GPU = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render|gdi generic|mesa offscreen/i;
+
 export async function chooseBackend(): Promise<BackendChoice> {
   const force = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('gpu') : null;
   if (force === 'webgl') return { backend: 'webgl', reason: 'forced (?gpu=webgl)', adapter: null };
@@ -48,8 +51,11 @@ export async function chooseBackend(): Promise<BackendChoice> {
   if (!adapter) return { backend: 'webgl', reason: 'no WebGPU adapter (blocklisted or unsupported)', adapter: null };
   if (force === 'webgpu') return { backend: 'webgpu', reason: 'forced (?gpu=webgpu)', adapter };
   const info = (adapter as GPUAdapter & { info?: GPUAdapterInfo & { isFallbackAdapter?: boolean } }).info;
-  // a software WebGPU adapter while WebGL may still have the hardware: stay on WebGL
+  // a software WebGPU adapter (the browser's fallback flag, or a CPU rasteriser by name): stay on WebGL, which may
+  // still have the hardware, and otherwise shows the software-GPU notice
+  const name = info ? `${info.vendor} ${info.architecture} ${info.device} ${info.description}` : '';
   if (info?.isFallbackAdapter || (adapter as unknown as { isFallbackAdapter?: boolean }).isFallbackAdapter) return { backend: 'webgl', reason: 'WebGPU adapter is a software fallback', adapter };
+  if (SOFTWARE_GPU.test(name)) return { backend: 'webgl', reason: `WebGPU adapter is a software rasteriser (${name.trim()})`, adapter };
   if (!WEBGPU_DEFAULT) return { backend: 'webgl', reason: 'WebGL is the default', adapter };
   return { backend: 'webgpu', reason: 'WebGPU adapter available', adapter };
 }
