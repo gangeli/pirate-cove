@@ -98,6 +98,9 @@ export class QuickRing {
     const above = ry + rh > fb && t - 8 - rh >= ft;
     if (above) ry = t - 8 - rh;
     ry = Math.max(ft, Math.min(fb - rh, ry));
+    // and clear of the minimap when the row would sit beside it (landscape phones)
+    const mm = rect('.minimap');
+    if (mm && ry + rh > mm.t && ry < mm.b && cx - rw / 2 < mm.r + 6) fl = Math.max(fl, mm.r + 6);
     const rx = Math.max(fl, Math.min(fr - rw, cx - rw / 2));
     toggleClass(this.row, 'above', above);
     this.row.style.transform = `translate(${Math.round(rx)}px,${Math.round(ry)}px)`;
