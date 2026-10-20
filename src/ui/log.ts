@@ -105,7 +105,7 @@ export class IslandLog {
     const s = computeScore(g);
     const k = g.king;
     return html`<div class="cols2">
-      <div><div class="row" style="align-items:flex-start;gap:12px">${raw(portraitImg(k.portrait, 110))}
+      <div><div class="king-card">${raw(portraitImg(k.portrait, 110))}
         <div><h3 style="margin-top:0">${k.name}, Pirate ${k.sex === 'F' ? 'Queen' : 'King'}</h3>
         <div style="font-size:14px">${BACKGROUNDS[k.bg].name} · ${k.q.map((q) => QUALITIES[q].name).join(', ')} · <i>${FLAWS[k.flaw].name}</i></div>
         <div class="sub">Reigning since January 1680. ${Math.max(0, g.settings.years - g.yearsElapsed).toFixed(1)} of ${g.settings.years} years remain.</div></div></div>
@@ -133,9 +133,9 @@ export class IslandLog {
     const venues = [...g.buildings.values()].filter((b) => BUILDING[b.def].service).sort((a, b) => b.lastIncome - a.lastIncome).slice(0, 12);
     return html`<div class="cols2"><div>
       <h3 style="margin-top:0">Income</h3><table class="ledger"><tr><th>Source</th><th>Last month</th><th>This month</th></tr>
-      ${cats.map((c) => html`<tr><td>${c}</td><td>${fmt(inc[c] ?? 0)}</td><td>${fmt(cur[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(inc))}</b></td><td><b>${fmt(sum(cur))}</b></td></tr></table>
+      ${cats.map((c) => html`<tr><td>${c[0].toUpperCase() + c.slice(1)}</td><td>${fmt(inc[c] ?? 0)}</td><td>${fmt(cur[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(inc))}</b></td><td><b>${fmt(sum(cur))}</b></td></tr></table>
       <h3>Expenses</h3><table class="ledger"><tr><th>Item</th><th>Last month</th><th>This month</th></tr>
-      ${ecats.map((c) => html`<tr><td>${c}</td><td>${fmt(exp[c] ?? 0)}</td><td>${fmt(cure[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(exp))}</b></td><td><b>${fmt(sum(cure))}</b></td></tr></table></div>
+      ${ecats.map((c) => html`<tr><td>${c[0].toUpperCase() + c.slice(1)}</td><td>${fmt(exp[c] ?? 0)}</td><td>${fmt(cure[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(exp))}</b></td><td><b>${fmt(sum(cure))}</b></td></tr></table></div>
       <div><h3 style="margin-top:0">Best Earning Establishments</h3><table class="ledger"><tr><th>Name</th><th>Type</th><th>Last month</th></tr>
       ${venues.map((b) => html`<tr><td>${b.name ?? ''}</td><td>${BUILDING[b.def].name}</td><td>${fmt(b.lastIncome)}</td></tr>`)}</table>
       <h3>Income vs Expenses</h3><canvas data-graph="flow" width="460" height="160" style="width:100%;height:160px"></canvas></div></div>`;
@@ -168,7 +168,7 @@ export class IslandLog {
     const g = this.app.game;
     const list = this.sorted(g.pirates(), (p, k) => (k === 'name' ? p.name : k === 'rank' ? p.rank : k === 'gold' ? p.gold : k === 'hap' ? p.happiness : k === 'cour' ? p.traits.courage : k === 'lead' ? p.traits.leadership : k === 'not' ? p.traits.notoriety : activityText(this.app, p)));
     return html`<div class="table-wrap"><table class="ledger"><tr>${this.th('name', 'Name')}${this.th('rank', 'Rank')}${this.th('gold', 'Gold')}${this.th('hap', 'Happiness')}${this.th('cour', 'Courage')}${this.th('lead', 'Leadership')}${this.th('not', 'Notoriety')}${this.th('act', 'Doing')}</tr>
-      ${list.map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>${p.captain ? '⚓ ' : ''}${p.name}</td><td>${RANKS[p.rank - 1].name}</td><td>${fmt(p.gold)}</td><td>${pct(p.happiness)}${p.mood !== 'ok' ? ' ☹' : ''}</td><td>${p.traits.courage}</td><td>${p.traits.leadership}</td><td>${Math.round(p.traits.notoriety)}</td><td>${activityText(this.app, p)}</td></tr>`)}</table></div>`;
+      ${list.map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>${p.captain ? html`<span class="tag-ic" title="Captain">${icon('anchor', 14)}</span> ` : ''}${p.name}</td><td>${RANKS[p.rank - 1].name}</td><td>${fmt(p.gold)}</td><td>${pct(p.happiness)}${p.mood !== 'ok' ? ' ☹' : ''}</td><td>${p.traits.courage}</td><td>${p.traits.leadership}</td><td>${Math.round(p.traits.notoriety)}</td><td>${activityText(this.app, p)}</td></tr>`)}</table></div>`;
   }
 
   private captives() {
@@ -176,7 +176,7 @@ export class IslandLog {
     const list = this.sorted(g.captives(), (p, k) => (k === 'name' ? p.name : k === 'job' ? p.jobRole ?? '' : k === 'res' ? p.resignation : k === 'cour' ? p.traits.courage : k === 'lead' ? p.traits.leadership : k === 'ransom' ? p.ransom : k === 'nat' ? p.nat : p.profession));
     return html`<div class="table-wrap"><table class="ledger"><tr>${this.th('name', 'Name')}${this.th('nat', 'Nation')}${this.th('prof', 'Skill')}${this.th('job', 'Job')}${this.th('res', 'Resignation')}${this.th('cour', 'Courage')}${this.th('lead', 'Leadership')}${this.th('ransom', 'Ransom')}</tr>
       ${list.map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>${p.name}</td><td>${NATION_ADJ[p.nat]}</td><td>${p.kind === 'skeleton' ? 'Skeleton' : p.skilled ? JOB_NAMES[p.profession as keyof typeof JOB_NAMES] : '-'}</td><td>${p.jobRole ? JOB_NAMES[p.jobRole] : 'idle'}</td><td>${pct(p.resignation)}</td><td>${p.traits.courage}</td><td>${p.traits.leadership}</td><td>${p.ransom ? fmt(p.ransom) : '-'}</td></tr>`)}
-      ${[...g.people.values()].filter((p) => p.kind === 'wealthy').map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td>💰 ${p.name}</td><td>${NATION_ADJ[p.nat]}</td><td>Wealthy</td><td>-</td><td>-</td><td>-</td><td>-</td><td>${fmt(p.ransom + p.credit)}</td></tr>`)}</table></div>`;
+      ${[...g.people.values()].filter((p) => p.kind === 'wealthy').map((p) => html`<tr data-act="person:${p.id}" style="cursor:pointer"><td><span class="tag-ic" title="Wealthy">${icon('coin', 14)}</span> ${p.name}</td><td>${NATION_ADJ[p.nat]}</td><td>Wealthy</td><td>-</td><td>-</td><td>-</td><td>-</td><td>${fmt(p.ransom + p.credit)}</td></tr>`)}</table></div>`;
   }
 
   private nations() {
@@ -219,7 +219,7 @@ export class IslandLog {
     ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
     if (h.length < 2) {
       ctx.fillStyle = '#5a4024';
-      ctx.font = 'italic 14px Georgia';
+      ctx.font = 'italic 14px "IM Fell English", Georgia';
       ctx.fillText('Not enough history yet...', 12, H / 2);
       return;
     }
@@ -237,7 +237,7 @@ export class IslandLog {
       vals.forEach((v, i) => (i ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v))));
       ctx.stroke();
       ctx.fillStyle = col;
-      ctx.font = '13px Georgia';
+      ctx.font = '14px "IM Fell English", Georgia';
       ctx.fillText(`${name}: ${fmt(vals[vals.length - 1])}`, 10 + si * 160, 14);
     });
   }

@@ -43,7 +43,7 @@ export class Overlays {
   constructor(private app: App) {
     this.panel = el('div', 'panel legend hidden', app.root);
     delegate(this.panel, {
-      pick: (k) => this.set(k as Kind),
+      pick: (k) => (k === 'none' ? this.hide() : this.set(k as Kind)),
       close: () => this.hide(),
     }, () => audio.sfx('ui_click'));
   }
@@ -76,7 +76,7 @@ export class Overlays {
     const cur = ALL.find((x) => x[0] === this.kind);
     setHTML(this.panel, html`<button class="close" data-act="close" aria-label="Close overlays">${icon('close', 14)}</button>
       <header class="sheet-head"><h3>Overlays</h3><div class="sub">Tint the ground to see what the island hides.</div></header>
-      <div class="ov-groups">${GROUPS.map(([g, list]) => html`<div class="ov-group"><h4 class="eng">${g}</h4>
+      <div class="ov-groups"><button class="ov off" data-act="pick:none" aria-label="Turn the overlay off">${icon('close', 14)}<span>Off</span></button>${GROUPS.map(([g, list]) => html`<div class="ov-group"><h4 class="eng">${g}</h4>
         <div class="ov-list" role="radiogroup" aria-label="${g}">${list.map(([k, n, sh, ic]) => html`<button class="ov ${this.kind === k ? 'on' : ''}" data-act="pick:${k}" role="radio" aria-checked="${this.kind === k ? 'true' : 'false'}">
           <i class="sw" style="background:${this.legend(k)}"></i>${icon(ic, 15)}<span class="full">${n}</span><span class="short">${sh}</span></button>`)}</div></div>`)}</div>
       ${cur ? html`<div class="ov-key"><div class="ov-now"><b>${cur[1]}</b> <span>${cur[4]}</span></div>

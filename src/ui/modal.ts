@@ -71,6 +71,27 @@ export class Modal {
     });
   }
 
+  /** ask for a line of text on parchment (instead of the browser's prompt box) */
+  prompt(title: string, label: string, value: string, done: (v: string) => void): void {
+    const ok = () => {
+      const v = this.box.querySelector<HTMLInputElement>('input[data-prompt]')?.value.trim() ?? '';
+      this.close();
+      if (v) done(v.slice(0, 40));
+    };
+    this.show(html`<h2>${title}</h2><label class="field-text"><span>${label}</span><input type="text" data-prompt maxlength="40" value="${value}" autocomplete="off"></label>
+      <div class="row"><button class="btn ghost" data-act="do:cancel">Cancel</button><button class="btn primary" data-act="do:ok">Done</button></div>`, { ok, cancel: () => this.close() });
+    const inp = this.box.querySelector<HTMLInputElement>('input[data-prompt]');
+    if (inp) {
+      inp.focus();
+      inp.select();
+      inp.onkeydown = (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') ok();
+        if (e.key === 'Escape') this.close();
+      };
+    }
+  }
+
   gameMenu(): void {
     this.show(html`<h2>Captain's Quarters</h2><div class="sub center">The island holds its breath while you are here.</div>
       <div class="menu-list">
@@ -143,8 +164,8 @@ export class Modal {
     this.show(html`<h2>Settings</h2><div class="body settings">
       <section class="sect"><h4 class="eng">Sound</h4>${slider('master', 'Master')}${slider('music', 'Music')}${slider('voice', 'Voices')}${slider('sfx', 'Effects')}${slider('ambient', 'Ambience')}</section>
       <section class="sect"><h4 class="eng">Graphics</h4><div class="seg full" role="radiogroup">${(['low', 'medium', 'high'] as const).map((x) => html`<button class="${q === x ? 'on' : ''}" data-act="do:q_${x}">${x[0].toUpperCase() + x.slice(1)}</button>`)}</div>
-      <div class="sub" style="font-size:12px;margin-top:4px;user-select:text;-webkit-user-select:text">Renderer: ${this.app.world.backend === 'webgpu' ? 'WebGPU' : 'WebGL'} &middot; ${this.app.world.gpu.renderer}${this.app.world.gpu.software ? ' (software, no graphics acceleration)' : ''} &middot; resolution ${Math.round(this.app.world.pr * 100)}%</div>
-      <div class="row" style="margin-top:8px;align-items:center;gap:8px"><button class="btn ghost small" data-act="do:profile">Record performance (60 s)</button><span class="sub" style="font-size:12px">Play normally for a minute, then copy the report.</span></div></section>
+      <div class="sub" style="font-size:12px;margin-top:4px;user-select:text;-webkit-user-select:text">Renderer: ${this.app.world.backend === 'webgpu' ? 'WebGPU (experimental)' : 'WebGL'} &middot; ${this.app.world.gpu.renderer}${this.app.world.gpu.software ? ' (software, no graphics acceleration)' : ''} &middot; resolution ${Math.round(this.app.world.pr * 100)}%</div>
+      <div class="row start" style="margin-top:8px;align-items:center;gap:8px"><button class="btn ghost small" data-act="do:profile">Record performance (60 s)</button><span class="sub" style="font-size:12px">Play normally for a minute, then copy the report.</span></div></section>
       <section class="sect"><h4 class="eng">Advisor</h4><div class="seg full" role="radiogroup">${(['full', 'brief', 'off'] as const).map((x) => html`<button class="${adv === x ? 'on' : ''}" data-act="do:a_${x}">${x === 'full' ? 'Chatty' : x === 'brief' ? 'Brief' : 'Silent'}</button>`)}</div>
         <div class="seg-note">${adv === 'full' ? 'Barnaby speaks his mind in full.' : adv === 'brief' ? 'Barnaby keeps it to one line.' : 'Barnaby holds his tongue; important news still arrives as notes.'}</div></section>
       <section class="sect"><h4 class="eng">Camera</h4><label class="check"><input type="checkbox" data-edge ${this.app.world.rig.edgeScroll ? 'checked' : ''}><span>Scroll when the pointer touches the screen edges</span></label></section></div>
@@ -217,7 +238,7 @@ export class Modal {
     const s = o.score;
     this.show(html`<div class="gameover"><h2>${o.win ? 'Your Reign Is Complete' : 'Your Reign Has Ended'}</h2>
       <p class="reason">${o.reason}</p>
-      ${o.win ? html`<div class="medal ${s.medal}" role="img" aria-label="${s.medal} medal"><span>${s.medal[0].toUpperCase() + s.medal.slice(1)}</span></div>` : ''}
+      ${o.win ? html`<div class="medal-wrap"><div class="medal ${s.medal}" role="img" aria-label="${s.medal} medal"><span>${s.medal[0].toUpperCase() + s.medal.slice(1)}</span></div></div>` : ''}
       <div class="score kv">
         <span>Hoard</span><span>${fmt(s.hoard)}</span><span>Pirate happiness</span><span>${fmt(s.happiness)}</span>
         <span>Fleet</span><span>${fmt(s.fleet)}</span><span>Captains</span><span>${fmt(s.captains)}</span><span>Pirates</span><span>${fmt(s.pirates)}</span>

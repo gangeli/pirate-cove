@@ -22,6 +22,8 @@ import { MainMenu } from './menu';
 import { Overlays } from './overlays';
 import { saveGame, loadGame, hasSave } from './saves';
 import { PlaceControls, type PlaceAction } from './placectl';
+import { QuickRing } from './quickring';
+import { short } from './buildmenu';
 import type { Profiler } from './profiler';
 
 /** wall-clock milliseconds per frame the simulation may use before it starts dropping backlog */
@@ -279,6 +281,14 @@ export class App {
     // see-through trees while laying roads, so the ground (and existing paths) under the canopy stay visible
     this.world.veg?.setGhost(t.kind === 'road' || t.kind === 'unroad');
     this.roadPending = null;
+    this.roadPick = null;
+    // on touch there is no pointer to follow: a new building starts in the middle of the view, controls beside it
+    if (t.kind === 'build' && this.touchMode && this.state === 'game') {
+      const r = this.canvas.getBoundingClientRect();
+      this.hover = this.tileAt({ clientX: r.left + r.width / 2, clientY: r.top + r.height * 0.45 }) ?? this.hover;
+    }
+    // phones hide the minimap while placing, so it never sits under the controls beside the ghost
+    this.root.classList.toggle('placing', t.kind === 'build' || t.kind === 'road');
   }
 
   /** true once the player has touched the screen (shows touch affordances) */
@@ -289,9 +299,18 @@ export class App {
   /** a road dragged out on a touch screen, waiting for the player to confirm it */
   private roadPending: { start: { x: number; y: number }; end: { x: number; y: number } } | null = null;
 
+  /** a road tile picked with the select tool (offers "pull up road" beside it) */
+  private roadPick: { x: number; y: number } | null = null;
+
   private placeAction(a: PlaceAction): void {
     const tool = this.tool;
     audio.sfx('ui_click');
+    if (tool.kind === 'select' && this.roadPick) {
+      const rp = this.roadPick;
+      this.roadPick = null;
+      if (a === 'ok' && this.cmd({ type: 'unroad', x: rp.x, y: rp.y })) audio.sfx('demolish');
+      return;
+    }
     if (tool.kind === 'road' || tool.kind === 'unroad') {
       const rp = this.roadPending;
       this.roadPending = null;
@@ -317,8 +336,72 @@ export class App {
     }
   }
 
+  /** quick-action seals beside the selected building, ship or person */
+  private ring!: QuickRing;
+  /** a new selection waits for the inspector to settle, then the camera frames it clear of the sheets */
+  private frameSel = false;
+  private ray = new THREE.Raycaster();
+  private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+
+  /** where on the ground (at height y) the screen point lands */
+  private groundAt(clientX: number, clientY: number, y = 0): THREE.Vector3 | null {
+    const r = this.canvas.getBoundingClientRect();
+    if (!r.width) return null;
+    this.ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), this.world.rig.camera);
+    this.plane.constant = -y;
+    const p = new THREE.Vector3();
+    return this.ray.ray.intersectPlane(this.plane, p) ? p : null;
+  }
+
+  /**
+   * The open part of the screen (client pixels): below the top bar, above the toolbar, and beside or above the
+   * inspector, with room under the middle for the quick seals. Things the player is looking at belong in there.
+   */
+  private freeArea(): { l: number; r: number; t: number; b: number } {
+    const q = (sel: string) => {
+      const e = document.querySelector<HTMLElement>(sel);
+      return e && !e.classList.contains('hidden') && e.offsetParent ? e.getBoundingClientRect() : null;
+    };
+    const cr = this.canvas.getBoundingClientRect();
+    const top = q('.topbar'), clock = q('.clock'), tb = q('.toolbar'), ins = q('.panel.inspector');
+    const a = { l: cr.left, r: cr.right, t: Math.max(top?.bottom ?? 0, clock && clock.left < cr.width * 0.6 ? clock.bottom : 0), b: tb?.top ?? cr.bottom };
+    if (ins) {
+      if (ins.left > cr.width * 0.35 && ins.top < cr.height * 0.45) a.r = Math.min(a.r, ins.left);
+      else a.b = Math.min(a.b, ins.top);
+    }
+    return a;
+  }
+
+  /** the camera target that puts world point (x, z) at the middle of the free area */
+  private framedTarget(x: number, z: number, y = 0): { x: number; z: number } {
+    const a = this.freeArea();
+    const cr = this.canvas.getBoundingClientRect();
+    const sx = (a.l + a.r) / 2, sy = a.t + Math.max(40, (a.b - a.t - 70) * 0.5);
+    // the camera only translates when it pans: move its target (where the centre ray meets the target's height) by
+    // however far the point at height y under the chosen spot is from (x, z)
+    this.world.rig.camera.updateMatrixWorld();
+    const c = this.groundAt(cr.left + cr.width / 2, cr.top + cr.height / 2, this.world.rig.target.y), g = this.groundAt(sx, sy, y);
+    if (!c || !g) return { x, z };
+    return { x: c.x + x - g.x, z: c.z + z - g.z };
+  }
+
+  /** after a new selection: if the inspector covers it (or its seals would not fit), pan it into the free area */
+  private frameSelection(box: { x: number; y: number; z: number }): void {
+    const a = this.freeArea();
+    this.world.rig.camera.updateMatrixWorld();
+    const v = new THREE.Vector3(box.x, box.y, box.z).project(this.world.rig.camera);
+    const cr = this.canvas.getBoundingClientRect();
+    const sx = cr.left + (v.x * 0.5 + 0.5) * cr.width, sy = cr.top + (-v.y * 0.5 + 0.5) * cr.height;
+    if (sx > a.l + 50 && sx < a.r - 50 && sy > a.t + 60 && sy < a.b - 130) return;
+    const t = this.framedTarget(box.x, box.z, box.y);
+    this.world.rig.lookAt(t.x, t.z);
+  }
+
   select(s: Selection): void {
+    const fresh = !!s && (s.type !== this.selection?.type || s.id !== this.selection?.id);
     this.selection = s;
+    if (fresh) this.frameSel = true;
+    this.roadPick = null;
     this.world.buildings.select(s?.type === 'building' ? s.id : 0);
     this.world.people.selected = s?.type === 'person' ? s.id : 0;
     this.inspector.refresh(true);
@@ -339,10 +422,36 @@ export class App {
       const b = this.game.buildings.get(s.id);
       return b ? new THREE.Vector3(b.x + b.w / 2, 0, b.y + b.h / 2) : null;
     };
+    // keep what is followed in the free area, clear of the inspector
+    const f = w.rig.follow;
+    const off = this.framedTarget(0, 0);
+    w.rig.follow = () => {
+      const p = f();
+      return p ? p.set(p.x + off.x, p.y, p.z + off.z) : null;
+    };
   }
 
+  /** pan to a spot, framing it in the free part of the screen (beside or above an open inspector) */
   jumpTo(x: number, y: number): void {
-    this.world.rig.lookAt(x, y);
+    const t = this.framedTarget(x, y);
+    this.frameSel = false;
+    this.world.rig.lookAt(t.x, t.z);
+  }
+
+  /** place (or hide) the quick seals beside the selection; frames a fresh selection */
+  private updateRing(): void {
+    const q = this.state === 'game' && this.tool.kind === 'select' && !this.roadPick && !this.modal.open ? this.inspector.quick() : null;
+    if (!q) {
+      this.ring.hide();
+      this.inspector.setRinged(false);
+      return;
+    }
+    if (this.frameSel) {
+      this.frameSel = false;
+      this.frameSelection(q.box);
+    }
+    this.ring.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight }, q.box, q.acts, this.inspector.folded ? q.name : null, this.touchMode);
+    this.inspector.setRinged(this.ring.visible);
   }
 
   // ------------------------------------------------------------------------------------------------- input
@@ -356,6 +465,7 @@ export class App {
   private bindInput(): void {
     const c = this.canvas;
     this.placeCtl = new PlaceControls(this.root, (a) => this.placeAction(a));
+    this.ring = new QuickRing(this.root, this.inspector.acts, () => audio.sfx('ui_click'));
     let touches = 0;
     c.addEventListener('pointerdown', (ev) => {
       if (ev.pointerType === 'touch') {
@@ -443,6 +553,8 @@ export class App {
         const bid = this.world.buildings.pickBuilding(ray) || g.tileBuilding(t.x, t.y)?.id || 0;
         if (bid) return this.select({ type: 'building', id: bid });
         this.select(null);
+        // a road: offer to pull it up, right there
+        this.roadPick = g.map.path[g.map.idx(t.x, t.y)] ? { x: t.x, y: t.y } : null;
         return;
       }
       case 'build': {
@@ -597,6 +709,7 @@ export class App {
       g.advance(dt, SIM_BUDGET_MS);
     }
     this.updateGhost();
+    this.updateRing();
     prof?.lap('sim');
     // nothing advancing: the world may redraw at a low rate until something moves
     this.world.idle = this.state === 'game' && (g.paused || this.modal.pausing);
@@ -744,12 +857,48 @@ export class App {
   private previewKey = '';
   /** placement check + cursor text for the build ghost, redone when the tile/tool/rotation changes (or every 250 ms
    *  for treasury, lumber and sim changes) */
-  private ghostCheck = { key: '', at: 0, pl: null as ReturnType<App['placement']> | null, reason: '', text: '' };
+  private ghostCheck = { key: '', at: 0, pl: null as ReturnType<App['placement']> | null, reason: '', text: '', poor: false };
+
+  private previewResources() {
+    return (this.previewRes ??= {
+      geo: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
+      road: new THREE.MeshBasicMaterial({ color: 0xe0c070, transparent: true, opacity: 0.45, depthWrite: false }),
+      bad: new THREE.MeshBasicMaterial({ color: 0xff5040, transparent: true, opacity: 0.45, depthWrite: false }),
+      pool: [],
+    });
+  }
 
   private updateGhost(): void {
     const tool = this.tool;
     const h = this.hover;
     const hv = h;
+    if (this.state === 'game' && tool.kind === 'select' && this.roadPick) {
+      this.ghost.visible = false;
+      const rp = this.roadPick;
+      if (!this.game.map.path[this.game.map.idx(rp.x, rp.y)]) this.roadPick = null;
+      else {
+        const ex = rp.x + 0.5, ez = rp.y + 0.5;
+        // mark the picked tile in red, like the demolish preview
+        const pk = `pick:${rp.x},${rp.y}`;
+        if (this.previewKey !== pk) {
+          this.previewKey = pk;
+          const pv = this.previewResources();
+          this.roadPreview.clear();
+          const m = (pv.pool[0] ??= new THREE.Mesh(pv.geo, pv.bad));
+          m.material = pv.bad;
+          m.renderOrder = 3;
+          m.position.set(ex, Math.max(0.05, this.game.map.heightAt(ex, ez)) + 0.06, ez);
+          this.roadPreview.add(m);
+        }
+        this.placeCtl.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight },
+          { x: ex, y: Math.max(0.05, this.game.map.heightAt(ex, ez)), z: ez, w: 1, d: 1, h: 0.3 }, 'Pull up this road?', true, 'roadsel', true);
+        return;
+      }
+    }
+    if (this.previewKey.startsWith('pick:') && !this.roadPick) {
+      this.previewKey = '';
+      this.roadPreview.clear();
+    }
     if (this.state !== 'game' || !h) {
       this.ghost.visible = false;
       this.placeCtl?.hide();
@@ -769,8 +918,10 @@ export class App {
         const miss = this.game.missingReqs(def);
         const cost = this.game.costOf(def);
         if (!reason && miss.length) reason = miss[0] === 'unique' ? 'Only one allowed.' : `Requires a skilled ${miss.join(', ')}.`;
-        if (!reason && cost.gold > 0 && this.game.treasury < cost.gold) reason = 'Not enough gold.';
-        if (!reason && this.game.lumber() < cost.lumber) reason = 'Not enough lumber.';
+        // can't afford it: the tag says so in the treasurer's words, and looks different from a bad spot
+        // (it wins over a bad spot: no spot will do until the money is there; the red footprint still shows the ground)
+        gc.poor = !miss.length && ((cost.gold > 0 && this.game.treasury < cost.gold) || this.game.lumber() < cost.lumber);
+        if (gc.poor) reason = `${def.name}: ${short(cost.gold, this.game.treasury, cost.lumber, this.game.lumber()).toLowerCase()}`;
         gc.reason = reason;
         gc.text = reason || `${def.name}  ·  ${cost.gold ? cost.gold + ' gold  ' : ''}${cost.lumber ? cost.lumber + ' lumber' : ''}`;
       }
@@ -818,19 +969,14 @@ export class App {
       // the name/cost tag hangs from the ghost itself (with rotate / confirm / cancel beside it on touch screens)
       this.cursorTip.classList.add('hidden');
       this.placeCtl.show(this.world.rig.camera, { w: this.canvas.clientWidth, h: this.canvas.clientHeight },
-        { x: cx, y: gy, z: cz, w: fw, d: fh, h: Math.max(1.2, Math.min(fw, fh) * 0.8) }, gc.text, !gc.reason, 'build', this.touchMode);
+        { x: cx, y: gy, z: cz, w: fw, d: fh, h: Math.max(1.2, Math.min(fw, fh) * 0.8) }, gc.text, !gc.reason, 'build', this.touchMode, gc.poor);
     } else if (tool.kind === 'road' || tool.kind === 'unroad' || tool.kind === 'demolish' || tool.kind === 'clear') {
       this.ghost.visible = false;
       const rp = tool.kind === 'road' ? this.roadPending : null;
       const ds = tool.kind === 'road' ? (rp?.start ?? this.dragStart) : null;
       const h = rp?.end ?? hv!;
       const pk = `${tool.kind}:${h.x},${h.y}:${ds ? `${ds.x},${ds.y}` : ''}`;
-      const pv = (this.previewRes ??= {
-        geo: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
-        road: new THREE.MeshBasicMaterial({ color: 0xe0c070, transparent: true, opacity: 0.45, depthWrite: false }),
-        bad: new THREE.MeshBasicMaterial({ color: 0xff5040, transparent: true, opacity: 0.45, depthWrite: false }),
-        pool: [],
-      });
+      const pv = this.previewResources();
       // rebuild the tile preview only when the hovered tile or drag changes (or something cleared it)
       if (pk !== this.previewKey || !this.roadPreview.children.length) {
         this.previewKey = pk;

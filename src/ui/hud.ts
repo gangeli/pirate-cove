@@ -23,6 +23,7 @@ export class Hud {
   private advUntil = 0;
   private hintTimer = 0;
   advisorMode: 'full' | 'brief' | 'off' = 'full';
+  private touchHintFor = '';
 
   constructor(private app: App) {
     const ui = app.root;
@@ -55,6 +56,11 @@ export class Hud {
       },
     });
     delegate(this.ticker, {
+      toastRead: (id, _e, t) => {
+        const m = this.letters.get(+id);
+        t.closest('.toast')?.remove();
+        if (m) app.modal.message(m);
+      },
       toast: (arg, _e, t) => {
         const [x, y] = arg.split(',').map(Number);
         if (!isNaN(x)) app.jumpTo(x, y);
@@ -90,7 +96,12 @@ export class Hud {
     for (const e of [this.top, this.bar, this.ticker, this.clock]) e.classList.toggle('hidden', !on);
     if (on) setTimeout(() => this.update(), 0);
     this.minimap.show(on);
-    if (!on) this.adv.classList.add('gone');
+    if (!on) {
+      this.adv.classList.add('gone');
+      this.hint.classList.add('hidden');
+      clearTimeout(this.hintTimer);
+      this.hintTimer = 0;
+    }
     // in play the speaker joins the clock's speed row; on the title screen it goes back to its corner
     const sb = this.app.root.querySelector('.soundbtn');
     if (sb) (on ? this.clock.querySelector('.speed')! : this.app.root).appendChild(sb);
@@ -175,13 +186,18 @@ export class Hud {
       build: 'Click to place. R rotates, Shift keeps placing, right-click cancels.',
     };
     const touchHints: Record<string, string> = {
-      road: 'Drag along the ground to lay a road.',
-      clear: 'Drag over trees to clear them.',
+      road: 'Drag along the ground, then tap the tick to lay the road.',
+      clear: 'Drag a finger over trees to fell them. Two fingers move the map.',
       demolish: 'Tap a building or a road to tear it down.',
       build: 'Tap the ground to move the building, then confirm.',
     };
     const h = hints[k];
-    if (h) this.flash(this.app.touchMode ? touchHints[k] ?? h : h, 0);
+    if (!h) this.touchHintFor = '';
+    // on touch the hint is a short reminder, once per tool; the controls beside the ghost do the explaining after that
+    if (h && this.app.touchMode) {
+      if (this.touchHintFor !== k) this.flash(touchHints[k] ?? h, 4);
+      this.touchHintFor = k;
+    } else if (h) this.flash(h, 0);
     else if (this.hintTimer === 0) this.hint.classList.add('hidden');
   }
 
@@ -204,16 +220,17 @@ export class Hud {
       /* ignore */
     }
     const p = el('div', 'panel gpu-notice', this.app.root);
-    p.style.cssText = 'left:50%;top:84px;transform:translateX(-50%);width:min(520px,calc(100vw - 32px));z-index:40;font-size:15px;line-height:1.35';
-    setHTML(p, html`<button class="close" data-act="ok">${icon('close', 14)}</button>
-      <h3 style="margin-top:0">The Ship Sails Without Her Rigging</h3>
-      <div>Thy browser is drawing this island <b>without graphics acceleration</b> &mdash; every timber and wave is painted by hand on the
-      CPU, so the game will crawl. We have struck the lesser sails (lowest graphics) to keep her moving.</div>
-      <div style="margin-top:6px"><b>To set it right:</b> in Chrome or Edge, open <i>Settings &rsaquo; System</i> and turn on
-      <i>&ldquo;Use graphics acceleration when available&rdquo;</i>, then relaunch the browser. In Firefox: <i>Settings &rsaquo; General &rsaquo; Performance</i>,
-      untick &ldquo;Use recommended&rdquo; and tick &ldquo;Use hardware acceleration when available&rdquo;. Check <i>chrome://gpu</i> if it persists.</div>
-      <div class="sub" style="margin-top:6px">Renderer reported: ${renderer}</div>
-      <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn small" data-act="ok">Understood</button></div>`);
+    setHTML(p, html`<button class="close" data-act="ok" aria-label="Close">${icon('close', 14)}</button>
+      <div class="seal" aria-hidden="true">${icon('wheel', 24)}</div>
+      <h2>The Ship Sails Without Her Rigging</h2>
+      <p>Your browser is drawing this island <b>without graphics acceleration</b>: every timber and wave is painted by hand on the
+      CPU, so the game will crawl. We have struck the lesser sails (lowest graphics) to keep her moving.</p>
+      <h4 class="eng">To set it right</h4>
+      <ol class="steps"><li><b>Chrome or Edge:</b> <i>Settings &rsaquo; System</i>, turn on <i>&ldquo;Use graphics acceleration when available&rdquo;</i>, then relaunch the browser.</li>
+      <li><b>Firefox:</b> <i>Settings &rsaquo; General &rsaquo; Performance</i>, untick &ldquo;Use recommended&rdquo; and tick &ldquo;Use hardware acceleration when available&rdquo;.</li>
+      <li>Still crawling? Check <i>chrome://gpu</i>.</li></ol>
+      <div class="rend"><span>Renderer reported</span><code>${renderer}</code></div>
+      <div class="row"><button class="btn primary" data-act="ok">Understood</button></div>`);
     delegate(p, {
       ok: () => {
         try {
@@ -322,13 +339,21 @@ export class Hud {
     if (m.voice && this.advisorMode !== 'off' && (m.kind === 'alert' || m.kind === 'ship' || m.kind === 'bad' || m.kind === 'good')) audio.voice(m.voice);
   }
 
+  /** toasts too long to show whole, by id, for "Read on" (pruned with the toasts) */
+  private letters = new Map<number, Message>();
+  private letterSeq = 0;
+
   private toast(m: Message): void {
     const t = el('div', `toast ${m.kind}`, this.ticker);
     t.dataset.act = `toast:${m.focus ? `${m.focus.x},${m.focus.y}` : ''}`;
     const ic = m.kind === 'ship' ? 'ship' : m.kind === 'bad' ? 'skull' : m.kind === 'good' ? 'coin' : m.kind === 'alert' ? 'bell' : 'info';
-    setHTML(t, html`${icon(ic, 22)}<div><b>${m.title}</b>${m.text.split('\n')[0].slice(0, 110)}</div>`);
+    // a long letter is clipped to a few lines: "Read on" unfolds the whole of it
+    const long = m.text.length > 84 || m.text.includes('\n');
+    if (long) this.letters.set(++this.letterSeq, m);
+    setHTML(t, html`${icon(ic, 22)}<div><b>${m.title}</b><span class="tx">${m.text.split('\n')[0]}</span>${long ? html`<button class="readon" data-act="toastRead:${this.letterSeq}">Read on…</button>` : ''}</div>`);
     while (this.ticker.children.length > 5) this.ticker.firstElementChild!.remove();
     setTimeout(() => t.remove(), 12000);
+    for (const k of this.letters.keys()) if (k < this.letterSeq - 8) this.letters.delete(k);
   }
 
   private nextAdvisor(): void {
@@ -343,7 +368,7 @@ export class Hud {
       <div class="panel bubble" style="position:relative">
         <div class="who">${parrot ? 'Polly the parrot' : `${ADVISOR_NAME}, your first mate`}</div>
         <h4>${m.title}</h4><p>${this.advisorMode === 'brief' ? m.text.split('. ')[0] + '.' : m.text}</p>
-        <div class="row">${m.focus ? html`<button class="btn small" data-act="advGo:${m.focus.x},${m.focus.y}">Show me</button>` : ''}<button class="btn small" data-act="advClose">Aye</button></div>
+        <div class="row">${m.focus ? html`<button class="btn ghost small" data-act="advGo:${m.focus.x},${m.focus.y}">${icon('eye', 14)} Show me</button>` : ''}<button class="btn primary small" data-act="advClose">Aye</button></div>
       </div>`);
     this.adv.classList.remove('gone');
     this.advUntil = performance.now() + Math.max(9000, m.text.length * 70);

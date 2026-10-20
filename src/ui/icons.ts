@@ -34,6 +34,7 @@ const P: Record<string, string> = {
   sprout: `<g ${S}><path d="M12 21v-9.5"/><path d="M12 12.5c0-4-3-6.5-7.5-6.5 0 4.2 3.2 6.5 7.5 6.5z"/><path d="M12 10.5c0-3.8 2.6-6 7-6 0 3.8-2.6 6-7 6z"/><path d="M7 21h10"/></g>`,
   scales: `<g ${S}><path d="M12 3.5v16M8 20.5h8M4.5 7h15"/><path d="M4.5 7L2 13.5h5zM19.5 7L17 13.5h5z"/></g><circle cx="12" cy="3.5" r="1" ${F}/>`,
   pick: `<g ${S}><path d="M5 20.5l8.5-8.5"/><path d="M7.5 5.5c4.5-2.5 10-1.5 12 3-3.5-1.2-6.5-.8-8.5 1z"/></g><g ${T}><path d="M10 6.5l3.5 3.5"/></g>`,
+  quill: `<g ${S}><path d="M20.5 3.5C13 4.5 8.5 9.5 6.5 16.5l-1 3 3-1.5c6.5-2.5 11.5-7 12-14.5z"/><path d="M4 21l9.5-10.5"/></g><g ${T}><path d="M10 13.5l3 .5M12 11l3 .3"/></g>`,
   undo: `<g ${S} stroke-width="1.9"><path d="M8.5 5.5L4 10l4.5 4.5"/><path d="M4.5 10h10a5.5 5.5 0 0 1 0 11H11"/></g>`,
   check: `<path d="M5 12.5l4.5 4.5L19 7" ${S} stroke-width="2.4"/>`,
   plus: `<path d="M12 5v14M5 12h14" ${S} stroke-width="2.2"/>`,

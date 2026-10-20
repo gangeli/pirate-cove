@@ -101,7 +101,7 @@ export class MainMenu {
         <button class="item" data-act="settings">Settings</button>
         <button class="item" data-act="credits">Credits</button>
       </div></div>
-      <div class="foot">A tribute to the pirate island builders of old. Click anywhere to enable sound.</div>`);
+      <div class="foot">A tribute to the pirate island builders of old. ${matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'} anywhere to enable sound.</div>`);
     pwaMenuItems(this.root.querySelector('.items'));
     this.root.classList.remove('hidden');
   }
@@ -135,8 +135,9 @@ export class MainMenu {
     if (this.tab === 'preset') {
       const cur = this.presetId();
       body = html`<div class="presets">${PRESETS.map((p) => html`<div class="preset ${cur === p.id ? 'on' : ''}" data-act="preset:${p.id}">
-          <div class="pname">${p.name}<span class="pdiff">${Math.round(difficultyOf({ ...this.s, ...p.settings } as Settings) * 100)}%</span></div>
-          <div class="pblurb">${p.blurb}</div></div>`)}
+          <div class="pname">${p.name}<span class="pdiff"><small>score ×</small>${(difficultyOf({ ...this.s, ...p.settings } as Settings)).toFixed(2)}</span></div>
+          <div class="pblurb">${p.blurb}</div>
+          <div class="pskulls" aria-hidden="true">${[0, 1, 2, 3, 4].map((i) => icon('skull', 15, i <= PRESETS.indexOf(p) ? 'lit' : ''))}</div></div>`)}
         ${cur ? '' : html`<div class="hintx">Custom conditions. Pick a preset to start from, or adjust the island and conditions freely.</div>`}</div>`;
     } else if (this.tab === 'island') {
       body = html`<div class="grid2">
@@ -174,8 +175,9 @@ export class MainMenu {
       <h2>A New Reign</h2>
       <nav class="tabs book" role="tablist">${([['preset', 'Difficulty', 'skull'], ['island', 'The island', 'compass'], ['conditions', 'Conditions', 'scroll'], ['king', `Pirate ${this.king.sex === 'F' ? 'queen' : 'king'}`, 'crown']] as const).map(([t, n, ic]) => html`<button class="t ${this.tab === t ? 'on' : ''}" data-act="tab:${t}" role="tab" aria-selected="${this.tab === t ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</nav>
       <div class="content scroll" style="flex:1;margin:8px 0">${body}</div>
-      <div class="row" style="justify-content:space-between"><span class="sub">Difficulty: <b>${this.difficulty()}%</b> (your final score is multiplied by this)</span>
+      <div class="row" style="justify-content:space-between"><span class="sub">Difficulty <b>${this.difficulty()}%</b>: your final score is multiplied by this</span>
         <div class="row">${this.tab !== 'king' ? html`<button class="btn ghost" data-act="tab:${this.tab === 'preset' ? 'island' : this.tab === 'island' ? 'conditions' : 'king'}">Next</button>` : ''}<button class="btn primary" data-act="start">Begin your reign</button></div></div>`);
+    this.setup.querySelector('.tabs .t.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const sel = this.setup.querySelector<HTMLSelectElement>('[data-region]');
     if (sel) sel.onchange = () => (this.s.region = +sel.value);
     const bg = this.setup.querySelector<HTMLSelectElement>('[data-bg]');

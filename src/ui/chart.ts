@@ -33,6 +33,8 @@ const ISLETS: [number, number, number][] = [
 const ASPECT = 4 / 3;
 const PAPER_W = 1600;
 const INK = '#3a1a08', BLOOD = '#8a1a10', REACH = '#2c6a36';
+/** the title cartouche, on the southern mainland clear of the seas (centre, map units) */
+const CARTOUCHE: [number, number] = [0.75, 0.915];
 const LEVELS = ['Uncharted', 'Surveyed', 'Charted', 'Familiar seas', 'Like the back of our hand', 'Our own waters'];
 
 type Mode = 'reach' | 'risk' | 'reward';
@@ -44,6 +46,8 @@ export class SeaChart {
   private side!: HTMLElement;
   private bar!: HTMLElement;
   private legend!: HTMLElement;
+  private bar2!: HTMLElement;
+  private legend2!: HTMLElement;
   private tip!: HTMLElement;
   visible = false;
   private region = -1;
@@ -77,12 +81,15 @@ export class SeaChart {
           </div>
           <div class="chart-legend"></div>
         </div>
-        <div class="chart-side scroll"></div>
+        <div class="chart-sidecol"><div class="chart-bar side-copy"></div><div class="chart-legend side-copy"></div><div class="chart-side scroll"></div></div>
       </div>`);
     this.canvas = this.panel.querySelector('canvas')!;
     this.side = this.panel.querySelector('.chart-side') as HTMLElement;
     this.bar = this.panel.querySelector('.chart-bar') as HTMLElement;
     this.legend = this.panel.querySelector('.chart-legend') as HTMLElement;
+    // short landscape screens show the view switch and legend at the head of the side sheet instead (CSS picks one)
+    this.bar2 = this.panel.querySelector('.chart-bar.side-copy') as HTMLElement;
+    this.legend2 = this.panel.querySelector('.chart-legend.side-copy') as HTMLElement;
     this.tip = this.panel.querySelector('.chart-tip') as HTMLElement;
     delegate(this.panel, {
       close: () => this.hide(),
@@ -120,9 +127,11 @@ export class SeaChart {
   // ------------------------------------------------------------------------------------------------ pan, zoom, pick
   private bindMap(): void {
     const c = this.canvas;
+    // pointer position in the canvas's own CSS pixels (the UI layer may be zoomed on big screens)
     const local = (e: PointerEvent | WheelEvent) => {
       const r = c.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
+      const k = c.clientWidth ? c.clientWidth / r.width : 1;
+      return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
     };
     c.addEventListener('pointerdown', (e) => {
       c.setPointerCapture(e.pointerId);
@@ -371,7 +380,7 @@ export class SeaChart {
     g.lineWidth = 1.5;
     for (let i = 0; i < 70; i++) {
       const x = rnd() * W, y = H * (0.82 + rnd() * 0.17);
-      if (x > W * 0.36 && x < W * 0.84 && y > H * 0.84) continue;
+      if (Math.abs(x / W - CARTOUCHE[0]) < 0.2 && y > H * 0.84) continue;
       g.beginPath();
       g.moveTo(x - 9, y);
       g.lineTo(x, y - 10);
@@ -403,7 +412,7 @@ export class SeaChart {
     g.fillText('N', 0, -R - 6);
     g.restore();
     // title cartouche on the southern mainland
-    const tx = 0.6 * W, ty = 0.905 * H;
+    const tx = CARTOUCHE[0] * W, ty = CARTOUCHE[1] * H;
     g.fillStyle = 'rgba(240,228,196,0.85)';
     g.strokeStyle = '#5a3a1a';
     g.lineWidth = 2;
@@ -463,8 +472,9 @@ export class SeaChart {
   private draw(): void {
     const c = this.canvas;
     const rect = c.getBoundingClientRect();
-    const cw = Math.max(200, Math.round(rect.width)), ch = Math.max(150, Math.round(rect.height));
-    const dpr = Math.min(2, devicePixelRatio || 1);
+    const cw = Math.max(200, c.clientWidth), ch = Math.max(150, c.clientHeight);
+    // device pixels per CSS pixel of the canvas, including any zoom on the UI layer
+    const dpr = Math.min(3, (devicePixelRatio || 1) * (c.clientWidth ? rect.width / c.clientWidth : 1));
     if (c.width !== Math.round(cw * dpr) || c.height !== Math.round(ch * dpr)) {
       c.width = Math.round(cw * dpr);
       c.height = Math.round(ch * dpr);
@@ -650,10 +660,13 @@ export class SeaChart {
   /** region names (and a second line: months of sailing, or danger/plunder pips), placed so they never overlap */
   private drawLabels(g: CanvasRenderingContext2D, info: { r: Region; x: number; y: number; known: boolean; home: boolean; reach: { ok: boolean } | null; months: number }[], R: number, small: boolean, sel?: Ship): void {
     const f1 = small ? 11.5 : 13.5, f2 = small ? 10.5 : 12;
-    const placed: Box[] = [];
+    // the title cartouche is an obstacle too
+    const placed: Box[] = [{ x: this.sx(CARTOUCHE[0] - 0.2), y: this.sy(CARTOUCHE[1] - 0.055), w: 0.4 * this.geo.mw * this.view.z, h: 0.1 * this.geo.mh * this.view.z }];
     const discs = info.map((o) => ({ x: o.x - R, y: o.y - R, w: R * 2, h: R * 2 }));
     const inter = (a: Box, b: Box) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
-    const order = [...info].sort((a, b) => (a.home ? -1 : b.home ? 1 : 0) || (a.r.id === this.region ? -1 : b.r.id === this.region ? 1 : 0) || a.y - b.y);
+    // the labels that matter are placed first, so the minor ones are the ones that give way
+    const rank = (o: (typeof info)[number]) => (o.home ? 0 : o.r.id === this.region ? 1 : sel && sel.region === o.r.id ? 2 : o.reach?.ok ? 3 : o.known ? 4 : 5);
+    const order = [...info].sort((a, b) => rank(a) - rank(b) || a.y - b.y);
     for (const o of order) {
       const name = o.home ? 'Your Cove' : o.r.name;
       let line2 = '';
@@ -679,14 +692,19 @@ export class SeaChart {
         { x: o.x - w / 2 + R, y: o.y + off, w, h },
         { x: o.x - w / 2 - R, y: o.y + off, w, h },
       ];
-      let best = cands[0], bs = Infinity;
+      let best = cands[0], bs = Infinity, bestLov = 0;
       cands.forEach((b, i) => {
-        let s = i * 0.5;
-        for (const p of placed) s += inter(b, p) * 10;
+        let s = i * 0.5, lov = 0;
+        for (const p of placed) lov += inter(b, p);
+        s += lov * 10;
         discs.forEach((d, j) => (s += info[j] === o ? 0 : inter(b, d)));
         if (b.x < 2 || b.x + b.w > this.geo.cw - 2 || b.y < 2 || b.y + b.h > this.geo.ch - 2) s += 400;
-        if (s < bs) (bs = s), (best = b);
+        if (s < bs) (bs = s), (best = b), (bestLov = lov);
       });
+      // no clean spot: minor names give way (they show on hover/tap); home, the inspected sea, the course and seas
+      // within reach always get their label
+      const important = o.home || o.r.id === this.region || (sel && (sel.region === o.r.id || o.reach?.ok));
+      if (bestLov > 4 && !important) continue;
       placed.push(best);
       const cx = best.x + best.w / 2;
       g.textAlign = 'center';
@@ -732,8 +750,10 @@ export class SeaChart {
   private drawBar(): void {
     const sel = this.selShip();
     const modes: [Mode, string, string][] = [['reach', 'Reach', 'compass'], ['risk', 'Danger', 'skull'], ['reward', 'Plunder', 'chest']];
-    patchHTML(this.bar, html`<div class="seg" role="radiogroup" aria-label="Chart view">${modes.map(([m, n, ic]) => html`<button class="${this.mode === m ? 'on' : ''}" data-act="mode:${m}" role="radio" aria-checked="${this.mode === m ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</div>
-      <span class="how">${this.app.touchMode ? 'Pinch to zoom, drag to pan' : 'Scroll to zoom, drag to pan'}</span>`);
+    const bar = html`<div class="seg" role="radiogroup" aria-label="Chart view">${modes.map(([m, n, ic]) => html`<button class="${this.mode === m ? 'on' : ''}" data-act="mode:${m}" role="radio" aria-checked="${this.mode === m ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</div>
+      <span class="how">${this.app.touchMode ? 'Pinch to zoom, drag to pan' : 'Scroll to zoom, drag to pan'}</span>`;
+    patchHTML(this.bar, bar);
+    patchHTML(this.bar2, bar);
     const sw = (inner: string) => raw(`<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">${inner}</svg>`);
     const items = [html`<span>${sw('<circle cx="9" cy="9" r="7" fill="#7a1810" stroke="#e2c88e" stroke-width="1.2"/><circle cx="9" cy="8" r="2.6" fill="#f2e2bc"/>')} Your Cove</span>`];
     if (this.mode === 'reach') {
@@ -742,6 +762,7 @@ export class SeaChart {
       items.push(html`<span>${sw('<circle cx="9" cy="9" r="6.5" fill="url(#lgF)" stroke="rgba(70,40,15,.4)" stroke-dasharray="3 3"/><defs><pattern id="lgF" width="3" height="3" patternUnits="userSpaceOnUse"><rect width="3" height="3" fill="rgba(160,150,125,.55)"/><rect x=".6" y=".6" width=".9" height=".9" fill="rgba(80,65,45,.7)"/></pattern></defs>')} Uncharted</span>`);
     } else items.push(html`<span class="scale ${this.mode}"><i></i> ${this.mode === 'risk' ? 'Safer → deadlier' : 'Lean → rich pickings'}</span>`);
     patchHTML(this.legend, html`${items}`);
+    patchHTML(this.legend2, html`${items}`);
   }
 
   private drawSide(force: boolean): void {

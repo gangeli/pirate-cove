@@ -22,10 +22,10 @@ export class PlaceControls {
 
   constructor(parent: HTMLElement, onAction: (a: PlaceAction) => void) {
     this.root = el('div', 'placectl hidden', parent);
-    this.root.innerHTML = `<div class="pc-tag"><span class="t"></span></div>
+    this.root.innerHTML = `<div class="pc-tag">${icon('coin', 15, 'i-poor').html}<span class="t"></span></div>
       <button class="pc-btn pc-rot" data-pc="rotl" aria-label="Rotate left">${icon('rotl', 20).html}</button>
       <button class="pc-btn pc-rot" data-pc="rotr" aria-label="Rotate right">${icon('rotr', 20).html}</button>
-      <div class="pc-row"><button class="pc-btn pc-no" data-pc="cancel" aria-label="Cancel">${icon('close', 20).html}</button><button class="pc-btn pc-ok" data-pc="ok" aria-label="Place here">${icon('check', 24).html}</button></div>`;
+      <div class="pc-row"><button class="pc-btn pc-no" data-pc="cancel" aria-label="Cancel">${icon('close', 20).html}</button><button class="pc-btn pc-ok" data-pc="ok" aria-label="Confirm">${icon('check', 24, 'i-ok').html}${icon('bulldoze', 22, 'i-del').html}</button></div>`;
     this.tag = this.root.querySelector('.pc-tag') as HTMLElement;
     this.tagText = this.root.querySelector('.pc-tag .t') as HTMLElement;
     const [l, r] = this.root.querySelectorAll<HTMLElement>('.pc-rot');
@@ -51,9 +51,10 @@ export class PlaceControls {
 
   /**
    * Show the controls around a world-space box (centre x/z, ground height y, footprint w x d, height h).
-   * mode 'build' gets rotate + confirm/cancel, 'road' only confirm/cancel; buttons only on touch screens.
+   * mode 'build' gets rotate + confirm/cancel, 'road' only confirm/cancel, 'roadsel' (a road picked in the world) a
+   * pull-up-the-road button; buttons only on touch screens (or when `touch` is forced for a fixed anchor).
    */
-  show(cam: THREE.Camera, view: { w: number; h: number }, box: { x: number; y: number; z: number; w: number; d: number; h: number }, text: string, ok: boolean, mode: 'build' | 'road', touch: boolean): void {
+  show(cam: THREE.Camera, view: { w: number; h: number }, box: { x: number; y: number; z: number; w: number; d: number; h: number }, text: string, ok: boolean, mode: 'build' | 'road' | 'roadsel', touch: boolean, poor = false): void {
     let l = Infinity, r = -Infinity, t = Infinity, b = -Infinity;
     const W = view.w, H = view.h; // the 3D canvas sits at the top-left of the page
     for (const dx of [-0.5, 0.5]) for (const dz of [-0.5, 0.5]) for (const dy of [0, 1]) {
@@ -64,21 +65,28 @@ export class PlaceControls {
       t = Math.min(t, sy);
       b = Math.max(b, sy);
     }
-    const ui = this.root.parentElement!.getBoundingClientRect();
-    l -= ui.left;
-    r -= ui.left;
-    t -= ui.top;
-    b -= ui.top;
-    const key = `${Math.round(l)},${Math.round(r)},${Math.round(t)},${Math.round(b)}|${text}|${ok}|${mode}|${touch}|${Math.round(ui.width)}x${Math.round(ui.height)}`;
+    const host = this.root.parentElement!;
+    const ui = host.getBoundingClientRect();
+    // the UI layer may be CSS-zoomed on big screens: work in its own (unzoomed) pixels
+    const z = host.offsetWidth ? ui.width / host.offsetWidth : 1;
+    l = (l - ui.left) / z;
+    r = (r - ui.left) / z;
+    t = (t - ui.top) / z;
+    b = (b - ui.top) / z;
+    const key = `${Math.round(l)},${Math.round(r)},${Math.round(t)},${Math.round(b)}|${text}|${ok}|${mode}|${touch}|${poor}|${Math.round(ui.width)}x${Math.round(ui.height)}`;
     if (key === this.key) return;
     this.key = key;
     this.root.classList.remove('hidden');
     toggleClass(this.root, 'touch', touch);
     toggleClass(this.root, 'bad', !ok);
+    toggleClass(this.root, 'poor', poor);
     toggleClass(this.root, 'road', mode === 'road');
+    toggleClass(this.root, 'roadsel', mode === 'roadsel');
     setText(this.tagText, text);
     const cx = (l + r) / 2, cy = (t + b) / 2;
-    const uw = ui.width, uh = ui.height;
+    // keep clear of the toolbar (and of the screen edges)
+    const tb = document.querySelector('.toolbar')?.getBoundingClientRect();
+    const uw = ui.width / z, uh = (tb && tb.height ? Math.min(ui.height, tb.top - ui.top) : ui.height) / z;
     const clampX = (x: number, w: number) => Math.max(6, Math.min(uw - w - 6, x));
     const clampY = (y: number, h: number) => Math.max(6, Math.min(uh - h - 6, y));
     // the tag hangs above the ghost (below it when there is no room)
