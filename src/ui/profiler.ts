@@ -69,7 +69,7 @@ export class Profiler {
       /* ignore */
     }
     this.badge = el('div', 'panel prof-badge', document.body);
-    this.badge.style.cssText = 'position:fixed;right:12px;bottom:84px;z-index:60;padding:6px 10px;font-size:13px;pointer-events:auto;cursor:pointer';
+    this.badge.style.cssText = 'position:fixed;right:12px;top:calc(var(--app-h, 100dvh) - 84px - env(safe-area-inset-bottom, 0px));transform:translateY(-100%);z-index:60;padding:6px 10px;font-size:13px;pointer-events:auto;cursor:pointer';
     this.badge.title = 'Click to stop early';
     this.badge.onclick = () => this.finish();
     this.paintBadge();
@@ -242,7 +242,7 @@ export function recordProfile(app: App, seconds = 60): void {
 
 function showReport(report: string): void {
   const box = el('div', 'panel prof-report', document.body);
-  box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:70;width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 64px);display:flex;flex-direction:column;gap:8px';
+  box.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:70;width:min(620px,calc(100vw - 32px));max-height:calc(var(--app-h, 100dvh) - 64px);display:flex;flex-direction:column;gap:8px';
   const sum = JSON.parse(report).summary;
   const kb = (report.length / 1024).toFixed(1);
   setHTML(box, html`<h3 style="margin:0">Performance report</h3>

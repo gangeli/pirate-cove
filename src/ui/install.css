@@ -14,7 +14,7 @@
 
 /* "Update ready" card: parchment, like the in-game toasts */
 .pwa-toast {
-  position: fixed; z-index: 250; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+  position: fixed; z-index: 250; left: 50%; top: calc(var(--app-h, 100dvh) - max(16px, env(safe-area-inset-bottom))); transform: translate(-50%, -100%);
   display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 12px; max-width: calc(100vw - 32px); box-sizing: border-box;
   background: var(--paper); background-size: 512px 512px; color: var(--ink); font-size: 14px; line-height: 1.25;
   border: 1px solid #000; border-left: 4px solid var(--brass-lo, #7a5a1a);

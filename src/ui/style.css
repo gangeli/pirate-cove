@@ -34,8 +34,15 @@
     radial-gradient(circle at 45% 40%, var(--brass-hi), var(--brass) 35%, var(--brass-lo) 68%, transparent 72%) right 1px bottom 1px / 7px 7px no-repeat border-box;
 }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #070c10; font-family: var(--body); color: var(--ink); user-select: none; -webkit-user-select: none; }
-#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
-#ui { position: fixed; inset: 0; pointer-events: none; font-size: 15px; }
+/* --app-h is the height actually visible (set from visualViewport in main.ts): on phones 100%/100vh reach behind the
+   browser's address bar, which then covers whatever is anchored to the bottom. The HUD also keeps clear of notches
+   and the home indicator (viewport-fit=cover). */
+#view { position: fixed; top: 0; left: 0; width: 100%; height: var(--app-h, 100dvh); display: block; outline: none; }
+#ui {
+  position: fixed; pointer-events: none; font-size: 15px;
+  top: env(safe-area-inset-top, 0px); left: env(safe-area-inset-left, 0px); right: env(safe-area-inset-right, 0px);
+  height: calc(var(--app-h, 100dvh) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
 #ui .pe, #ui button, #ui .panel, #ui .bar, #ui .toolbar, #ui .menu, #ui .modal-wrap { pointer-events: auto; }
 .hidden { display: none !important; }
 .ic { display: inline-block; vertical-align: middle; flex: none; }
@@ -224,7 +231,7 @@ input[type=range] { accent-color: var(--blood); }
 .modal .seal .ic { opacity: 0.75; filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5)); }
 
 /* ---------- inspector ---------- */
-.inspector { right: 12px; bottom: 12px; z-index: 5; width: 360px; max-height: calc(100vh - 120px); display: flex; flex-direction: column; }
+.inspector { right: 12px; bottom: 12px; z-index: 5; width: 360px; max-height: calc(100% - 120px); display: flex; flex-direction: column; }
 .inspector .head { display: flex; gap: 12px; align-items: center; }
 .inspector .head .portrait { border: 1px solid var(--ink); box-shadow: 0 0 0 3px rgba(226, 210, 170, 0.6), 0 0 0 4px var(--ink2); flex: none; }
 .inspector .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 14px; }
@@ -386,13 +393,13 @@ body.touch .panel .close { width: 36px; height: 36px; }
   .bcard { width: 92px; }
   .bcard img { width: 84px; height: 60px; }
   .bcard .nm { font-size: 12.5px; height: 28px; }
-  .inspector { right: 6px; left: auto; bottom: 52px; width: min(330px, calc(100vw - 12px)); max-height: calc(100dvh - 104px); font-size: 13px; }
+  .inspector { right: 6px; left: auto; bottom: 52px; width: min(330px, calc(100vw - 12px)); max-height: calc(100% - 104px); font-size: 13px; }
   .inspector h2 { font-size: 20px !important; }
   .inspector .kv, .needs { font-size: 12.5px; }
   .inspector .head .portrait-img, .inspector .head svg { width: 48px !important; height: 60px !important; }
   .slot { width: 28px; height: 28px; }
   .btn.small { font-size: 13px; padding: 2px 7px; }
-  .big, .setup, .credits { inset: 0; left: 0; top: 0; transform: none; width: 100vw; height: 100dvh; max-height: none; }
+  .big, .setup, .credits { inset: 0; left: 0; top: 0; transform: none; width: auto; height: auto; max-height: none; }
   .big .tabs, .inspector .tabs { overflow-x: auto; flex-wrap: nowrap; }
   .chart-wrap { flex-direction: column; }
   .chart-side { width: auto; max-height: 40%; overflow-y: auto; }
@@ -431,7 +438,7 @@ body.touch .panel .close { width: 36px; height: 36px; }
 .preset .pblurb { font-style: italic; font-size: 15px; margin-top: 2px; }
 
 /* sound toggle: a brass-rimmed speaker in the bottom-right corner, on the title screen and in play */
-.soundbtn { position: fixed; right: max(14px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom)); z-index: 60;
+.soundbtn { position: absolute; right: 14px; bottom: 14px; z-index: 60;
   width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: #f2dcb0;
   background: var(--wood-dark) center / 256px 128px, #2c1c12; border: 2px solid #a8822e;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 220, 150, 0.25); padding: 0; }
