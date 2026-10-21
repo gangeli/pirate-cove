@@ -90,6 +90,7 @@ export function measureSlide(samples: { t: number; body: [number, number]; pts: 
     const dt = b.t - a.t;
     if (dt <= 0) continue;
     const moved = Math.hypot(b.body[0] - a.body[0], b.body[1] - a.body[1]);
+    if (moved > 0.5) continue; // a jump (a walk test lane starting over), not walking
     for (let k = 0; k < b.pts.length; k++) {
       const p = a.pts[k], q = b.pts[k];
       if (p[1] - a.ground > lo[k] + eps || q[1] - b.ground > lo[k] + eps) continue;

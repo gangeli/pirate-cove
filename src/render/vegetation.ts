@@ -4,6 +4,10 @@ import type { GameMap } from '../sim/map';
 import { Terrain } from '../sim/map';
 import { loadTex } from './textures';
 import { gpu } from './backend';
+import { fitTree, nearSignature, samplePoints, shapeOf, type TopFn, type TreePose, type TreeShape } from './treefit';
+
+/** ?nofit=1 places trees as generated, through buildings and all (debugging, before/after comparisons) */
+const NOFIT = typeof location !== 'undefined' && /[?&]nofit=1/.test(location.search);
 
 /** shared wind uniform */
 export const wind = { uTime: { value: 0 }, uWind: { value: 1 } };
@@ -235,8 +239,22 @@ export class Vegetation {
   readonly group = new THREE.Group();
   private geo = { palm: palmGeometry(), broad: broadleafGeometry() };
   private mats: Record<string, THREE.Material> = {};
+  /** point clouds of each tree type, for keeping trees out of buildings (treefit.ts) */
+  private shapes: { palm: TreeShape; broad: TreeShape; bush: TreeShape };
+  /** how many trees the last rebuild moved, shrank or left out to keep them clear of buildings and roads */
+  fitted = { moved: 0, dropped: 0, ms: 0 };
+  /** per tree slot: the fingerprint of its surroundings and the pose fitted to them (null: left out) */
+  private fitCache = new Map<number, { sig: number; shape: TreeShape; sc: number; pose: TreePose | null }>();
 
-  constructor(private map: GameMap) {
+  /** `top`: world-space top of the building on a tile (0 = none); without it trees are placed as generated */
+  constructor(private map: GameMap, private top?: TopFn) {
+    const pts = (g: THREE.BufferGeometry, max: number) => samplePoints((g.getAttribute('position') as THREE.BufferAttribute).array, max);
+    const none = new Float32Array(0);
+    this.shapes = {
+      palm: shapeOf(pts(this.geo.palm.fronds, 320), pts(this.geo.palm.trunk, 48)),
+      broad: shapeOf(pts(this.geo.broad.crown, 240), pts(this.geo.broad.trunk, 32)),
+      bush: shapeOf(pts(this.geo.broad.crown, 160), none, true),
+    };
     const bark = loadTex('tex/palmbark_d.jpg', true);
     const barkN = loadTex('tex/palmbark_n.jpg', false);
     // WebGPU: the node twin of windify (nodes.ts windMaterial), which needs the wind data in each chunk's geometry
@@ -287,6 +305,27 @@ export class Vegetation {
     const chunks = Array.from({ length: cn * cn }, () => ({ palms: [] as THREE.Matrix4[], broads: [] as THREE.Matrix4[], bushes: [] as THREE.Matrix4[], pi: [] as number[], bi: [] as number[] }));
     let palmN = 0, broadN = 0;
     const q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), e = new THREE.Euler();
+    const top = NOFIT ? undefined : this.top;
+    const k3 = (x: number, y: number, slot: number) => (y * n + x) * 10 + slot;
+    this.fitted = { moved: 0, dropped: 0, ms: 0 };
+    const t0 = performance.now();
+    /** the generated pose, or the nearest one that keeps clear of buildings and roads (null: leave the tree out) */
+    const place = (shape: TreeShape, pose: TreePose, x: number, y: number, slot: number, compose: (p: TreePose) => THREE.Matrix4, opts?: { yaws?: number; minScale?: number }): THREE.Matrix4 | null => {
+      if (!top) return compose(pose);
+      const sig = nearSignature(m, top, pose.x, pose.z, shape.reach * pose.sc + 0.6);
+      if (!sig) return compose(pose);
+      // (unchanged surroundings: last rebuild's answer stands)
+      const key = k3(x, y, slot);
+      const c = this.fitCache.get(key);
+      const f = c && c.sig === sig && c.shape === shape && c.sc === pose.sc ? c.pose : fitTree(shape, pose, [x, y], m, top, (pp) => compose(pp).elements, opts);
+      this.fitCache.set(key, { sig, shape, sc: pose.sc, pose: f });
+      if (!f) {
+        this.fitted.dropped++;
+        return null;
+      }
+      if (f.x !== pose.x || f.z !== pose.z || f.yaw !== pose.yaw || f.sc !== pose.sc) this.fitted.moved++;
+      return compose(f);
+    };
     for (let y = 0; y < n; y++)
       for (let x = 0; x < n; x++) {
         const k = y * n + x;
@@ -298,14 +337,16 @@ export class Vegetation {
         const per = jungle && cnt >= 3 ? 2 : 1;
         for (let i = 0; i < per; i++) {
           const jx = x + 0.2 + hash(x, y, i) * 0.6, jz = y + 0.2 + hash(y, x, i + 7) * 0.6;
-          const h = m.heightAt(jx, jz);
           const usePalm = !jungle ? true : hash(x, y, 31 + i) < 0.22;
           const sc = (usePalm ? 0.42 : 0.4) + hash(x, y, 5 + i) * 0.22 + (jungle ? cnt * 0.03 : 0);
-          e.set((hash(x, y, 11) - 0.5) * 0.12, hash(x, y, 12 + i) * Math.PI * 2, (hash(x, y, 13) - 0.5) * 0.12);
-          q.setFromEuler(e);
-          s.set(sc, sc * (0.9 + hash(x, y, 14) * 0.25), sc);
-          p.set(jx, h - 0.05, jz);
-          const mat = new THREE.Matrix4().compose(p, q, s);
+          const tx = (hash(x, y, 11) - 0.5) * 0.12, tz = (hash(x, y, 13) - 0.5) * 0.12, sy = 0.9 + hash(x, y, 14) * 0.25;
+          const compose = (pp: TreePose) => {
+            q.setFromEuler(e.set(tx, pp.yaw, tz));
+            return new THREE.Matrix4().compose(p.set(pp.x, m.heightAt(pp.x, pp.z) - 0.05, pp.z), q, s.set(pp.sc, pp.sc * sy, pp.sc));
+          };
+          // (palms lean: another heading can take the crown away from a wall; broadleaf crowns are round)
+          const mat = place(usePalm ? this.shapes.palm : this.shapes.broad, { x: jx, z: jz, yaw: hash(x, y, 12 + i) * Math.PI * 2, sc }, x, y, i, compose, { yaws: usePalm ? 6 : 1 });
+          if (!mat) continue;
           // the colour variety keeps its old per-tree sequence (index over the whole island)
           if (usePalm) ch.palms.push(mat), ch.pi.push(palmN++);
           else ch.broads.push(mat), ch.bi.push(broadN++);
@@ -313,10 +354,15 @@ export class Vegetation {
         if (jungle && hash(x, y, 40) < 0.7) {
           const jx = x + hash(x, y, 41), jz = y + hash(x, y, 42);
           const sc = 0.35 + hash(x, y, 43) * 0.35;
-          q.setFromEuler(e.set(0, hash(x, y, 44) * 6.28, 0));
-          ch.bushes.push(new THREE.Matrix4().compose(p.set(jx, m.heightAt(jx, jz) - 1.2 * sc, jz), q, s.set(sc, sc * 0.8, sc)));
+          const compose = (pp: TreePose) => {
+            q.setFromEuler(e.set(0, pp.yaw, 0));
+            return new THREE.Matrix4().compose(p.set(pp.x, m.heightAt(pp.x, pp.z) - 1.2 * pp.sc, pp.z), q, s.set(pp.sc, pp.sc * 0.8, pp.sc));
+          };
+          const mat = place(this.shapes.bush, { x: jx, z: jz, yaw: hash(x, y, 44) * 6.28, sc }, x, y, 9, compose, { yaws: 1, minScale: 0.7 });
+          if (mat) ch.bushes.push(mat);
         }
       }
+    this.fitted.ms = performance.now() - t0;
     const g = gpu();
     const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, list: THREE.Matrix4[], shadow = true) => {
       if (!list.length) return null;

@@ -473,7 +473,8 @@ def boatyard(k):
     """a boatyard for small craft: a slipway into the sea, keel blocks, an open work shed with a loft,
     sawpit, steam box for bending strakes, timber stacked to season, a gantry with block and tackle"""
     W, D = 5, 5
-    slipway(k, 1.6, 1.4, -D / 2 - 1.3, 0.05, -0.55)
+    # (the ways end at the yard's seaward edge, already under water, so they never run under a neighbour's pier)
+    slipway(k, 1.6, 1.4, -D / 2 + 0.12, 0.05, -0.42)
     k.marker('hull', 0, 0.1, -0.8)
     # gantry over the slip
     for z in (-1.2, 0.6):
@@ -537,7 +538,8 @@ def shipyard(k):
     """a shipyard for great ships: a long slipway with a cradle, a big shear-leg gantry, a covered
     mould loft and workshop under tiles, a mast pond, a ropewalk shed, timber stacks and a flag"""
     W, D = 9, 6
-    slipway(k, 2.6, 2.0, -D / 2 - 2.0, 0.08, -0.7)
+    # (the ways end at the yard's seaward edge, already under water)
+    slipway(k, 2.6, 2.0, -D / 2 + 0.12, 0.08, -0.48)
     k.marker('hull', 0, 0.15, -1.0)
     # two gantries
     for z in (-2.0, 0.5):
@@ -679,7 +681,7 @@ def farm(k, kind):
     dry_wall(k, V(-W / 2 + e, 0, -D / 2 + e), V(W / 2 - e, 0, -D / 2 + e))
     dry_wall(k, V(-W / 2 + e, 0, -D / 2 + e), V(-W / 2 + e, 0, D / 2 - e))
     dry_wall(k, V(W / 2 - e, 0, -D / 2 + e), V(W / 2 - e, 0, D / 2 - 0.5))
-    field_shelter(k, W / 2 - 0.45, -D / 2 + 0.42, kind)
+    field_shelter(k, W / 2 - 0.45 - e, -D / 2 + 0.42 + e, kind)
     if kind == 'corn' and not k.lod:
         # a scarecrow in an old coat and a tricorn
         k.cyl('wood', 0.02, 0.02, 0.75, -0.6, 0, 0.0, seg=6)

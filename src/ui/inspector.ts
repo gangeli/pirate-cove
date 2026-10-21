@@ -2,7 +2,7 @@ import type { App } from './app';
 import { el, html, patchHTML, delegate, fmt, pct, bar, raw, toggleClass, type ActionHandler } from './dom';
 import type { QuickAct } from './quickring';
 import { icon } from './icons';
-import { BUILDING, HOUSE_LEVELS, JOB_NAMES, RANKS, PRICE_LEVELS, type PirateNeed } from '../sim/data/buildings';
+import { BUILDING, HOUSE_LEVELS, JOB_NAMES, RANKS, PRICE_LEVELS, type PirateNeed, type Job } from '../sim/data/buildings';
 import { GOOD_NAMES, type Good } from '../sim/data/goods';
 import { SHIPS, SHIP_LIST, MISSION_NAMES, SPOILS_TREASURY, type ShipType } from '../sim/data/ships';
 import { NATION_ADJ, NATION_NAMES, NATIONS } from '../sim/data/kings';
@@ -15,6 +15,7 @@ import { thumbOrQueue, THUMB_PLACEHOLDER } from './thumbs';
 import { regionReachable, transitTime } from '../sim/sea';
 import { MONTH } from '../sim/time';
 import { EDICT } from '../sim/data/edicts';
+import { coinPick, pennants, spoilsBar, goodChip } from './controls';
 
 const NEED_NAMES: Record<string, string> = { feast: 'Grub', drink: 'Grog', company: 'Company', gamble: 'Wagers', rest: 'Rest', stash: 'Stash', food: 'Food', prayer: 'Prayer', anarchy: 'Freedom', defense: 'Safety' };
 
@@ -111,6 +112,8 @@ export class Inspector {
   folded = false;
   /** the quick seals are showing beside the selection: footer buttons they duplicate are hidden */
   private ringed = false;
+  /** the farm whose soil map is tinted on the ground (the sprout toggle), 0 for none */
+  private soilFor = 0;
   /** the ship orders explain themselves in a line under each control (the "i" toggle); remembered per browser */
   private help = (() => {
     try {
@@ -220,6 +223,14 @@ export class Inspector {
         this.refresh(true);
       },
       details: () => this.fold(false),
+      soil: () => {
+        const b = app.game.buildings.get(this.sel());
+        const crop = b && BUILDING[b.def].gather?.crop;
+        if (!b || !crop) return;
+        this.soilFor = this.soilFor === b.id ? 0 : b.id;
+        app.overlays.placementTint(this.soilFor ? 'soil' : null, crop);
+        this.refresh(true);
+      },
       prioUp: () => {
         const b = app.game.buildings.get(this.sel());
         if (b) this.bcmd({ type: 'setPriority', id: b.id, priority: b.priority >= 5 ? 1 : b.priority + 1 });
@@ -280,11 +291,13 @@ export class Inspector {
     this.lastRefresh = performance.now();
     const s = this.app.selection;
     if (!s) {
+      if (this.soilFor) this.clearSoil();
       this.panel.classList.add('hidden');
       return;
     }
     const key = `${s.type}:${s.id}`;
     const changed = key !== this.lastKey;
+    if (this.soilFor && (s.type !== 'building' || s.id !== this.soilFor)) this.clearSoil();
     if (changed) {
       if (this.lastKey && !this.lastKey.startsWith(`${s.type}:`)) this.tab = 'overview';
       this.lastKey = key;
@@ -311,6 +324,11 @@ export class Inspector {
       <div class="ins-body scroll">${v.body}</div>
       ${v.foot ? html`<footer class="ins-foot">${v.foot}</footer>` : ''}`);
     if (changed) this.panel.querySelector('.ins-body')?.scrollTo(0, 0);
+  }
+
+  private clearSoil(): void {
+    this.soilFor = 0;
+    this.app.overlays.placementTint(null);
   }
 
   /** fold the inspector away (the seals beside the selection stay), or unfold it */
@@ -391,42 +409,42 @@ export class Inspector {
         <div class="meters"><span>Built</span>${bar(b.built, 'brass')}<span>${pct(b.built)}</span></div>
         ${g.buildingCount('construction_tent') ? html`<div class="seg-note">Builders from the construction tents will finish it.</div>` : html`<div class="callout bad">${icon('info', 16)}<span>You need a Construction Tent and builders.</span></div>`}
         ${g.undo.some((e) => e.kind === 'build' && e.id === b.id) ? html`<div class="callout info">${icon('undo', 16)}<span>Changed your mind? <b>Undo</b> takes it back with a full refund.</span></div>` : ''}</section>
-        <section class="sect"><h4 class="eng">Priority</h4>${this.prioSeg(b)}<div class="seg-note">Builders go to higher-priority sites first.</div></section>`);
+        <section class="sect"><div class="field-row"><span class="lbl">Priority</span>${pennants('prio', b.priority, PRIO_NAMES, 'Builders go to higher-priority sites first.')}</div></section>`);
     } else {
       // staff
       const slots = def.workers.filter((w) => w.job !== 'hauler' || def.id === 'dock');
       if (slots.length || def.haulers || def.overseer || def.guards) {
         const rows = [];
-        // closed places are taken from the vacancies in the order of the worker rows (as the sim staffs them)
-        let closing = b.blocked;
-        def.workers.forEach((sl, ri) => {
-          const list = [...new Set(sl.job === 'hauler' ? b.haulers.concat(b.workers.filter((id) => g.people.get(id)?.jobRole === 'hauler')) : b.workers.filter((id) => g.people.get(id)?.jobRole === sl.job))];
-          const shut = Math.min(closing, Math.max(0, sl.count - list.length));
-          closing -= shut;
-          rows.push(this.slotRow(JOB_NAMES[sl.job] + (sl.count > 1 ? 's' : ''), sl.count, list, b, false, { row: ri, shut }));
-        });
+        this.closedPlaces(b).forEach((r, ri) => rows.push(this.slotRow(JOB_NAMES[r.job] + (r.count > 1 ? 's' : ''), r.count, r.ids, b, false, { row: ri, shut: r.shut })));
         if (def.haulers && !def.workers.some((w) => w.job === 'hauler')) rows.push(this.slotRow(def.haulers > 1 ? 'Haulers' : 'Hauler', def.haulers, b.haulers, b));
         if (def.overseer || def.guards) rows.push(this.slotRow(def.guards ? 'Guards' : 'Overseer', def.guards ?? 1, [b.overseer, ...b.guards].filter(Boolean), b, true));
         body.push(html`<section class="sect"><h4 class="eng">Staff</h4><div class="slotrows">${rows}</div>
-          ${def.overseer || def.guards ? html`<div class="field-row"><span class="lbl">${def.guards ? 'Guard wage' : 'Overseer wage'}</span>${this.seg('wage', b.wage, [[0, 'Unpaid'], [2, '2g'], [4, '4g'], [8, '8g'], [12, '12g']])}</div>
-            <div class="seg-note">Gold a month for each ${def.guards ? 'guard' : 'overseer'}. Pirates take the best-paid posts first.</div>` : ''}
-          <div class="field-row"><span class="lbl">Priority</span>${this.prioSeg(b)}</div>
-          <div class="seg-note">Higher-priority buildings are staffed first, taking workers from lower ones.</div></section>`);
+          ${def.overseer || def.guards ? html`<div class="field-row"><span class="lbl">Wage</span>${coinPick('wage', b.wage, WAGES, WAGES.map((w) => (w ? `${w}g` : 'Unpaid')), WAGES.map((w) => `<b>${w ? `${w} gold a month` : 'Unpaid'}</b> for each ${def.guards ? 'guard' : 'overseer'}.<br>Pirates take the best-paid posts first.`), `${def.guards ? 'Guard' : 'Overseer'} wage`)}</div>` : ''}
+          <div class="field-row"><span class="lbl">Priority</span>${pennants('prio', b.priority, PRIO_NAMES, 'Higher-priority buildings are staffed first, taking workers from lower ones.')}</div></section>`);
       }
-      // production
+      // production: input goods (×cost, stock) → progress → output good (stock, ringed by the progress)
       if (def.recipe || def.gather) {
         const r = def.recipe;
         const out = r?.out ?? def.gather!.out;
-        const rows = [html`<span>Progress</span>${bar(b.progress, 'brass')}<span>${pct(b.progress)}</span>`];
+        const outN = Math.floor(b.inv[out] ?? 0);
+        const ins = r ? Object.entries(r.in).map(([k, v]) => {
+          const n = Math.floor(b.inv[k as Good] ?? 0);
+          return goodChip(k, GOOD_NAMES[k as Good], n, { need: v, cls: n < v ? 'short' : '', tip: `<b>${GOOD_NAMES[k as Good]}</b><br>${v} make 1 ${GOOD_NAMES[out].toLowerCase()} · ${n} in stock` });
+        }) : [];
+        const extra = [];
         if (def.gather?.crop) {
           const f = farmFertility(g, b, def.gather.crop);
-          rows.push(html`<span>Soil</span>${bar(f)}<span>${pct(f)}</span>`);
+          const on = this.soilFor === b.id;
+          extra.push(html`<button class="toggle soil ${on ? 'on' : ''}" data-act="soil" aria-pressed="${on ? 'true' : 'false'}" data-tip="<b>Soil ${pct(f)}</b><br>How well ${GOOD_NAMES[out].toLowerCase()} grows here. ${on ? 'Hide' : 'Show'} the soil map.">${icon('sprout', 16)} ${pct(f)}</button>`);
         }
-        body.push(html`<section class="sect"><h4 class="eng">Production</h4>
-          <div class="flow">${r ? Object.entries(r.in).map(([k, v]) => html`<span class="good">${v}× ${GOOD_NAMES[k as Good]} <b>${Math.floor(b.inv[k as Good] ?? 0)}</b></span>`) : ''}
-            ${r ? html`<span class="arrow">→</span>` : ''}<span class="good out">${GOOD_NAMES[out]} <b>${Math.floor(b.inv[out] ?? 0)}</b></span></div>
-          <div class="meters">${rows}</div>
-          ${def.gather?.from === 'trees' ? html`<div class="seg-note">${treesNear(g, b, 9)} trees within reach.</div>` : ''}</section>`);
+        if (def.gather?.from === 'trees') {
+          const t = treesNear(g, b, 9);
+          extra.push(html`<span class="stat ${t < 6 ? 'bad' : ''}" data-tip="${t} trees within reach">${icon('lumber', 15)} ${t}</span>`);
+        }
+        body.push(html`<section class="sect"><div class="flow" aria-label="Production">${ins}
+            ${r ? html`<span class="arrow" data-tip="Progress ${pct(b.progress)}"><i style="width:${Math.round(b.progress * 100)}%"></i></span>` : ''}
+            ${goodChip(out, GOOD_NAMES[out], outN, { cls: 'out', ring: r ? undefined : b.progress, tip: `<b>${GOOD_NAMES[out]}</b><br>${outN} stored here${r ? '' : ` · next batch ${pct(b.progress)}`}` })}
+            ${extra.length ? html`<span class="spacer"></span>${extra}` : ''}</div></section>`);
       }
       // service
       if (def.service) {
@@ -437,14 +455,15 @@ export class Inspector {
             const id = b.customers[i];
             const p = id ? g.people.get(id) : null;
             const present = p && p.task.phase === 1;
-            return p ? html`<button class="slot ${present ? '' : 'res'}" data-act="goto:${p.id}" data-tip="${p.name}${present ? '' : ' (on the way)'}">${icon('pirate', 18)}</button>` : html`<span class="slot empty"></span>`;
+            const pid = p ? portraitIdFor(p) : null;
+            return p ? html`<button class="slot full ${present ? '' : 'res'}" data-act="goto:${p.id}" aria-label="${p.name}" data-tip="${p.name}${present ? '' : ' (on the way)'}">${pid ? raw(portraitImg(pid, 32, 'face')) : icon('pirate', 18)}</button>` : html`<span class="slot empty"></span>`;
           })}</div>
           <div class="kv" style="margin-top:8px"><span>Satisfies</span><span>${Object.keys(sv.needs).map((n) => NEED_NAMES[n]).join(', ')}</span>
             <span>Extras</span><span>${sv.bonus.length ? sv.bonus.map((x) => `${GOOD_NAMES[x]} (${Math.floor(b.inv[x] ?? 0)})`).join(', ') : 'none'}</span>
             <span>Serves</span><span>${RANKS[lo - 1].name} to ${RANKS[hi - 1].name}</span>
             <span>Fee</span><span>${serviceFee(b)} gold a visit</span><span>Last month</span><span>${fmt(b.lastIncome)} gold</span></div></section>
           <section class="sect"><h4 class="eng">Running it</h4>
-          <div class="field-row"><span class="lbl">Prices</span>${this.seg('price', b.price, PRICE_LEVELS.map((n, i) => [i, ['Bargain', 'Middling', "Gouge 'em"][i] ?? n] as [number, string]))}</div>
+          <div class="field-row"><span class="lbl">Prices</span>${coinPick('price', b.price, PRICE_LEVELS.map((_, i) => i), PRICE_LEVELS.map((n, i) => ['Bargain', 'Middling', "Gouge 'em"][i] ?? n), PRICE_LEVELS.map((n, i) => `<b>${['Bargain', 'Middling', "Gouge 'em"][i] ?? n}</b><br>Dearer visits take more gold from each customer's purse.`), 'Prices')}</div>
           <div class="field-row" data-tip="Narrow the clientele to a band of ranks. Pirates outside the band enjoy it less."><span class="lbl">Clientele</span>${this.seg('quality', b.quality, [[0, 'All'], ...[1, 2, 3].filter((q) => sv.ranks[0] + q + 1 <= sv.ranks[1]).map((q) => [q, `Ranks ${sv.ranks[0] + q - 1}–${sv.ranks[0] + q + 1}`] as [number, string])])}</div></section>`);
       }
       if (def.captiveService) body.push(html`<section class="sect"><div class="kv"><span>${NEED_NAMES[def.captiveService.need]}</span><span>${b.customers.length} of ${def.captiveService.capacity} places in use</span></div></section>`);
@@ -453,7 +472,7 @@ export class Inspector {
         const lv = HOUSE_LEVELS[(b.houseLevel ?? 1) - 1];
         body.push(html`<section class="sect"><h4 class="eng">Dwelling</h4><div class="kv"><span>Owner</span><span>${o ? html`<a data-act="goto:${o.id}">${o.name}</a>` : 'Vacant'}</span>
           <span>Kind</span><span>${lv.name}</span><span>Rest</span><span>${pct(lv.rest)}</span><span>Stash fee</span><span>${lv.fee} gold</span></div>
-          <div class="seg-note">Plots grow into finer homes when the owner rises in rank and can pay.</div></section>`);
+</section>`);
       }
       if (def.id === 'dock') {
         const s = b.ship ? g.ships.get(b.ship) : null;
@@ -469,8 +488,9 @@ export class Inspector {
         })}</div></section>`);
       }
       if (def.id === 'graveyard') body.push(html`<section class="sect"><div class="kv"><span>Corpses</span><span>${g.graveyard.length}</span></div><div class="actions"><button class="btn small" data-act="raise">Raise the dead (${this.app.edicts.cost('raise_dead')} gold)</button></div></section>`);
-      if (def.id === 'smugglers_cove') body.push(html`<section class="sect"><h4 class="eng">Trade</h4><div class="kv">${NATIONS.map((n) => html`<span>${NATION_NAMES[n]}</span><span>${g.ongoing.has(`open_cove:${n}`) ? html`<span class="chip ok">Open</span>` : html`<span class="chip">Closed</span>`}</span>`)}</div><div class="seg-note">Open trade with the Diplomacy edicts.</div></section>`);
-      if (def.auras) body.push(html`<section class="sect"><h4 class="eng">Influence</h4><div class="auras">${Object.entries(def.auras).map(([k, [s, r]]) => html`<span class="chip">${AURA_NAMES[k] ?? k} ${s > 0 ? '+' : ''}${s} <i>· ${r} tiles</i></span>`)}</div></section>`);
+      if (def.id === 'smugglers_cove') body.push(html`<section class="sect"><h4 class="eng" data-tip="Open trade with the Diplomacy edicts">Trade</h4><div class="kv">${NATIONS.map((n) => html`<span>${NATION_NAMES[n]}</span><span>${g.ongoing.has(`open_cove:${n}`) ? html`<span class="chip ok">Open</span>` : html`<span class="chip">Closed</span>`}</span>`)}</div></section>`);
+      // influence: one subdued line of aura icons with their strength and reach; the words in the tooltip
+      if (def.auras) body.push(html`<div class="auras" aria-label="Influence">${Object.entries(def.auras).map(([k, [s, r]]) => html`<span class="aura ${s < 0 ? 'neg' : ''}" data-tip="<b>${AURA_NAMES[k] ?? k} ${s > 0 ? '+' : ''}${s}</b> within ${r} tiles<br>${AURA_TIPS[k] ?? ''}">${icon(AURA_ICONS[k] ?? 'info', 15)}<b>${s > 0 ? '+' : ''}${s}</b><i class="reach">${raw('<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.6"/><circle cx="6" cy="6" r="1.1" fill="currentColor"/></svg>')}${r}</i></span>`)}</div>`);
     }
     const foot = def.id !== 'palace' ? html`<span class="spacer"></span><button class="btn ghost danger small in-ring" data-act="demolish">${icon('bulldoze', 14)} Demolish</button>` : null;
     return { head, body: html`${body}`, foot };
@@ -496,40 +516,53 @@ export class Inspector {
       const id = ids[i];
       const p = id ? g.people.get(id) : null;
       const sa = close ? html` data-slot="${close.row}:${i}"` : '';
+      const bl = i >= count - shut;
       if (p) {
         const pid = portraitIdFor(p);
-        return html`<button class="slot full" data-act="goto:${p.id}"${sa} aria-label="${p.name}" data-tip="<b>${p.name}</b>${p.skilled ? ' (skilled)' : ''}${hint ? html`<br><i>${hint}</i>` : ''}">${pid ? raw(portraitImg(pid, 32, 'face')) : icon(pirates ? 'pirate' : 'captive', 18)}</button>`;
+        const leaving = close && bl;
+        return html`<button class="slot full ${leaving ? 'closing' : ''}" data-act="goto:${p.id}"${sa} aria-label="${p.name}${leaving ? ' (place closes when they leave)' : ''}" data-tip="<b>${p.name}</b>${p.skilled ? ' (skilled)' : ''}${leaving ? html`<br>This place closes when they leave.` : ''}${hint ? html`<br><i>${leaving ? (this.app.touchMode ? 'Hold to reopen' : 'Shift-click to reopen') : hint}</i>` : ''}">${pid ? raw(portraitImg(pid, 32, 'face')) : icon(pirates ? 'pirate' : 'captive', 18)}</button>`;
       }
-      const bl = i >= count - shut;
       if (!close) return html`<span class="slot empty ${bl ? 'blocked' : ''}" data-tip="${bl ? 'Closed place' : 'Vacant'}"></span>`;
       return html`<button class="slot empty ${bl ? 'blocked' : ''}"${sa} aria-label="${bl ? 'Closed place' : 'Vacant place'}" aria-pressed="${bl ? 'true' : 'false'}" data-tip="<b>${bl ? 'Closed' : 'Vacant'}</b><br><i>${bl ? (this.app.touchMode ? 'Hold to reopen' : 'Shift-click to reopen') : hint}</i>">${bl ? icon('close', 16) : ''}</button>`;
     })}</div></div>`;
   }
 
-  /** close (or reopen) staff places from a Shift-click or long press on the place at `row:i` */
+  /**
+   * The worker rows and how many places at the right end of each are closed. The sim keeps `blocked` places from
+   * being filled, taking them from the vacancies row by row; any left over will close as their workers leave.
+   */
+  private closedPlaces(b: Building): { job: Job; count: number; ids: number[]; shut: number }[] {
+    const g = this.app.game;
+    const rows = BUILDING[b.def].workers.map((sl) => {
+      const ids = [...new Set(sl.job === 'hauler' ? b.haulers.concat(b.workers.filter((id) => g.people.get(id)?.jobRole === 'hauler')) : b.workers.filter((id) => g.people.get(id)?.jobRole === sl.job))];
+      return { job: sl.job, count: sl.count, ids, shut: 0 };
+    });
+    let left = b.blocked;
+    for (const r of rows) {
+      const v = Math.min(left, Math.max(0, r.count - r.ids.length));
+      r.shut += v;
+      left -= v;
+    }
+    for (const r of rows) {
+      const v = Math.min(left, r.count - r.shut);
+      r.shut += v;
+      left -= v;
+    }
+    return rows;
+  }
+
+  /** Shift-click or long press on the place at `row:i`: close it and the places to its right, or reopen it and those to its left */
   private closeSlots(spec: string): void {
     const b = this.app.game.buildings.get(this.sel());
     if (!b) return;
     const [ri, i] = spec.split(':').map(Number);
-    const def = BUILDING[b.def];
-    const g = this.app.game;
-    // where the closed places fall now (the sim takes them from the vacancies row by row)
-    let closing = b.blocked;
-    const rows = def.workers.map((sl) => {
-      const have = new Set(sl.job === 'hauler' ? b.haulers.concat(b.workers.filter((id) => g.people.get(id)?.jobRole === 'hauler')) : b.workers.filter((id) => g.people.get(id)?.jobRole === sl.job)).size;
-      const shut = Math.min(closing, Math.max(0, sl.count - have));
-      closing -= shut;
-      return { count: sl.count, have, shut };
-    });
-    const r = rows[ri];
+    const r = this.closedPlaces(b)[ri];
     if (!r) return;
-    const isShut = i >= r.count - r.shut && i >= r.have;
-    // closing: this place and the ones to its right (a filled place keeps its worker; the vacancies close)
-    const want = isShut ? r.count - i - 1 : r.count - Math.max(i, r.have);
-    const delta = Math.max(0, want) - r.shut;
+    const want = i >= r.count - r.shut ? r.count - i - 1 : r.count - i;
+    const delta = Math.max(-b.blocked, want - r.shut);
     if (!delta) return;
-    audio.sfx(delta > 0 ? 'ui_click' : 'quill');
-    this.bcmd({ type: 'blockSlot', id: b.id, delta: Math.max(-b.blocked, delta) });
+    audio.sfx('quill');
+    this.bcmd({ type: 'blockSlot', id: b.id, delta });
   }
 
   // ------------------------------------------------------------------------------------------------ person
@@ -692,11 +725,8 @@ export class Inspector {
       }
       if (mission === 'foster_war') orders.push(html`<div class="field-row"><span class="lbl">Provoke</span>${this.seg('foster', s.foster ?? '', NATIONS.map((n) => [n, NATION_NAMES[n]] as [string, string]), 'full')}</div>`);
       body.push(html`<section class="sect"><h4 class="eng">Orders<button class="icon-link aside help ${help ? 'on' : ''}" data-act="help" aria-pressed="${help ? 'true' : 'false'}" aria-label="${help ? 'Hide' : 'Explain'} the orders" data-tip="${help ? 'Hide' : 'Explain'} the orders">${icon('info', 16)}</button></h4>${orders}</section>`);
-      const tr = Math.round(SPOILS_TREASURY[s.spoils] * 100);
-      const spoils: [string, string][] = [['miserly', 'Miserly'], ['selfish', 'Selfish'], ['generous', 'Generous'], ['bigspender', 'Big spender']];
-      body.push(html`<section class="sect"><h4 class="eng">Spoils</h4><div class="seg full" role="radiogroup" aria-label="Spoils">${spoils.map(([v, n]) => html`<button class="${s.spoils === v ? 'on' : ''}" data-act="spoils:${v}" role="radio" aria-checked="${s.spoils === v ? 'true' : 'false'}" data-tip="<b>${n}</b><br>Treasury ${Math.round(SPOILS_TREASURY[v as keyof typeof SPOILS_TREASURY] * 100)}% · crew ${100 - Math.round(SPOILS_TREASURY[v as keyof typeof SPOILS_TREASURY] * 100)}%. Stingy captains attract fewer recruits.">${n}</button>`)}</div>
-        <div class="split" role="img" aria-label="Treasury ${tr}%, crew ${100 - tr}%"><span class="tr" style="flex:${tr}">${icon('chest', 13)} Treasury ${tr}%</span><span class="cr" style="flex:${100 - tr}">Crew ${100 - tr}% ${icon('pirate', 13)}</span></div>
-        ${note('Stingy captains attract fewer recruits.')}</section>`);
+      const spoils: [string, string, number][] = (['miserly', 'selfish', 'generous', 'bigspender'] as const).map((v) => [v, { miserly: 'Miserly', selfish: 'Selfish', generous: 'Generous', bigspender: 'Big spender' }[v], SPOILS_TREASURY[v]]);
+      body.push(html`<section class="sect"><h4 class="eng">Spoils</h4>${spoilsBar('spoils', s.spoils, spoils)}${note('Stingy captains attract fewer recruits.')}</section>`);
       body.push(stores);
       if (s.log.length) body.push(html`<section class="sect"><h4 class="eng">Last voyage</h4><ol class="log">${s.log.slice(-5).map((e) => html`<li><i>${e.date}</i> ${e.text}</li>`)}</ol></section>`);
       foot = html`<button class="btn primary sail" data-act="sail">${icon('bell', 16)} ${s.status === 'boarding' ? 'Leave now' : 'Set sail'}</button>
@@ -710,6 +740,16 @@ export class Inspector {
 
 type View = { head: unknown; body: unknown; foot: unknown };
 const AURA_NAMES: Record<string, string> = { order: 'Order', anarchy: 'Anarchy', fear: 'Fear', defense: 'Defense', awe: 'Awe' };
+const AURA_ICONS: Record<string, string> = { order: 'scales', anarchy: 'flag', fear: 'skull', defense: 'shield', awe: 'crown' };
+const AURA_TIPS: Record<string, string> = {
+  order: 'Captives nearby resign themselves sooner; pirates nearby feel less free.',
+  anarchy: 'Pirates nearby feel free.',
+  fear: 'Captives nearby are cowed and resign themselves sooner.',
+  defense: 'Pirates nearby feel safe.',
+  awe: 'Captives nearby are awed and resign themselves sooner.',
+};
+const PRIO_NAMES = ['Lowest', 'Low', 'Normal', 'High', 'Top'];
+const WAGES = [0, 2, 4, 8, 12];
 
 function missionTip(m: string): string {
   return {

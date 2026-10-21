@@ -970,7 +970,7 @@ def fort(k):
                      V(-0.42, walk + par + 0.2, -0.02), V(0.42, walk + par + 0.2, -0.02), V(0.0, walk + par + 0.45, -0.02)],
            [(0, 1, 2), (5, 4, 3), (1, 4, 5, 2), (3, 0, 2, 5), (0, 3, 4, 1)], uvscale=2.0)
     k.box('stoneDark', 0.3, 0.22, 0.02, 0, walk + 0.05, 0.03, uvscale=2.0)  # carved panel
-    lantern(k, -gw / 2 - 0.36, 0.85, 0.02)
+    lantern(k, -gw / 2 - 0.36, 1.25, 0.02)  # (above the heads of people passing in the street)
     k.pop()
     # stairs up to the walls, inside the front wall either side of the gate
     zin = D / 2 - df
@@ -1467,7 +1467,7 @@ def school_marksman(k):
         sandbag(k, x + 0.12, 0.56, 0.55, -0.3)
     musket(k, V(-0.45, 0.6, 0.35), V(0.02, 0.0, 1.0), up=(0, 1, 0))
     k.pop()
-    k.push(-1.25, 0, 1.25)
+    k.push(-1.25, 0, 0.98)  # (the sign's arm ends at the lot's front edge, not over the street)
     k.cyl('bark', 0.035, 0.03, 1.15, 0, 0, 0, seg=7)
     hanging_sign(k, 0, 1.08, 0.0, 'MARKSMEN')
     k.pop()

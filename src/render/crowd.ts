@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { assetUrl, withKTX2 } from './textures';
 import { gpu } from './backend';
 import { analyzeGait, type FootTrack, type Gait } from './gait';
+import { prepareClips } from './clipfix';
 
 /**
  * Instanced, GPU-skinned crowds. Each character model's animation clips are baked into a float texture
@@ -23,8 +24,6 @@ export const animBTexel = () => (gpu() ? 13 : 9);
 export const GAIT_CLIPS = ['walk', 'run', 'carry', 'limp', 'swagger', 'march'];
 /** foot contact points tracked through the bake (ankle and ball of each foot) */
 const FEET = [['L', 'LeftFoot'], ['L', 'LeftToeBase'], ['R', 'RightFoot'], ['R', 'RightToeBase']] as const;
-/** bones a carrier holds the load with: their pose comes from the carry clip, the rest of the body walks */
-const CARRY_ARMS = /^(Left|Right)(Shoulder|Arm|ForeArm|Hand|FingerBase|HandFinger1)$|^[LR]Thumb$/;
 
 interface ClipInfo {
   start: number;
@@ -92,21 +91,8 @@ export class CrowdModel {
     const bindInv = skinned.bindMatrixInverse.clone(), bind = skinned.bindMatrix.clone();
     const footBones = FEET.map(([, n]) => sk.bones.find((b) => b.name === n));
     const fp = new THREE.Vector3();
-    const anims = gltf.animations.slice();
-    // the carry clip as captured stands still (the actor waited with the load): carriers walk with the walk cycle's
-    // legs and body, holding the load in the carry clip's arms. Same stride and timing as the walk, so they blend.
-    const walkClip = anims.find((a) => a.name === 'walk'), carryClip = anims.find((a) => a.name === 'carry');
-    if (walkClip && carryClip) {
-      const arm = (tr: THREE.KeyframeTrack) => CARRY_ARMS.test(tr.name.split('.')[0]);
-      const held = carryClip.tracks.filter(arm).map((tr) => {
-        // the pose a quarter of the way in, held
-        const k = Math.floor(tr.times.length / 4), w = tr.getValueSize();
-        const T = tr.constructor as new (n: string, t: number[], v: number[]) => THREE.KeyframeTrack;
-        return new T(tr.name, [0], Array.from(tr.values.slice(k * w, k * w + w)));
-      });
-      const synth = new THREE.AnimationClip('carry', walkClip.duration, [...walkClip.tracks.filter((tr) => !arm(tr)), ...held]);
-      anims.splice(anims.indexOf(carryClip), 1, synth);
-    }
+    // (debug ?legacy=1: the clips as exported, for before/after measurements)
+    const anims = typeof location !== 'undefined' && /[?&]legacy=1/.test(location.search) ? gltf.animations : prepareClips(gltf.animations);
     for (const name of CLIPS) {
       const clip = anims.find((a) => a.name === name);
       if (!clip) continue;

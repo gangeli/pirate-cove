@@ -486,18 +486,22 @@ export class App {
     const s = this.selection;
     if (!s) return;
     const w = this.world;
-    w.rig.follow = () => {
+    const at = (): THREE.Vector3 | null => {
       if (s.type === 'person') return w.people.personPosition(s.id);
       if (s.type === 'ship') return w.ships.shipPosition(s.id);
       const b = this.game.buildings.get(s.id);
       return b ? new THREE.Vector3(b.x + b.w / 2, 0, b.y + b.h / 2) : null;
     };
-    // keep what is followed in the free area, clear of the inspector
-    const f = w.rig.follow;
-    const off = this.framedTarget(0, 0);
+    // a pan still under way (the framing of a fresh selection) would pull against the follow and stall the camera
+    // short of its mark: drop it. (The rig keeps it private; lookAt doesn't clear it.)
+    (w.rig as unknown as { panTo: unknown }).panTo = null;
+    // keep what is followed centred in the free area, clear of the inspector (worked out afresh each frame, so it
+    // stays right when the inspector folds, the view turns or zooms)
     w.rig.follow = () => {
-      const p = f();
-      return p ? p.set(p.x + off.x, p.y, p.z + off.z) : null;
+      const p = at();
+      if (!p) return null;
+      const t = this.framedTarget(p.x, p.z, Math.max(0, this.game.map.heightAt(p.x, p.z)));
+      return p.set(t.x, 0, t.z);
     };
   }
 
@@ -705,6 +709,10 @@ export class App {
       if (this.modal.open) return;
       if (this.tool.kind !== 'select') return this.setTool({ kind: 'select' });
       if (this.build.visible || this.edicts.visible || this.chart.visible || this.log.visible || this.overlays.visible) return this.closeAll();
+      if (this.world.rig.follow) {
+        this.world.rig.follow = null;
+        return;
+      }
       if (this.selection) return this.select(null);
       this.modal.gameMenu();
       return;

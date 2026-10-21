@@ -92,18 +92,25 @@ export class GameMap {
       }
     return hi - lo;
   }
-  /** Flatten vertices under a footprint to their mean (called when building placed). */
-  flatten(x: number, y: number, w: number, h: number): number {
+  /**
+   * Flatten vertices under a footprint to their mean (called when building placed). Vertices for which `keep`
+   * says so (corners shared with a building already standing) keep their height and set the level: a new
+   * building next to an old one sits at the old one's level, instead of re-levelling their shared edge and
+   * leaving the old building's walls buried in a bank or standing over a dip.
+   */
+  flatten(x: number, y: number, w: number, h: number, keep?: (i: number, j: number) => boolean): number {
     const s = this.size + 1;
-    let sum = 0, c = 0;
+    let sum = 0, c = 0, ks = 0, kc = 0;
     for (let j = y; j <= y + h; j++)
       for (let i = x; i <= x + w; i++) {
-        sum += this.vh[j * s + i];
+        const v = this.vh[j * s + i];
+        sum += v;
         c++;
+        if (keep?.(i, j)) (ks += v), kc++;
       }
-    const m = Math.max(sum / c, 0.15);
+    const m = Math.max(kc ? ks / kc : sum / c, 0.15);
     for (let j = y; j <= y + h; j++)
-      for (let i = x; i <= x + w; i++) this.vh[j * s + i] = m;
+      for (let i = x; i <= x + w; i++) if (!(kc && keep!(i, j))) this.vh[j * s + i] = m;
     for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) this.height[this.idx(i, j)] = m;
     return m;
   }

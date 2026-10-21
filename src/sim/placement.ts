@@ -238,7 +238,17 @@ export function placeBuilding(g: Game, def: BuildingDef, pl: Placement, instant 
   (b as any).placedAt = g.time;
   if (def.service) b.name = g.rng.pick(ENTERTAINMENT_NAMES);
   if (def.house) b.houseLevel = 1;
-  if (def.water !== 'dock') m.flatten(pl.x, pl.y, pl.w, pl.h);
+  if (def.water !== 'dock') {
+    // corners shared with a standing (land) building keep their height: see GameMap.flatten
+    const standing = (i: number, j: number): boolean => {
+      if (!m.inBounds(i, j)) return false;
+      const o = m.occupied[m.idx(i, j)];
+      if (!o) return false;
+      const ob = g.buildings.get(o);
+      return !!ob && BUILDING[ob.def].water !== 'dock';
+    };
+    m.flatten(pl.x, pl.y, pl.w, pl.h, (i, j) => standing(i - 1, j - 1) || standing(i, j - 1) || standing(i - 1, j) || standing(i, j));
+  }
   for (let j = pl.y; j < pl.y + pl.h; j++)
     for (let i = pl.x; i < pl.x + pl.w; i++) {
       const k = m.idx(i, j);

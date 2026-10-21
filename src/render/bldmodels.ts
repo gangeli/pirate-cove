@@ -198,9 +198,24 @@ class BuildingModels {
     return n && this.src.has(n) ? 'F' : 'L';
   }
 
-  private prepare(name: string, root: THREE.Group, mats: Map<string, THREE.Material>, bare = false): THREE.Group {
+  /**
+   * Another kit model (ships: scripts/blender/bld/ships.py) from `dir`: the shared materials swapped in with its
+   * baked weathering map (`dir/<name>_ao.jpg`), compacted, no hooks. Cached by the caller.
+   */
+  async loadKit(dir: string, name: string): Promise<THREE.Group> {
+    this.loading.add(name);
+    try {
+      const gltf = await this.gltf().loadAsync(assetUrl(`${dir}/${name}.glb`));
+      return this.prepare(name, gltf.scene, new Map(), true, dir);
+    } finally {
+      this.loading.delete(name);
+      this.idle();
+    }
+  }
+
+  private prepare(name: string, root: THREE.Group, mats: Map<string, THREE.Material>, bare = false, dir = 'buildings'): THREE.Group {
     const k = M() as unknown as Record<string, THREE.Material>;
-    const ao = loadTex(`buildings/${name}_ao.jpg`, false, false);
+    const ao = loadTex(`${dir}/${name}_ao.jpg`, false, false);
     ao.channel = 1;
     ao.flipY = false;
     // occlusion is read from the red channel only: keep it as one byte per texel, not four

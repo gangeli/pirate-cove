@@ -1149,3 +1149,64 @@ body.touch .legend .views-chart { right: 50px; }
   .ov-chips { gap: 2px; }
   .ov { font-size: 11.5px; letter-spacing: -0.02em; padding-left: 0; padding-right: 0; }
 }
+/* a worker whose place closes once they leave: barred over the face */
+.slot.full.closing::after { content: ''; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, rgba(110, 26, 20, 0.55) 0 2px, transparent 2px 7px); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--blood) 70%, transparent); pointer-events: none; }
+
+/* ---------- game-native pickers (controls.ts): coins, pennants, the spoils bar, goods chips ---------- */
+.vpick { display: flex; align-items: flex-end; gap: 2px; flex-wrap: wrap; }
+.vpick > button { display: inline-flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 1px; min-width: 38px; min-height: 40px; padding: 3px 4px 2px; border: 1px solid transparent; border-radius: 3px; background: none; cursor: pointer; color: var(--ink3); font: 12.5px/1 var(--body); font-variant-numeric: tabular-nums; }
+.vpick > button:hover { background: rgba(255, 248, 228, 0.55); border-color: color-mix(in srgb, var(--ink2) 35%, transparent); }
+.vpick > button:focus-visible { outline: 2px solid var(--blood-hi); outline-offset: 1px; }
+.vpick > button.on { color: var(--ink); border-color: color-mix(in srgb, var(--brass-lo) 70%, transparent); background: color-mix(in srgb, var(--brass) 16%, rgba(255, 248, 228, 0.4)); box-shadow: inset 0 -2px 0 var(--blood); }
+.vpick > button.on small { color: var(--blood); font-weight: bold; }
+body.touch .vpick > button { min-width: 44px; min-height: 46px; }
+/* coins: dim pewter until lit, then gold */
+.coinpick .coins .cdisc { fill: rgba(120, 100, 70, 0.18); stroke: rgba(90, 70, 40, 0.45); stroke-width: 1; }
+.coinpick .coins .cedge { fill: rgba(120, 100, 70, 0.12); stroke: rgba(90, 70, 40, 0.45); stroke-width: 1; }
+.coinpick > button.lit .coins .cdisc { fill: #e8c768; stroke: #6a4a10; }
+.coinpick > button.lit .coins .cedge { fill: #b88a2a; stroke: #6a4a10; }
+.coinpick > button.on .coins { filter: drop-shadow(0 0 3px rgba(255, 210, 90, 0.8)); }
+.coinpick > button .ic:not(.coins) { opacity: 0.75; }
+.coinpick > button.on .ic:not(.coins) { color: var(--blood); opacity: 1; }
+/* pennants: furled grey until hoisted */
+.pennants { align-items: flex-end; }
+.pennants > button { min-width: 30px; padding: 2px 3px; }
+.pennant .pole { stroke: var(--ink2); stroke-width: 1.6; stroke-linecap: round; }
+.pennant .knob { fill: var(--brass-lo); }
+.pennant .flag { fill: rgba(120, 100, 70, 0.15); stroke: rgba(90, 70, 40, 0.5); stroke-width: 0.9; }
+.pennants > button.lit .flag { fill: #8a2418; stroke: #4a0e08; }
+.pennants > button.on .flag { fill: #b02c1c; }
+.pennants > button.on { box-shadow: none; background: none; border-color: transparent; }
+.pennants .vp-val { align-self: center; margin-left: 6px; font-size: 14px; font-style: italic; color: var(--ink2); }
+/* spoils: the treasure bar over four notches */
+.spoilsbar .split { height: 24px; line-height: 22px; font-size: 13.5px; margin-top: 0; }
+.spoilsbar .notches { display: flex; gap: 0; margin-top: 2px; }
+.spoilsbar .notches > button { flex: 1 1 0; min-height: 32px; font-size: 14px; color: var(--ink2); }
+body.touch .spoilsbar .notches > button { min-height: 42px; }
+/* goods: an icon and its count; inputs carry a ×n badge; the output can wear a progress ring */
+.flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.flow .spacer { flex: 1; }
+.gchip { position: relative; display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px 2px 4px; min-height: 30px; border: 1px solid color-mix(in srgb, var(--ink2) 40%, transparent); border-radius: 15px; background: rgba(250, 242, 220, 0.45); color: var(--ink); font-size: 14px; font-variant-numeric: tabular-nums; }
+.gchip b { font-weight: normal; }
+.gchip sup { font-size: 11px; color: var(--ink3); margin-left: -2px; align-self: flex-start; margin-top: 2px; }
+.gchip.short { border-color: color-mix(in srgb, var(--blood) 55%, transparent); }
+.gchip.short b { color: var(--blood); }
+.gchip.out { border-color: color-mix(in srgb, var(--bottle) 50%, transparent); background: color-mix(in srgb, var(--bottle) 9%, rgba(250, 242, 220, 0.45)); }
+.gchip .ring { position: absolute; left: 1px; top: 50%; width: 26px; height: 26px; margin-top: -13px; border-radius: 50%; background: conic-gradient(var(--bottle) var(--p), transparent 0); -webkit-mask: radial-gradient(circle, transparent 10.5px, #000 11px); mask: radial-gradient(circle, transparent 10.5px, #000 11px); }
+.gchip .ring + .ic { margin-left: 2px; }
+.flow .arrow { position: relative; width: 54px; height: 8px; border: 1px solid color-mix(in srgb, var(--ink2) 60%, transparent); border-radius: 4px 0 0 4px; background: rgba(250, 242, 220, 0.4); margin-right: 6px; }
+.flow .arrow::after { content: ''; position: absolute; right: -8px; top: -5px; border: 8px solid transparent; border-right: 0; border-left-color: color-mix(in srgb, var(--ink2) 70%, transparent); }
+.flow .arrow i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #8a6a30, #c8a060); border-radius: 3px 0 0 3px; }
+.stat { display: inline-flex; align-items: center; gap: 3px; font-size: 14px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.stat.bad { color: var(--blood); }
+/* toggles: pressed or not, never mistaken for an action */
+.toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 2px 10px; border-radius: 15px; cursor: pointer; font: 14px var(--body); color: var(--ink2); background: rgba(250, 242, 220, 0.35); border: 1px dashed color-mix(in srgb, var(--ink2) 55%, transparent); font-variant-numeric: tabular-nums; }
+.toggle:hover { border-style: solid; color: var(--ink); }
+.toggle.on { border-style: solid; border-color: var(--bottle); color: #f0e6c4; background: linear-gradient(#2e5436, var(--bottle)); box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35); }
+body.touch .toggle { min-height: 40px; }
+/* influence: one subdued line */
+.auras { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; padding-top: 7px; border-top: 1px dotted color-mix(in srgb, var(--ink2) 35%, transparent); color: var(--ink2); font-size: 13.5px; }
+.aura { display: inline-flex; align-items: center; gap: 3px; }
+.aura b { font-weight: normal; color: var(--bottle); font-variant-numeric: tabular-nums; }
+.aura.neg b { color: var(--blood); }
+.aura .reach { display: inline-flex; align-items: center; gap: 1px; font-style: normal; font-size: 12px; color: var(--ink3); margin-left: 2px; }

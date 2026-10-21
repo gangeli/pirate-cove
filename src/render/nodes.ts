@@ -875,6 +875,27 @@ export function flagMaterial(base: GL.Material, uTime: U<number>): THREE.Materia
   return m;
 }
 
+// ================================================================================================= ship cloth
+
+/**
+ * Ship sails, flags and pennants (ships.ts has the GLSL twin): each vertex moves along its normal by
+ * aSail.x (its belly) x a slow breathing plus aSail.y (its free play) x a wave running along aSail.z.
+ */
+export function shipClothMaterial(base: GL.Material, uTime: U<number>): THREE.Material {
+  const m = toNodeMaterial(base, new THREE.MeshStandardNodeMaterial());
+  const t = ref(uTime, 'float');
+  m.positionNode = Fn(() => {
+    const a = attribute('aSail', 'vec3');
+    const w = modelWorldMatrix.element(3);
+    const ph = w.x.mul(0.37).add(w.z.mul(0.23)).toVar();
+    const breathe = sin(t.mul(1.3).add(ph)).mul(0.12).add(sin(t.mul(2.9).add(ph.mul(1.7))).mul(0.05));
+    const flutter = sin(t.mul(6.0).sub(a.z).add(ph));
+    return positionLocal.add(normalGeometry.mul(a.x.mul(breathe).add(a.y.mul(flutter))));
+  })();
+  (m as any).castShadowPositionNode = positionLocal; // shadow of the resting cloth, as on WebGL
+  return m;
+}
+
 // ================================================================================================= building models
 
 /** the baked AO map also darkens sunlit surfaces, not only ambient light (bldmodels.ts has the GLSL twin) */

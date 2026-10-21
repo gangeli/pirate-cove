@@ -108,3 +108,106 @@ export async function gallery(app: App, params: URLSearchParams) {
   app.world.rig.lookAt(cx, cz, true);
   app.world.rig.setDist(+(params.get('dist') ?? 8), true);
 }
+
+/** walk-test lanes: who walks, and the sim speed factors moveAlong applies to them (sim/people.ts) */
+const WALKERS: Record<string, { kind: 'pirate' | 'captive' | 'soldier' | 'skeleton'; sex?: 'M' | 'F'; road?: boolean; task?: string; carrying?: boolean; pegleg?: boolean }> = {
+  walk: { kind: 'captive', sex: 'M' },
+  road: { kind: 'captive', sex: 'F', road: true },
+  carry: { kind: 'captive', sex: 'M', carrying: true },
+  pegleg: { kind: 'pirate', sex: 'M', pegleg: true },
+  pirate: { kind: 'pirate', sex: 'M', road: true },
+  soldier: { kind: 'soldier', sex: 'M' },
+  skeleton: { kind: 'skeleton', sex: 'M' },
+  escape: { kind: 'captive', sex: 'M', task: 'escape' },
+  sprint: { kind: 'pirate', sex: 'F', road: true, task: 'escape' },
+  charge: { kind: 'soldier', sex: 'M', road: true, task: 'chase' },
+  wait: { kind: 'captive', sex: 'F' },
+};
+
+/**
+ * Debug: people walking straight lanes near the camera at the sim's speeds, e.g. ?walktest=walk,road,carry,escape&speed=4.
+ * They step exactly as the sim moves people (DT steps, moveAlong's speeds) but are not in the sim, so nothing else
+ * steers them. `wait` stands on its lane waiting for a path (should stand idle). window.__walktest.report() measures the
+ * drawn foot slide; ?legacy=1 draws them the old way, for comparison.
+ */
+export async function walktest(app: App, params: URLSearchParams) {
+  const g = app.game;
+  const { createPerson } = await import('./sim/people');
+  const { DT } = await import('./sim/time');
+  const { measureSlide } = await import('./render/gait');
+  const view = app.world.people;
+  g.speed = +(params.get('speed') ?? 1);
+  view.legacy = params.get('legacy') === '1';
+  const names = (params.get('walktest') === '1' ? 'walk,road,carry,soldier,escape,sprint' : params.get('walktest')!).split(',').filter((n) => WALKERS[n]);
+  const [cx, cz] = flatSpot(app);
+  const yaw = +(params.get('yaw') ?? 0.3);
+  app.world.rig.yaw = app.world.rig.yawGoal = yaw;
+  // lanes run across the view (the camera's right), stacked away from it
+  const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+  const back = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+  const len = +(params.get('len') ?? 7), gap = +(params.get('gap') ?? 0.9);
+  // ?bounce=1: turn round at the lane ends instead of starting over
+  const bounce = params.get('bounce') === '1';
+  const walkers = names.map((n, i) => {
+    const w = WALKERS[n];
+    const o = (i - (names.length - 1) / 2) * gap;
+    const p = createPerson(g, w.kind, 0, 0, { sex: w.sex });
+    g.people.delete(p.id); // drawn, not simulated
+    p.accessories = { pegleg: w.pegleg };
+    p.carrying = w.carrying ? 'corn' as any : undefined;
+    p.task = { kind: (w.task ?? 'wander') as any, phase: 0 };
+    p.path = n === 'wait' ? [] : [0];
+    p.pathReq = n === 'wait' ? 1 : 0;
+    let sp = w.road ? 1.7 : 1.1;
+    if (w.task === 'escape' || w.task === 'chase' || w.task === 'flee') sp *= 1.8;
+    if (w.kind === 'soldier' || w.task === 'rebel' || w.task === 'fight') sp *= 1.3;
+    if (w.pegleg) sp *= 0.85;
+    if (w.carrying) sp *= 0.9;
+    const ax = cx + back.x * o - right.x * len / 2, az = cz + back.z * o - right.z * len / 2;
+    // staggered starts so they are not all in step
+    const s0 = n === 'wait' ? len * 0.3 : ((i * 0.37) % 1) * len;
+    p.x = ax + right.x * s0;
+    p.y = az + right.z * s0;
+    p.dir = Math.atan2(right.z, right.x);
+    return { name: n, p, sp, s: s0, fwd: 1, ax, az };
+  });
+  view.extra = walkers.map((w) => w.p);
+  view.footLog = new Map(walkers.map((w) => [w.p.id, []]));
+  let stepT = g.time;
+  view.beforeFrame = () => {
+    // one move per sim step, as updatePeople does
+    while (stepT + DT <= g.time + 1e-9) {
+      stepT += DT;
+      for (const w of walkers) {
+        if (w.name === 'wait') continue;
+        w.s += w.fwd * w.sp * DT;
+        if (bounce) {
+          if (w.s > len) (w.s = 2 * len - w.s), (w.fwd = -1);
+          if (w.s < 0) (w.s = -w.s), (w.fwd = 1);
+        } else if (w.s > len) w.s -= len; // back to the start: straight-line walking only (the jump is not measured)
+        w.p.x = w.ax + right.x * w.s;
+        w.p.y = w.az + right.z * w.s;
+        w.p.dir = Math.atan2(right.z * w.fwd, right.x * w.fwd);
+      }
+    }
+  };
+  app.world.rig.minDist = 1.5;
+  app.world.rig.lift = +(params.get('lift') ?? 0.5);
+  app.world.rig.pitch = +(params.get('pitch') ?? 0.32);
+  app.world.rig.lookAt(cx, cz, true);
+  app.world.rig.setDist(+(params.get('dist') ?? 7), true);
+  for (let i = 0; i < 30; i++) app.world.rig.update(0.2, innerWidth, innerHeight);
+  (window as any).__walktest = {
+    walkers: walkers.map((w) => ({ name: w.name, id: w.p.id, speed: w.sp })),
+    clear: () => view.footLog!.forEach((v) => (v.length = 0)),
+    log: (id: number) => view.footLog!.get(id),
+    /** foot slide per walker over the frames logged so far: planted = within 2 cm (model) of the point's lowest */
+    report: () => walkers.map((w) => {
+      const log = view.footLog!.get(w.p.id)!;
+      const r = measureSlide(log, 0.02 * view.scale);
+      const clips = new Map<string, number>();
+      for (const l of log) clips.set(l.clip.replace(/:.*/, ''), (clips.get(l.clip.replace(/:.*/, '')) ?? 0) + 1);
+      return { name: w.name, speed: w.sp, frames: log.length, ...r, clips: Object.fromEntries(clips) };
+    }),
+  };
+}

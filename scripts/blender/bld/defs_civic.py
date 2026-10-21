@@ -328,7 +328,7 @@ def graveyard(k):
     rubble_wall(k, (hw, hd), (-hw, hd), h=0.22, t=0.13, gaps=[(0.43, 0.57)])
     if not k.lod:
         for i in range(5):
-            k.cbox('stone', 0.13, 0.08, 0.12, 0.6 + k.r() * 0.35, 0.04, -hd - 0.12 - k.r() * 0.1, ry=k.r() * 3, rx=k.r() * 0.4, uvscale=2.0)
+            k.cbox('stone', 0.13, 0.08, 0.12, 0.6 + k.r() * 0.35, 0.04, -hd + 0.14 + k.r() * 0.1, ry=k.r() * 3, rx=k.r() * 0.4, uvscale=2.0)
     # gate piers with ball finials, and a sagging picket gate swung open
     for sx in (-1, 1):
         px = sx * 0.21
@@ -1536,7 +1536,7 @@ def outcrop(k, x, z, ex, ey, ez, seed=0.0, mouth=None, ry=0.0, mat='stoneDark', 
         k.mesh(cap, verts, top, uvscale=1.0, local=L)
 
 
-def palm(k, x, z, h=1.6, lean=(0.2, 0.0), seed=0.0, fronds=9, y0=0.0):
+def palm(k, x, z, h=1.6, lean=(0.2, 0.0), seed=0.0, fronds=9, y0=0.0, reach=1.0):
     """a coconut palm: a ringed, curving trunk, a crown of drooping fronds and a bunch of nuts"""
     n = 4 if k.lod else 9
     p = Vector((x, y0, z))
@@ -1553,7 +1553,7 @@ def palm(k, x, z, h=1.6, lean=(0.2, 0.0), seed=0.0, fronds=9, y0=0.0):
         a = TAU * i / fronds + seed
         el = 0.35 + 0.35 * ((i * 7) % 3) / 2
         d = V(math.cos(a), el, math.sin(a))
-        _frond(k, top + V(0, 0.03, 0), d, 0.75 + 0.15 * math.sin(i * 2.3 + seed), 0.7)
+        _frond(k, top + V(0, 0.03, 0), d, (0.75 + 0.15 * math.sin(i * 2.3 + seed)) * reach, 0.7)
     if not k.lod:
         for i in range(4):
             a = TAU * i / 4 + seed
@@ -1708,7 +1708,7 @@ def cave(k):
                     k.beam('leaf', V(vx, vy, fz + 0.1 + 0.01 * j), V(x0 + 0.015 * math.sin((j - 1) * 1.9 + i), vy + 0.045, fz + 0.09 + 0.01 * j), 0.006, round_=True, seg=3)
                 a = (i * 2.3 + j * 1.7)
                 leaf_blade(k, V(vx, vy, fz + 0.1 + 0.01 * j), V(math.cos(a), -0.4, 0.8 + 0.3 * math.sin(a)), 0.06, 0.035, 0.3, seg=3)
-    palm(k, 0.75, cz - 0.35, 1.0, lean=(0.3, 0.15), seed=1.0, fronds=8, y0=0.75)
+    palm(k, 0.72, cz - 0.35, 1.0, lean=(0.1, 0.15), seed=1.0, fronds=8, y0=0.75, reach=0.85)  # (crown kept over its own lot)
     k.push(0, 0, 0)
     for (x, y, z, s) in ((-0.5, 1.15, cz - 0.1, 0.18), (-0.2, 1.3, cz - 0.4, 0.14), (0.75, 0.95, cz + 0.1, 0.13), (-0.85, 0.8, cz - 0.3, 0.15)):
         blob(k, 'leaf', x, y, z, s, s * 0.7, s, amp=0.35, freq=4, seed=x * 5, rings=6, seg=10)
@@ -1723,7 +1723,7 @@ def smugglers_cove(k):
     """a smugglers' landing: a plank shack tucked under an overhanging limestone bluff beside a hidden creek, a
     jetty on piles with a jolly boat moored alongside, contraband stacked for the night run, nets drying"""
     # the bluff and its overhang
-    outcrop(k, -0.75, -1.0, 1.15, 1.55, 0.55, seed=2.0)
+    outcrop(k, -0.75, -0.91, 1.15, 1.55, 0.55, seed=2.0)  # (its rough back stays on the lot)
     outcrop(k, -0.65, -0.55, 1.1, 0.42, 0.7, seed=6.0, y0=1.05, cap='dirt')
     outcrop(k, 0.55, -1.05, 0.7, 0.9, 0.4, seed=9.0, ry=0.3)
     outcrop(k, -1.5, -0.1, 0.32, 1.05, 0.45, seed=4.0)
@@ -2123,7 +2123,7 @@ def anarchy_decor(k):
     return {'ao': 512}
 
 
-def _banana(k, x, z, h=0.8, seed=0.0):
+def _banana(k, x, z, h=0.8, seed=0.0, leaf=1.0):
     """a banana plant: a fibrous pseudostem and broad, ragged, arching leaves, one browned and hanging"""
     limb(k, 'bark', V(x, 0, z), V(x + 0.02, h, z), 0.045, 0.035, seg=8)
     n = 4 if k.lod else 7
@@ -2132,7 +2132,7 @@ def _banana(k, x, z, h=0.8, seed=0.0):
         el = 0.6 + 0.4 * ((i * 5) % 3) / 2
         mat = 'thatchDark' if i == 2 else 'leaf'
         droop = 1.4 if i == 2 else 0.55
-        leaf_blade(k, V(x + 0.02, h - 0.02 * (i % 3), z), V(math.cos(a), el, math.sin(a)), 0.55 + 0.1 * math.sin(i), 0.17, droop, mat=mat, seg=7)
+        leaf_blade(k, V(x + 0.02, h - 0.02 * (i % 3), z), V(math.cos(a), el, math.sin(a)), (0.55 + 0.1 * math.sin(i)) * leaf, 0.17 * (0.5 + 0.5 * leaf), droop, mat=mat, seg=7)
 
 
 @building('anarchy_shrubs')
@@ -2140,12 +2140,13 @@ def anarchy_shrubs(k):
     """the jungle taking back its own: a banana plant, a young palm, elephant ears and ferns, flowering hibiscus,
     rank grass, and a broken crate half swallowed by creepers"""
     blob(k, 'soil', 0, 0, 0, 0.42, 0.04, 0.4, amp=0.3, freq=3, seed=1, rings=4, seg=14, flat=0.0)
-    _banana(k, -0.12, -0.14, 0.75, 0.3)
-    palm(k, 0.2, -0.22, 0.95, lean=(0.15, -0.05), seed=1.3, fronds=7)
+    # (everything kept to the 1x1 lot: a young palm, upright, short fronds; a small banana)
+    _banana(k, -0.12, -0.1, 0.7, 0.3, leaf=0.62)
+    palm(k, 0.08, -0.1, 0.95, lean=(0.05, -0.02), seed=1.3, fronds=7, reach=0.55)
     # elephant ears
     for i in range(5 if not k.lod else 2):
         a = TAU * i / 5 + 0.5
-        leaf_blade(k, V(0.18, 0.02, 0.16), V(math.cos(a), 1.2, math.sin(a)), 0.32, 0.2, 0.9, seg=6)
+        leaf_blade(k, V(0.14, 0.02, 0.13), V(math.cos(a), 1.2, math.sin(a)), 0.3, 0.2, 0.9, seg=6)
     # ferns
     for (fx, fz) in ((-0.25, 0.2), (0.32, 0.05)):
         for i in range(8 if not k.lod else 3):

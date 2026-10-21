@@ -51,6 +51,7 @@ S.b_boatyard = bld('boatyard');
 S.b_cave = bld('cave');
 S.b_smuggler = bld('smugglers_cove');
 S.b_tower = bld('watch_tower');
+S.b_closed = `${bld('sawmill')}; (() => { const b = a.selection && g.buildings.get(a.selection.id); g.cmd({ type: 'blockSlot', id: b.id, delta: 1 }); a.inspector.refresh(true); h.after = () => g.cmd({ type: 'blockSlot', id: b.id, delta: -1 }); })()`;
 S.b_folded = `${bld('corn_farm')}; a.inspector.fold(true)`;
 S.b_construction = `(() => { const b = [...g.buildings.values()].find((b) => b.built < 1); if (!b) return 'missing'; a.select({ type: 'building', id: b.id }); h.look(b.x, b.y); })()`;
 S.p_pirate = per(`p.kind === 'pirate' && !p.captain`);

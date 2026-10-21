@@ -327,8 +327,9 @@ export class World {
     for (const o of prev) if (o) this.scene.remove(o);
     this.terrain = new TerrainMesh(m);
     this.water = new Water(m);
-    this.veg = new Vegetation(m);
     this.buildings = new BuildingsView(this, game);
+    // (after the buildings: trees keep clear of their models)
+    this.veg = new Vegetation(m, (k) => this.buildings.topAt(k));
     this.people = new PeopleView(this, game);
     this.ships = new ShipsView(this, game);
     this.effects = new Effects(this, game);

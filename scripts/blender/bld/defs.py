@@ -173,6 +173,7 @@ def house4(k):
 def house6(k):
     """a weatherboarded cottage, painted, with a shingled porch and a chimney"""
     w, d, h = 2.0, 1.4, 0.98
+    k.push(0, 0, -0.08)  # (keeps the steps inside the lot's front edge)
     plinth(k, w + 0.06, d + 0.06, 0.12)
     k.push(0, 0.12, 0)
     clapboard(k, w, d, h, 'planks', [Op('front', 0.0, 'door', h=0.82), Op('front', -0.6, 'window'), Op('front', 0.6, 'window'), Op('left', 0.0, 'window'), Op('back', -0.4, 'window')], trim='plaster')
@@ -191,6 +192,7 @@ def house6(k):
     steps(k, 0, d / 2 + 0.64, 0.5, 0.22, 2, 'planks')
     cask(k, 0.9, 1.05, 0.8)
     k.box('planks', 0.5, 0.04, 0.13, -0.5, 0.36, d / 2 + 0.3)
+    k.pop()
     return {'ao': 1024}
 
 
@@ -258,6 +260,7 @@ def house8(k):
 def house9(k):
     """a planter's mansion: two rendered storeys, hipped tile roof, a deep columned veranda"""
     w, d, h1, h2 = 2.4, 1.7, 1.0, 0.9
+    k.push(0, 0, -0.44)  # (the veranda steps stay inside the lot's front edge)
     plinth(k, w + 0.06, d + 0.06, 0.2)
     k.push(0, 0.2, 0)
     plastered(k, w, d, h1, 'plaster', [Op('front', 0.0, 'double', h=0.88), Op('front', -0.75, 'window', h=0.5, y=0.25), Op('front', 0.75, 'window', h=0.5, y=0.25), Op('left', 0.0, 'window'), Op('right', 0.0, 'window'), Op('back', -0.5, 'window'), Op('back', 0.5, 'window')])
@@ -294,6 +297,7 @@ def house9(k):
         cask(k, x, d / 2 + 0.9, 0.9)
     k.cyl('wood', 0.03, 0.02, 2.6, 1.35, 0, d / 2 + 0.6, seg=7)
     k.marker('flag', 1.35, 2.6, d / 2 + 0.6)
+    k.pop()
     return {'ao': 1024}
 
 
@@ -303,14 +307,14 @@ def house9(k):
 def bunkhouse(k):
     """a long, low barrack hut for the crew: raised on stumps, board-and-batten walls, palm thatch,
     hammocks slung on the porch and washing on a line"""
-    w, d, h, lift = 1.7, 1.15, 0.72, 0.22
+    w, d, h, lift = 1.42, 1.15, 0.72, 0.22  # (narrow enough that eaves and washing line stay on the lot)
     stilts(k, w, d, lift)
     deck(k, w + 0.06, d + 0.45, lift + 0.035, 'oldplanks', along='z')
     k.push(0, lift, -0.15)
     board_batten(k, w, d - 0.3, h, 'oldplanks', [Op('front', -0.45, 'door', w=0.36, h=0.64), Op('front', 0.35, 'window', w=0.26, h=0.22, y=0.32), Op('left', 0.0, 'window', w=0.22, h=0.2, y=0.34, shutters=False), Op('right', 0.0, 'window', w=0.22, h=0.2, y=0.34, shutters=False)])
-    thatch_gable(k, w, d - 0.3, 0.55, over=0.32, y=h, mat='thatchDark', gable='oldplanks', gable_kind='wattle', res=0.06)
+    thatch_gable(k, w, d - 0.3, 0.55, over=0.24, y=h, mat='thatchDark', gable='oldplanks', gable_kind='wattle', res=0.06)
     k.pop()
-    steps(k, -0.45, d / 2 + 0.26, 0.4, lift, 2, 'oldplanks')
+    steps(k, -0.45, d / 2 + 0.24, 0.4, lift, 2, 'oldplanks')
     # a hammock slung between the porch posts
     # (slung at the outer edge of the porch, clear of the eave)
     k.cyl('bark', 0.03, 0.03, 0.7, 0.9, lift, 0.76, seg=7)
@@ -326,13 +330,14 @@ def bunkhouse(k):
         hf += [(a, a + 2, a + 3, a + 1), (a, a + 1, a + 3, a + 2)]
     k.mesh('canvas', hv, hf, uvscale=1.5)
     # washing line with shirts drying
-    k.cyl('bark', 0.025, 0.025, 0.9, -1.1, 0, 0.55, seg=6)
-    k.cyl('bark', 0.025, 0.025, 0.9, -1.1, 0, -0.65, seg=6)
-    k.beam('rope', V(-1.1, 0.86, 0.55), V(-1.1, 0.84, -0.65), 0.008, round_=True, seg=4)
+    lx = -0.92
+    k.cyl('bark', 0.025, 0.025, 0.9, lx, 0, 0.55, seg=6)
+    k.cyl('bark', 0.025, 0.025, 0.9, lx, 0, -0.65, seg=6)
+    k.beam('rope', V(lx, 0.86, 0.55), V(lx, 0.84, -0.65), 0.008, round_=True, seg=4)
     for i, (z, m) in enumerate(((0.35, 'canvas'), (0.05, 'canvasRed'), (-0.3, 'canvas'), (-0.48, 'canvasBlue'))):
-        k.cbox(m, 0.01, 0.22, 0.16 - 0.02 * (i % 2), -1.1, 0.74, z, rz=0.05 * (i - 1.5))
+        k.cbox(m, 0.01, 0.22, 0.16 - 0.02 * (i % 2), lx, 0.74, z, rz=0.05 * (i - 1.5))
     # sea chest and a rum cask by the steps
-    k.push(0.55, 0, 0.85, 0.2)
+    k.push(0.55, 0, 0.8, 0.2)
     k.box('planksDark', 0.32, 0.17, 0.2, 0, 0, 0, uvscale=1.4)
     k.cbox('planksDark', 0.33, 0.06, 0.21, 0, 0.19, 0, uvscale=1.4)
     for x in (-0.12, 0.12):
@@ -349,7 +354,7 @@ def chuck_tent(k):
     # four poles and ridge
     for (x, z) in ((-0.8, -0.65), (0.8, -0.65), (-0.8, 0.65), (0.8, 0.65)):
         k.cyl('bark', 0.035, 0.03, 1.05 if z < 0 else 0.92, x, 0, z, seg=7)
-    k.beam('bark', V(-0.95, 1.12, 0), V(0.95, 1.12, 0), 0.05, round_=True)
+    k.beam('bark', V(-0.9, 1.12, 0), V(0.9, 1.12, 0), 0.05, round_=True)
     for x in (-0.8, 0.8):
         k.beam('bark', V(x, 0.0, 0.0), V(x, 1.12, 0.0), 0.05, round_=True)
     # sagging sailcloth fly, stitched panels
@@ -358,7 +363,7 @@ def chuck_tent(k):
     for j in range(nz + 1):
         t = j / nz
         for i in range(nx + 1):
-            x = -0.98 + 1.96 * i / nx
+            x = -0.94 + 1.88 * i / nx
             z = -0.82 + 1.64 * t
             y = 1.15 - abs(z) * 0.32 - 0.05 * math.sin(math.pi * i / nx) * math.sin(math.pi * t * 2) ** 2
             verts.append(V(x, y, z))
@@ -369,8 +374,10 @@ def chuck_tent(k):
             faces.append((a, a + 1, a + nx + 2, a + nx + 1))
     k.mesh('canvas', verts, faces, uvscale=0.9)
     for (x, z) in ((-0.98, -0.82), (0.98, -0.82), (-0.98, 0.82), (0.98, 0.82)):
-        k.beam('rope', V(x, 0.88, z), V(x * 1.35, 0.0, z * 1.35), 0.008, round_=True, seg=4)
-        k.cyl('wood', 0.015, 0.01, 0.07, x * 1.35, 0, z * 1.35, seg=5)
+        # (pegged at the lot's corners, steep, so they stay on it)
+        px, pz = math.copysign(0.95, x), math.copysign(0.94, z)
+        k.beam('rope', V(x * 0.96, 0.86, z), V(px, 0.0, pz), 0.008, round_=True, seg=4)
+        k.cyl('wood', 0.015, 0.01, 0.07, px, 0, pz, seg=5)
     # hearth: a ring of stones, embers and a cauldron hung from a tripod
     for i in range(10):
         a = i / 10 * math.tau
@@ -455,8 +462,8 @@ def construction_tent(k):
         k.mesh('canvas', [V(0, h, zf), V(sx * w / 2, 0, zf), V(sx * w * 0.42, 0.0, zf + 0.22), V(sx * 0.08, h * 0.75, zf + 0.06)], [(0, 1, 2, 3), (3, 2, 1, 0)])
         k.beam('rope', V(sx * 0.2, h * 0.55, zf + 0.12), V(sx * 0.32, h * 0.4, zf + 0.15), 0.01, round_=True, seg=4)
         for zz in (zf - 0.05, zf - d + 0.05):
-            k.beam('rope', V(sx * w * 0.35, h * 0.32, zz), V(sx * (w / 2 + 0.3), 0.0, zz), 0.007, round_=True, seg=4)
-            k.cyl('wood', 0.012, 0.008, 0.06, sx * (w / 2 + 0.3), 0, zz, seg=5)
+            k.beam('rope', V(sx * w * 0.35, h * 0.32, zz), V(sx * (w / 2 + 0.17), 0.0, zz), 0.007, round_=True, seg=4)
+            k.cyl('wood', 0.012, 0.008, 0.06, sx * (w / 2 + 0.17), 0, zz, seg=5)
     k.box('black', 0.5, 0.01, d - 0.1, 0, 0.002, -0.4)
     # back wall of the tent
     k.mesh('canvas', [V(-w / 2, 0, -d / 2 - 0.4), V(w / 2, 0, -d / 2 - 0.4), V(0, h, -d / 2 - 0.4)], [(0, 1, 2), (2, 1, 0)])
@@ -470,14 +477,14 @@ def construction_tent(k):
             k.beam('wood', V(x + s * 0.08, 0, 0.42), V(x, 0.36, 0.42), 0.035)
             k.beam('wood', V(x + s * 0.08, 0, 0.62), V(x, 0.36, 0.62), 0.035)
         k.box('wood', 0.06, 0.05, 0.3, x, 0.34, 0.52)
-    k.box('planks', 1.1, 0.035, 0.16, 0.55, 0.39, 0.52, uvscale=1.2)
+    k.box('planks', 0.95, 0.035, 0.16, 0.5, 0.39, 0.52, uvscale=1.2)
     k.cbox('iron', 0.3, 0.12, 0.006, 0.6, 0.5, 0.52, rz=0.4)
     k.cbox('wood', 0.04, 0.12, 0.02, 0.48, 0.57, 0.52, rz=0.4)
     # lumber on bearers under a rope
     for z in (-0.1, 0.3):
-        k.box('bark', 0.08, 0.06, 0.6, 0.6, 0, z - 0.2)
+        k.box('bark', 0.08, 0.06, 0.6, 0.5, 0, z - 0.2)
     for i in range(14):
-        k.box('planks', 0.95, 0.035, 0.12, 0.62, 0.06 + (i // 4) * 0.037, -0.42 + (i % 4) * 0.13 + (k.r() - 0.5) * 0.02, ry=(k.r() - 0.5) * 0.04, uvscale=1.2)
+        k.box('planks', 0.85, 0.035, 0.12, 0.5, 0.06 + (i // 4) * 0.037, -0.42 + (i % 4) * 0.13 + (k.r() - 0.5) * 0.02, ry=(k.r() - 0.5) * 0.04, uvscale=1.2)
     # grindstone on its frame
     k.push(-0.7, 0, 0.55)
     for s in (-1, 1):
@@ -486,9 +493,9 @@ def construction_tent(k):
     k.beam('iron', V(-0.15, 0.32, 0), V(0.15, 0.32, 0), 0.015, round_=True, seg=5)
     k.pop()
     rope_coil(k, -0.65, 0.05)
-    crate(k, -0.85, 0, -0.35, 0.28, 0.2)
-    crate(k, -0.82, 0.28, -0.33, 0.22, 0.6)
-    cask(k, 0.95, -0.85, 0.7)
+    crate(k, -0.78, 0, -0.35, 0.28, 0.2)
+    crate(k, -0.76, 0.28, -0.33, 0.22, 0.6)
+    cask(k, 0.84, -0.84, 0.7)
     return {'ao': 1024}
 
 

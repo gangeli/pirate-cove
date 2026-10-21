@@ -1010,7 +1010,7 @@ def wench_hut(k):
     k.box('darkwood', 0.6, 0.18, 0.4, 0.05, 0.0, -0.18)
     k.box('red', 0.58, 0.05, 0.38, 0.05, 0.18, -0.18)
     k.box('canvas', 0.16, 0.05, 0.3, -0.17, 0.22, -0.18)
-    thatch_gable(k, w, d, 0.62, over=0.22, y=h, mat='thatch', gable='planksDark')
+    thatch_gable(k, w, d, 0.62, over=0.2, y=h, mat='thatch', gable='planksDark')
     k.pop()
     k.pop()
     zf = zb + d / 2
@@ -1087,7 +1087,7 @@ def eatery(k):
     """Cheap Eatery: an open-sided cookhouse under palm thatch with a long table made of a ship's hatch grating,
     and an outdoor kitchen - a pig turning on the spit over the coals, a domed bread oven, a cook's bench"""
     # the pavilion
-    px0, px1, pz = -0.42, 1.28, 0.62
+    px0, px1, pz = -0.42, 1.22, 0.62  # (eaves stop at the lot's side)
     cx = (px0 + px1) / 2
     W, Dp, H = px1 - px0, 2 * pz, 1.04
     k.push(cx, 0, -0.05)
@@ -1106,7 +1106,7 @@ def eatery(k):
     for xx in xs:
         k.beam('bark', V(xx, H + 0.05, -pz - 0.02), V(xx, H + 0.05, pz + 0.02), 0.06, round_=True)
     k.push(0, 0, 0, math.pi / 2)
-    thatch_gable(k, Dp, W, 0.62, over=0.24, y=H, mat='thatchDark', gable='bamboo', gable_kind='wattle', res=0.06)
+    thatch_gable(k, Dp, W, 0.62, over=0.2, y=H, mat='thatchDark', gable='bamboo', gable_kind='wattle', res=0.06)
     k.pop()
     # a low back screen of boards with a crockery shelf
     k.push(0, 0.05, -pz + 0.04)
@@ -1189,7 +1189,7 @@ def eatery(k):
     barrel(k, -0.5, -0.6, 0.85)
     sack(k, -0.5, -0.25, 0.8, 0.5)
     # a barrel table at the front and the sign on the corner post
-    barrel_table(k, 0.25, 0.78 - 0.02, stools=2)
+    barrel_table(k, 0.25, 0.66, stools=2)  # (its stools stay on the lot)
     hanging_sign(k, px1 - 0.04, 0.92, 0.57 - 0.05 + 0.0, 'EATS')
     return {'ao': 1024}
 
@@ -1228,7 +1228,7 @@ def shutter_opening(k, x, y, w, h, depth=0.06, mat='planks'):
 def gambling_den(k):
     """Gambling Den: a weatherboarded shack with its shutters propped open, a purple-striped awning over the
     card and dice tables, strings of lanterns, a tally board, casks of beer and the black flag on the gable"""
-    w, d, h, zb = 2.9, 1.5, 1.0, -0.6
+    w, d, h, zb = 2.9, 1.5, 1.0, -0.48  # (back eaves and the yard clutter stay on the lot)
     k.push(0, 0, zb)
     plinth(k, w + 0.06, d + 0.06, 0.1)
     k.push(0, 0.1, 0)
@@ -1283,12 +1283,12 @@ def gambling_den(k):
     for (xx, zz, s_) in ((1.58, zf + 0.3, 0.85), (1.6, zf - 0.05, 0.85), (1.6, zf + 0.62, 0.8)):
         barrel(k, xx, zz, s_)
     # round the back: a rain butt under the eave, crates and empties
-    barrel(k, -1.25, zb - d / 2 - 0.2, 1.0)
-    crate(k, 1.05, 0, zb - d / 2 - 0.17, 0.26, 0.2)
-    crate(k, 1.35, 0, zb - d / 2 - 0.16, 0.24, -0.3)
-    crate(k, 1.2, 0.26, zb - d / 2 - 0.17, 0.22, 0.5)
+    barrel(k, -1.25, zb - d / 2 - 0.13, 1.0)
+    crate(k, 1.05, 0, zb - d / 2 - 0.13, 0.26, 0.2)
+    crate(k, 1.35, 0, zb - d / 2 - 0.13, 0.24, -0.3)
+    crate(k, 1.2, 0.26, zb - d / 2 - 0.13, 0.22, 0.5)
     for i in range(4):
-        bottle(k, 0.0 + i * 0.07, 0.0, zb - d / 2 - 0.12 - (i % 2) * 0.05)
+        bottle(k, 0.0 + i * 0.07, 0.0, zb - d / 2 - 0.08 - (i % 2) * 0.04)
     hanging_sign(k, w / 2 - 0.12, 1.0, zf + 0.04, 'DICE')
     return {'ao': 1024}
 
@@ -1407,9 +1407,10 @@ def brothel(k):
     bench(k, -0.7 - 0.35, zf + 0.12, 0.5, y=0.06)
     hanging_sign(k, xs[-1] + 0.0, y_floor - 0.12, zr + 0.02, 'SALON')
     # the side yard: a hammock between two palm trunks
-    palm_tree(k, 2.55, -1.5, 1.7, 0.1, 0.4)
-    palm_tree(k, 2.55, -0.2, 1.45, 0.15, -0.6)
-    hammock(k, (2.55, 0.62, -1.45), (2.55, 0.62, -0.25), w=0.2, sag=0.2, mat='canvas')
+    # (upright, with crowns kept over the lot)
+    palm_tree(k, 2.5, -1.4, 1.7, 0.03, 0.4, L=0.43)
+    palm_tree(k, 2.5, -0.2, 1.45, 0.04, -0.6, L=0.4)
+    hammock(k, (2.5, 0.62, -1.35), (2.5, 0.62, -0.25), w=0.2, sag=0.2, mat='canvas')
     # laundry out back
     for xx in (-1.6, 1.0):
         k.cyl('bark', 0.022, 0.02, 0.85, xx, 0, zb - d / 2 - 0.2, seg=6)
@@ -1566,7 +1567,7 @@ def inn(k):
     for xx in (-0.55, 0.0, 0.55):
         hay(k, xx, -0.18, 0.18, 0.14, 0.12)
     k.box('thatch', sd - 0.2, 0.06, 0.12, 0, 0.6, -sw / 2 + 0.14)
-    thatch_gable(k, sd, sw, 0.6, over=0.26, y=sh, mat='thatchDark', gable='oldplanks', res=0.06)
+    thatch_gable(k, sd, sw, 0.6, over=0.2, y=sh, mat='thatchDark', gable='oldplanks', res=0.06)
     k.pop()
     k.pop()
     # stable yard: bales, a trough, a saddle on the rail
@@ -1606,7 +1607,7 @@ def inn(k):
         k.push(s * 0.72, 0, gz + 0.12)
         lantern(k, 0, 0.82, 0.0) if s > 0 else None
         k.pop()
-    hanging_sign(k, -0.72, 0.95, gz + 0.12, 'THE_INN')
+    hanging_sign(k, -0.72, 0.95, gz - 0.06, 'THE_INN')  # (its arm ends at the lot's front edge)
     return {'ao': 1024}
 
 
@@ -1844,11 +1845,11 @@ def courtesan(k):
     k.pop()
     k.pop()
     # garden: palms in tubs, a parrot on its perch, shrubs at the corners
-    potted_palm(k, -0.95, 1.2, 1.1)
-    potted_palm(k, 0.95, 1.2, 1.1)
+    potted_palm(k, -0.92, 1.08, 1.0)
+    potted_palm(k, 0.92, 1.08, 1.0)
     parrot_perch(k, 1.25, 0.95, 0.72)
-    potted_palm(k, -1.22, -1.22, 0.9)
-    potted_palm(k, 1.22, -1.22, 0.9)
+    potted_palm(k, -1.1, -1.1, 0.9)
+    potted_palm(k, 1.1, -1.1, 0.9)
     return {'ao': 1024}
 
 

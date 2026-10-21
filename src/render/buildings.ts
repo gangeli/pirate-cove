@@ -273,6 +273,21 @@ export class BuildingsView {
     }
   }
 
+  /**
+   * World-space top of the building on tile k, 0 when there is none (trees keep their crowns out from under it).
+   * Houses and the palace count as tall as their grandest level, so trees by a plot stay clear as it grows.
+   */
+  topAt(k: number): number {
+    const id = this.game.map.occupied[k];
+    if (!id) return 0;
+    const b = this.game.buildings.get(id);
+    const v = this.views.get(id);
+    if (!b) return 0;
+    const base = v ? v.group.position.y : this.game.map.height[k];
+    const h = v ? v.height : 2;
+    return base + (b.def === 'housing_plot' ? Math.max(h, 3.0) : b.def === 'palace' ? Math.max(h, 5.0) : h);
+  }
+
   select(id: number): void {
     this.selected = id;
     const b = this.game.buildings.get(id);
