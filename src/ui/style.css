@@ -75,11 +75,16 @@ a { color: var(--blood); }
 .panel h3 { font-size: 19px; color: #3a1c0c; margin: 12px 0 4px; padding-bottom: 2px; border-bottom: 1px solid color-mix(in srgb, var(--ink2) 35%, transparent); }
 .panel .sub { color: var(--ink2); font-style: italic; font-size: 14px; }
 .panel .close {
-  position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 2px; padding: 0; cursor: pointer; display: grid; place-items: center;
-  color: var(--ink2); background: transparent; border: 1px solid color-mix(in srgb, var(--ink2) 50%, transparent);
+  /* a dark wax seal with a heavy parchment cross: easy to find on every sheet, and a comfortable target */
+  position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 50%; padding: 0; cursor: pointer; display: grid; place-items: center; z-index: 3;
+  color: #f2e2bc; background: radial-gradient(circle at 40% 35%, #5a2a1a, #2a120a 70%); border: 1px solid #140804;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brass) 75%, transparent), 0 2px 4px rgba(40, 20, 5, 0.45), inset 0 1px 0 rgba(255, 200, 160, 0.2);
 }
-.panel .close .ic { width: 14px; height: 14px; }
-.panel .close:hover { color: var(--blood); border-color: var(--blood); background: color-mix(in srgb, var(--blood) 8%, transparent); }
+.panel .close .ic { width: 15px; height: 15px; }
+.panel .close .ic path { stroke-width: 3.4; }
+.panel .close:hover { color: #fff4dc; background: radial-gradient(circle at 40% 35%, #8a2418, #4a0e08 70%); }
+.panel .close:active { transform: scale(0.94); }
+.panel .close:focus-visible { outline: 2px solid var(--blood-hi); outline-offset: 3px; }
 .scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--ink3) transparent; }
 hr.rule {
   border: 0; height: 9px; margin: 8px 0; opacity: 0.6;
@@ -459,7 +464,16 @@ body.touch .kv a { display: inline-block; padding: 5px 0; margin: -5px 0; }
 .slot.empty { cursor: default; background: color-mix(in srgb, var(--ink2) 6%, transparent); border-style: dashed; border-color: color-mix(in srgb, var(--ink2) 50%, transparent); }
 .slot.blocked { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--blood) 22%, transparent) 0 2px, transparent 2px 7px); border-style: solid; border-color: color-mix(in srgb, var(--blood) 45%, transparent); }
 .slot.res { opacity: 0.55; }
-body.touch .slot { width: 36px; height: 36px; }
+/* a filled place shows the worker's face; an open one a dashed frame; a closed one a barred, crossed frame */
+.slot.full { overflow: hidden; background: #2a3a40; border-color: var(--ink); }
+.slot.full .face { width: 100%; height: 125%; object-fit: cover; object-position: 50% 12%; align-self: start; border: 0; box-shadow: none; pointer-events: none; }
+.slot.full:hover { box-shadow: 0 0 0 2px var(--blood); }
+button.slot.empty { cursor: pointer; }
+button.slot.empty:hover { border-color: var(--ink2); background: color-mix(in srgb, var(--ink2) 12%, transparent); }
+.slot.blocked { color: var(--blood); }
+.slot.blocked .ic { opacity: 0.8; }
+.slot:focus-visible { outline: 2px solid var(--blood-hi); outline-offset: 1px; }
+body.touch .slot { width: 40px; height: 40px; -webkit-touch-callout: none; user-select: none; }
 /* production flow */
 .flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 14px; }
 .flow .good { padding: 2px 8px; border: 1px solid color-mix(in srgb, var(--ink2) 40%, transparent); border-radius: 2px; background: rgba(250, 242, 220, 0.45); }
@@ -862,7 +876,8 @@ label.check input { width: 18px; height: 18px; accent-color: var(--blood); }
 .touchbar { position: absolute; left: 50%; bottom: calc(var(--tb-h) + 8px); transform: translateX(-50%); display: flex; gap: 8px; z-index: 12; pointer-events: auto; }
 .touchbar .btn { font-size: 18px; padding: 8px 18px; }
 body.touch .btn.small { padding: 6px 12px; font-size: 16px; }
-body.touch .panel .close { width: 36px; height: 36px; }
+body.touch .panel .close { width: 40px; height: 40px; }
+body.touch .panel .close .ic { width: 17px; height: 17px; }
 #view { touch-action: none; }
 /* no pointer to follow on a touch screen: placement feedback is drawn beside the ghost instead */
 body.touch .cursor-tip { display: none; }

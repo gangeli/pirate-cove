@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { assetUrl, withKTX2 } from './textures';
 import { gpu } from './backend';
+import { analyzeGait, type FootTrack, type Gait } from './gait';
 
 /**
  * Instanced, GPU-skinned crowds. Each character model's animation clips are baked into a float texture
@@ -14,14 +15,24 @@ export type ClipName = (typeof CLIPS)[number];
 const BAKE_FPS = 30;
 /** which hand prop (region id) a clip shows */
 const PROP_OF: Record<string, number> = { fight: 11, swing: 12, farm: 13, drink: 14, carry: 15 };
-/** texels per instance: animation, 8 colours; on WebGPU also the instance matrix (4 texels, see nodes.ts crowdMaterial) */
-const dataWidth = () => (gpu() ? 13 : 9);
+/** texels per instance: animation A, 8 colours, (on WebGPU the instance matrix, 4 texels, see nodes.ts crowdMaterial), animation B */
+const dataWidth = () => (gpu() ? 14 : 10);
+/** the texel holding the second, blended-in animation: (row, next row, frame fraction, blend weight) */
+export const animBTexel = () => (gpu() ? 13 : 9);
+/** clips whose gait (stride, foot strike) is measured at load: in-place locomotion */
+export const GAIT_CLIPS = ['walk', 'run', 'carry', 'limp', 'swagger', 'march'];
+/** foot contact points tracked through the bake (ankle and ball of each foot) */
+const FEET = [['L', 'LeftFoot'], ['L', 'LeftToeBase'], ['R', 'RightFoot'], ['R', 'RightToeBase']] as const;
+/** bones a carrier holds the load with: their pose comes from the carry clip, the rest of the body walks */
+const CARRY_ARMS = /^(Left|Right)(Shoulder|Arm|ForeArm|Hand|FingerBase|HandFinger1)$|^[LR]Thumb$/;
 
 interface ClipInfo {
   start: number;
   frames: number;
   duration: number;
   loop: boolean;
+  /** measured for locomotion clips */
+  gait?: Gait;
 }
 
 export interface Look {
@@ -56,6 +67,8 @@ export class CrowdModel {
   readonly cap: number;
   private bones = 0;
   textured = false;
+  /** per baked row: the four foot contact points in mesh space (x, y, z each), for gait analysis and slide measurement */
+  private feet = new Float32Array(0);
 
   constructor(cap: number) {
     this.cap = cap;
@@ -73,11 +86,29 @@ export class CrowdModel {
     // bake
     const mixer = new THREE.AnimationMixer(gltf.scene);
     const rows: Float32Array[] = [];
+    const feet: number[] = [];
     let start = 0;
     const tmp = new THREE.Matrix4();
     const bindInv = skinned.bindMatrixInverse.clone(), bind = skinned.bindMatrix.clone();
+    const footBones = FEET.map(([, n]) => sk.bones.find((b) => b.name === n));
+    const fp = new THREE.Vector3();
+    const anims = gltf.animations.slice();
+    // the carry clip as captured stands still (the actor waited with the load): carriers walk with the walk cycle's
+    // legs and body, holding the load in the carry clip's arms. Same stride and timing as the walk, so they blend.
+    const walkClip = anims.find((a) => a.name === 'walk'), carryClip = anims.find((a) => a.name === 'carry');
+    if (walkClip && carryClip) {
+      const arm = (tr: THREE.KeyframeTrack) => CARRY_ARMS.test(tr.name.split('.')[0]);
+      const held = carryClip.tracks.filter(arm).map((tr) => {
+        // the pose a quarter of the way in, held
+        const k = Math.floor(tr.times.length / 4), w = tr.getValueSize();
+        const T = tr.constructor as new (n: string, t: number[], v: number[]) => THREE.KeyframeTrack;
+        return new T(tr.name, [0], Array.from(tr.values.slice(k * w, k * w + w)));
+      });
+      const synth = new THREE.AnimationClip('carry', walkClip.duration, [...walkClip.tracks.filter((tr) => !arm(tr)), ...held]);
+      anims.splice(anims.indexOf(carryClip), 1, synth);
+    }
     for (const name of CLIPS) {
-      const clip = gltf.animations.find((a) => a.name === name);
+      const clip = anims.find((a) => a.name === name);
       if (!clip) continue;
       mixer.stopAllAction();
       const act = mixer.clipAction(clip);
@@ -94,11 +125,26 @@ export class CrowdModel {
           tmp.toArray(row, b * 16);
         }
         rows.push(row);
+        for (const fb of footBones) {
+          if (fb) fp.setFromMatrixPosition(fb.matrixWorld).applyMatrix4(bindInv);
+          else fp.set(0, 0, 0);
+          feet.push(fp.x, fp.y, fp.z);
+        }
       }
-      this.clips.set(name, { start, frames, duration: clip.duration, loop: name !== 'die' });
+      const info: ClipInfo = { start, frames, duration: clip.duration, loop: name !== 'die' };
+      if (GAIT_CLIPS.includes(name) && footBones.every(Boolean)) {
+        const tracks: FootTrack[] = FEET.map(([side], k) => ({
+          side,
+          y: Array.from({ length: frames }, (_, f) => feet[((start + f) * 4 + k) * 3 + 1]),
+          z: Array.from({ length: frames }, (_, f) => feet[((start + f) * 4 + k) * 3 + 2]),
+        }));
+        info.gait = analyzeGait(tracks);
+      }
+      this.clips.set(name, info);
       start += frames;
       act.stop();
     }
+    this.feet = new Float32Array(feet);
     const w = this.bones * 4, h = rows.length;
     const buf = new Float32Array(w * h * 4);
     rows.forEach((r, i) => buf.set(r, i * w * 4));
@@ -167,6 +213,12 @@ ivec4 sj = ivec4(skinIndex);
 mat4 sm0 = skinMat(sj, skinWeight, int(anim.x));
 mat4 sm1 = skinMat(sj, skinWeight, int(anim.y));
 mat4 skinM = sm0 * (1.0 - anim.z) + sm1 * anim.z;
+vec4 animB = idat(${animBTexel()});
+if (animB.w > 0.001) {
+  // a second clip blended in (walk into run, idle into walk): same frame interpolation, then a cross-fade
+  mat4 sb = skinMat(sj, skinWeight, int(animB.x)) * (1.0 - animB.z) + skinMat(sj, skinWeight, int(animB.y)) * animB.z;
+  skinM = skinM * (1.0 - animB.w) + sb * animB.w;
+}
 int region = int(floor(color.r * 20.0 + 0.5));
 float hide = 0.0;
 vec3 rc = vec3(1.0);
@@ -220,21 +272,48 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
 
   /** add an instance; t = seconds into the clip */
   add(matrix: THREE.Matrix4, clip: string, t: number, look: Look): void {
-    if (this.count >= this.cap) return;
     const c = this.clips.get(clip) ?? this.clips.get('idle')!;
-    let u = t / c.duration;
-    u = c.loop ? u - Math.floor(u) : Math.min(1, u);
+    this.addPose(matrix, clip, t / c.duration, null, 0, 0, look);
+  }
+
+  /** a clip's info (frames, duration, measured gait), falling back to idle */
+  clip(name: string): ClipInfo {
+    return this.clips.get(name) ?? this.clips.get('idle')!;
+  }
+
+  /** rows and fraction of clip `name` at cycle phase u (0..1, wraps for loops) */
+  private frameOf(name: string, u: number): [number, number, number] {
+    const c = this.clip(name);
+    u = c.loop ? u - Math.floor(u) : Math.min(1, Math.max(0, u));
     const f = u * (c.frames - 1);
-    const f0 = Math.floor(f), f1 = c.loop ? (f0 + 1) % c.frames : Math.min(c.frames - 1, f0 + 1);
+    const f0 = Math.min(c.frames - 1, Math.floor(f)), f1 = c.loop ? (f0 + 1) % c.frames : Math.min(c.frames - 1, f0 + 1);
+    return [c.start + f0, c.start + f1, f - f0];
+  }
+
+  /**
+   * add an instance posed by clip `a` at cycle phase `ua`, cross-faded with weight `w` toward clip `b` at phase `ub`
+   * (b = null or w = 0: clip a alone). The hand prop is the one of whichever clip dominates.
+   */
+  addPose(matrix: THREE.Matrix4, a: string, ua: number, b: string | null, ub: number, w: number, look: Look): void {
+    if (this.count >= this.cap) return;
     const i = this.count++;
     if (i >= this.rows) this.resizeData(Math.min(this.cap, this.rows * 2));
     const d = this.data, o = i * this.dataW * 4;
     if (this.inst) matrix.toArray(this.inst.instanceMatrix.array, i * 16);
     else matrix.toArray(d, o + 36);
-    d[o] = c.start + f0;
-    d[o + 1] = c.start + f1;
-    d[o + 2] = f - f0;
-    d[o + 3] = PROP_OF[clip] ?? 0;
+    const A = this.frameOf(a, ua);
+    d[o] = A[0];
+    d[o + 1] = A[1];
+    d[o + 2] = A[2];
+    const ob = o + animBTexel() * 4;
+    if (b && w > 0.001) {
+      const B = this.frameOf(b, ub);
+      d[ob] = B[0];
+      d[ob + 1] = B[1];
+      d[ob + 2] = B[2];
+      d[ob + 3] = Math.min(1, w);
+    } else d[ob + 3] = 0;
+    d[o + 3] = PROP_OF[b && w > 0.5 ? b : a] ?? 0;
     put(d, o + 4, look.skin, 1);
     put(d, o + 8, look.shirt, 1);
     put(d, o + 12, look.pants, 1);
@@ -243,6 +322,33 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
     put(d, o + 24, look.hat2 ?? look.hair, look.hat2 ? 1 : 0);
     put(d, o + 28, look.sash, 1);
     put(d, o + 32, look.coat ?? look.shirt, 1);
+  }
+
+  /**
+   * world positions of the four foot contact points (L ankle, L ball, R ankle, R ball) of instance i as drawn this
+   * frame: the same row blend the vertex shader does, applied to the points (debug: foot slide measurement)
+   */
+  instanceFeet(i: number, matrix: THREE.Matrix4, out: THREE.Vector3[]): void {
+    const d = this.data, o = i * this.dataW * 4, ob = o + animBTexel() * 4;
+    const F = this.feet;
+    const wb = d[ob + 3];
+    for (let k = 0; k < 4; k++) {
+      const v = out[k].set(0, 0, 0);
+      const acc = (row: number, wt: number) => {
+        const j = (row * 4 + k) * 3;
+        v.x += F[j] * wt;
+        v.y += F[j + 1] * wt;
+        v.z += F[j + 2] * wt;
+      };
+      const wa = wb > 0.001 ? 1 - wb : 1;
+      acc(d[o], wa * (1 - d[o + 2]));
+      acc(d[o + 1], wa * d[o + 2]);
+      if (wb > 0.001) {
+        acc(d[ob], wb * (1 - d[ob + 2]));
+        acc(d[ob + 1], wb * d[ob + 2]);
+      }
+      v.applyMatrix4(matrix);
+    }
   }
 
   commit(): void {

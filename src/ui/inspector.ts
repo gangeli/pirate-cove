@@ -156,7 +156,6 @@ export class Inspector {
       wage: (v) => this.bcmd({ type: 'setWage', id: this.sel(), wage: +v }),
       price: (v) => this.bcmd({ type: 'setPrice', id: this.sel(), price: +v }),
       quality: (v) => this.bcmd({ type: 'setQuality', id: this.sel(), quality: +v }),
-      block: (d) => this.bcmd({ type: 'blockSlot', id: this.sel(), delta: +d }),
       fire: (pid) => this.bcmd({ type: 'fire', id: this.sel(), person: +pid }),
       demolish: () => app.demolishAsk(this.sel()),
       commission: (t) => {
@@ -227,6 +226,37 @@ export class Inspector {
       },
     };
     delegate(this.panel, this.acts, () => audio.sfx('ui_click'));
+    // staff places: Shift-click (or a long press on touch) closes or reopens them; caught before the plain click
+    let held = false;
+    let holdTimer = 0;
+    this.panel.addEventListener('click', (e) => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-slot]');
+      if (!t) return;
+      if (held || e.shiftKey) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!held) this.closeSlots(t.dataset.slot!);
+        held = false;
+      }
+    }, true);
+    this.panel.addEventListener('pointerdown', (e) => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-slot]');
+      held = false;
+      clearTimeout(holdTimer);
+      if (!t || e.pointerType === 'mouse') return;
+      holdTimer = window.setTimeout(() => {
+        held = true;
+        navigator.vibrate?.(15);
+        this.closeSlots(t.dataset.slot!);
+      }, 480);
+    });
+    const cancelHold = () => clearTimeout(holdTimer);
+    this.panel.addEventListener('pointerup', cancelHold);
+    this.panel.addEventListener('pointercancel', cancelHold);
+    this.panel.addEventListener('pointerleave', cancelHold);
+    this.panel.addEventListener('contextmenu', (e) => {
+      if ((e.target as HTMLElement).closest('[data-slot]')) e.preventDefault();
+    });
   }
 
   private onThumb = (): void => this.refresh(true);
@@ -367,15 +397,17 @@ export class Inspector {
       const slots = def.workers.filter((w) => w.job !== 'hauler' || def.id === 'dock');
       if (slots.length || def.haulers || def.overseer || def.guards) {
         const rows = [];
-        for (const sl of def.workers) {
-          const list = sl.job === 'hauler' ? b.haulers.concat(b.workers.filter((id) => g.people.get(id)?.jobRole === 'hauler')) : b.workers.filter((id) => g.people.get(id)?.jobRole === sl.job);
-          rows.push(this.slotRow(JOB_NAMES[sl.job] + (sl.count > 1 ? 's' : ''), sl.count, [...new Set(list)], b));
-        }
+        // closed places are taken from the vacancies in the order of the worker rows (as the sim staffs them)
+        let closing = b.blocked;
+        def.workers.forEach((sl, ri) => {
+          const list = [...new Set(sl.job === 'hauler' ? b.haulers.concat(b.workers.filter((id) => g.people.get(id)?.jobRole === 'hauler')) : b.workers.filter((id) => g.people.get(id)?.jobRole === sl.job))];
+          const shut = Math.min(closing, Math.max(0, sl.count - list.length));
+          closing -= shut;
+          rows.push(this.slotRow(JOB_NAMES[sl.job] + (sl.count > 1 ? 's' : ''), sl.count, list, b, false, { row: ri, shut }));
+        });
         if (def.haulers && !def.workers.some((w) => w.job === 'hauler')) rows.push(this.slotRow(def.haulers > 1 ? 'Haulers' : 'Hauler', def.haulers, b.haulers, b));
         if (def.overseer || def.guards) rows.push(this.slotRow(def.guards ? 'Guards' : 'Overseer', def.guards ?? 1, [b.overseer, ...b.guards].filter(Boolean), b, true));
-        const total = def.workers.reduce((a, w) => a + w.count, 0);
         body.push(html`<section class="sect"><h4 class="eng">Staff</h4><div class="slotrows">${rows}</div>
-          ${total ? html`<div class="field-row"><span class="lbl">Open places</span><div class="step"><button data-act="block:1" aria-label="Close a place" data-tip="Close a place: fewer workers here">${icon('minus', 14)}</button><span class="val">${total - Math.min(total, b.blocked)} of ${total}</span><button data-act="block:-1" aria-label="Open a place" data-tip="Open a closed place">${icon('plus', 14)}</button></div></div>` : ''}
           ${def.overseer || def.guards ? html`<div class="field-row"><span class="lbl">${def.guards ? 'Guard wage' : 'Overseer wage'}</span>${this.seg('wage', b.wage, [[0, 'Unpaid'], [2, '2g'], [4, '4g'], [8, '8g'], [12, '12g']])}</div>
             <div class="seg-note">Gold a month for each ${def.guards ? 'guard' : 'overseer'}. Pirates take the best-paid posts first.</div>` : ''}
           <div class="field-row"><span class="lbl">Priority</span>${this.prioSeg(b)}</div>
@@ -451,16 +483,53 @@ export class Inspector {
     return this.seg('prio', b.priority, [[1, 'Lowest'], [2, 'Low'], [3, 'Normal'], [4, 'High'], [5, 'Top']], 'prio');
   }
 
-  private slotRow(label: string, count: number, ids: number[], b: Building, pirates = false) {
+  /**
+   * A row of staff places: a filled place shows the worker's face (click to inspect them); an open one is a dashed
+   * frame; a closed one is barred. In the worker rows (`close` given) Shift-click, or a long press on touch, closes
+   * a place and every place to its right, or reopens a closed one and those to its left.
+   */
+  private slotRow(label: string, count: number, ids: number[], b: Building, pirates = false, close?: { row: number; shut: number }) {
     const g = this.app.game;
-    const blocked = Math.min(b.blocked, Math.max(0, count - ids.length));
-    return html`<div class="slotrow"><span class="lbl">${label}</span><div class="slots">${Array.from({ length: count }, (_, i) => {
+    const shut = close ? close.shut : Math.min(b.blocked, Math.max(0, count - ids.length));
+    const hint = close ? (this.app.touchMode ? 'Hold to close places' : 'Shift-click to close places') : '';
+    return html`<div class="slotrow"><span class="lbl">${label}</span><div class="slots" role="group" aria-label="${label}">${Array.from({ length: count }, (_, i) => {
       const id = ids[i];
       const p = id ? g.people.get(id) : null;
-      if (p) return html`<button class="slot" data-act="goto:${p.id}" data-tip="${p.name}${p.skilled ? ' (skilled)' : ''}">${icon(pirates ? 'pirate' : 'captive', 18)}</button>`;
-      const bl = i >= count - blocked;
-      return html`<span class="slot empty ${bl ? 'blocked' : ''}" data-tip="${bl ? 'Closed place' : 'Vacant'}"></span>`;
+      const sa = close ? html` data-slot="${close.row}:${i}"` : '';
+      if (p) {
+        const pid = portraitIdFor(p);
+        return html`<button class="slot full" data-act="goto:${p.id}"${sa} aria-label="${p.name}" data-tip="<b>${p.name}</b>${p.skilled ? ' (skilled)' : ''}${hint ? html`<br><i>${hint}</i>` : ''}">${pid ? raw(portraitImg(pid, 32, 'face')) : icon(pirates ? 'pirate' : 'captive', 18)}</button>`;
+      }
+      const bl = i >= count - shut;
+      if (!close) return html`<span class="slot empty ${bl ? 'blocked' : ''}" data-tip="${bl ? 'Closed place' : 'Vacant'}"></span>`;
+      return html`<button class="slot empty ${bl ? 'blocked' : ''}"${sa} aria-label="${bl ? 'Closed place' : 'Vacant place'}" aria-pressed="${bl ? 'true' : 'false'}" data-tip="<b>${bl ? 'Closed' : 'Vacant'}</b><br><i>${bl ? (this.app.touchMode ? 'Hold to reopen' : 'Shift-click to reopen') : hint}</i>">${bl ? icon('close', 16) : ''}</button>`;
     })}</div></div>`;
+  }
+
+  /** close (or reopen) staff places from a Shift-click or long press on the place at `row:i` */
+  private closeSlots(spec: string): void {
+    const b = this.app.game.buildings.get(this.sel());
+    if (!b) return;
+    const [ri, i] = spec.split(':').map(Number);
+    const def = BUILDING[b.def];
+    const g = this.app.game;
+    // where the closed places fall now (the sim takes them from the vacancies row by row)
+    let closing = b.blocked;
+    const rows = def.workers.map((sl) => {
+      const have = new Set(sl.job === 'hauler' ? b.haulers.concat(b.workers.filter((id) => g.people.get(id)?.jobRole === 'hauler')) : b.workers.filter((id) => g.people.get(id)?.jobRole === sl.job)).size;
+      const shut = Math.min(closing, Math.max(0, sl.count - have));
+      closing -= shut;
+      return { count: sl.count, have, shut };
+    });
+    const r = rows[ri];
+    if (!r) return;
+    const isShut = i >= r.count - r.shut && i >= r.have;
+    // closing: this place and the ones to its right (a filled place keeps its worker; the vacancies close)
+    const want = isShut ? r.count - i - 1 : r.count - Math.max(i, r.have);
+    const delta = Math.max(0, want) - r.shut;
+    if (!delta) return;
+    audio.sfx(delta > 0 ? 'ui_click' : 'quill');
+    this.bcmd({ type: 'blockSlot', id: b.id, delta: Math.max(-b.blocked, delta) });
   }
 
   // ------------------------------------------------------------------------------------------------ person

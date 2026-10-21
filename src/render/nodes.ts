@@ -784,6 +784,12 @@ export function crowdMaterial(o: { boneTex: THREE.DataTexture; dataTex: THREE.Da
     const sm0 = skinMat(sj, sw, int(anim.x)).toVar();
     const sm1 = skinMat(sj, sw, int(anim.y)).toVar();
     const skinM = sm0.mul(anim.z.oneMinus()).add(sm1.mul(anim.z)).toVar();
+    // a second clip cross-faded in (crowd.ts addPose): texel 13 = (row, next row, fraction, weight)
+    const animB = idat(13).toVar();
+    If(animB.w.greaterThan(0.001), () => {
+      const sb = skinMat(sj, sw, int(animB.x)).mul(animB.z.oneMinus()).add(skinMat(sj, sw, int(animB.y)).mul(animB.z));
+      skinM.assign(skinM.mul(animB.w.oneMinus()).add(sb.mul(animB.w)));
+    });
     const inst = mat4(idat(9), idat(10), idat(11), idat(12)).toVar();
     const rh = region().toVar();
     const p = skinM.mul(vec4(positionGeometry, 1.0)).xyz.toVar();
