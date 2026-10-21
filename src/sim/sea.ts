@@ -395,7 +395,9 @@ export function updateShips(g: Game, dt: number): void {
           if (last && s.status === 'returning') {
             s.vx = tx;
             s.vy = ty;
-            s.vdir = (s as any).berthDir ?? s.vdir;
+            // alongside, she lies the way round she came in (and leaves that way)
+            const bd: number = (s as any).berthDir ?? s.vdir;
+            s.vdir = Math.cos(bd - s.vdir) >= 0 ? bd : bd + Math.PI;
           } else {
             // keep way on past the waypoint (a step standing still shows as a hitch in her speed)
             s.vx += Math.cos(s.vdir) * sp;

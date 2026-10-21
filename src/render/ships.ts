@@ -865,71 +865,90 @@ export class ShipsView {
   }
 
   /**
-   * Where the view puts a ship (this.pose, from simPose): moved so the hull lies in water. At (and near) its berth
-   * that is a fitted berth, searched once per dock, eased so she gathers way leaving it and loses it coming in (the
-   * sim's ship keeps a steady speed to the very end); underway, a small sideways nudge away from any shore the hull
-   * would cross.
+   * Where the view puts a ship (this.pose, from simPose): moved so the hull lies in water. Within a few lengths of her
+   * dock (berthReach) she follows a curve of her own between the sim's track and her fitted berth (searched once per
+   * dock): it leaves the track along her heading and meets the berth along the berth's line, bow first, so she neither
+   * crabs nor swings in at speed, and her progress along it is the sim's progress to its berth, brought to a crawl and
+   * to rest at the end. Further out, a small sideways nudge keeps the hull off any shore it would cross.
    */
   private berthed(s: Ship, v: THREE.Object3D, dt: number): void {
     const u = v.userData as GlideState, p = this.pose;
-    const L = LENGTH[s.type];
+    const L = LENGTH[s.type], ext = v.userData.ext as [number, number] | undefined;
     const moving = s.status === 'departing' || s.status === 'returning';
     const dockId = s.status === 'returning' ? s.returnDock ?? s.dock : s.dock;
     const dock = dockId ? this.game.buildings.get(dockId) : undefined;
     u.near = 0;
     u.dBerth = Infinity;
+    let d = Infinity;
     if (dock) {
       const [bx, by, bdir] = dockBerth(dock);
       const key = `${dock.id}:${bx},${by}:${s.type}`;
       if (u.berthKey !== key) {
         u.berthKey = key;
-        u.berth = this.fitBerth(bx, by, -bdir, L, dock, v.userData.ext as [number, number] | undefined);
+        u.berth = this.fitBerth(bx, by, -bdir, L, dock, ext);
+        u.inR = false;
         // she lies either way round (the fitted hull outline is the same both ways): as the sim has her lie, since she
-        // leaves the berth on that heading (sailing off bow first) and the sim brings her in to it
-        const fh = u.berth[2];
-        // (unless turned about, her bowsprit or boom would reach out over the land)
-        const turn = Math.cos(fh + bdir) < 0 && this.aground(u.berth[0], u.berth[1], fh + Math.PI, L, dock, v.userData.ext) === 0;
-        u.berthHead = turn ? fh + Math.PI : fh;
-        // coming in, she rounds up onto her berth's line from astern, where that water is clear
-        const E = berthEase(L), ax = Math.cos(u.berthHead), az = -Math.sin(u.berthHead);
-        u.lineIn = [0.35, 0.7, 1, 1.4].every((k) => this.aground(u.berth![0] - ax * E * k, u.berth![1] - az * E * k, u.berthHead!, L, dock) === 0);
+        // leaves the berth on that heading (sailing off bow first); one coming in picks again as she nears
+        u.berthHead = this.berthWay(u.berth, moving ? -bdir : p.h, L, dock, ext);
       }
-      const b = u.berth!;
-      let d = Math.hypot(p.x - bx, p.z - by);
-      // the sim's ship slows to a crawl over the last of her way in (and gathers way leaving); the view brings that
-      // crawl to rest: f(d) = 2d²/S - d³/S² meets the sim's track at S at the sim's speed and stops at the berth
-      const E = berthEase(L), S = 2;
-      if (d < S && d > 1e-6) {
-        const f = (2 * d) / S - (d * d) / (S * S);
-        p.x = bx + (p.x - bx) * f;
-        p.z = by + (p.z - by) * f;
-        d *= f;
-      }
-      if (s.status === 'returning' && u.lineIn && d < E * 1.4) {
-        // bend the last of her track onto the berth's line, so she comes alongside bow first and needn't crab in
-        const k = smooth(E * 1.4, E * 0.15, d), ax = Math.cos(u.berthHead!), az = -Math.sin(u.berthHead!);
-        p.x += (bx - ax * d - p.x) * k;
-        p.z += (by - az * d - p.z) * k;
+      d = Math.hypot(p.x - bx, p.z - by);
+      if (s.status !== 'returning') u.inR = false;
+      else if (!u.inR && d < berthReach(L)) {
+        // coming in: she lies the way round she is already heading
+        u.inR = true;
+        u.berthHead = this.berthWay(u.berth!, p.h, L, dock, ext);
       }
       u.dBerth = d;
-      u.near = 1 - smooth(0, E * 0.8, d);
-      const w = 1 - smooth(1, 7, d);
-      p.x += (b[0] - bx) * w;
-      p.z += (b[1] - by) * w;
-      if (!moving) p.h = u.berthHead!;
-      if (w > 0.99) return;
+      u.near = 1 - smooth(0, berthEase(L) * 0.8, d);
+      if (!moving) {
+        p.x = u.berth![0];
+        p.z = u.berth![1];
+        p.h = u.berthHead!;
+        u.nudge = 0;
+        return;
+      }
     }
-    // underway: lean off the shore if the hull would cross it
+    const R = berthReach(L);
+    // underway: lean off the shore if the hull would cross it (eased out again before she reaches her berth's curve)
     const hd = u.head ?? p.h;
     const nx = Math.sin(hd), nz = Math.cos(hd); // abeam (local +z)
-    let best = 0, bestV = this.aground(p.x + nx * (u.nudge ?? 0), p.z + nz * (u.nudge ?? 0), hd, L, null);
-    if (bestV > 0) for (const o of NUDGES) {
-      const vio = this.aground(p.x + nx * o, p.z + nz * o, hd, L, null) + Math.abs(o) * 0.02;
-      if (vio < bestV) (bestV = vio), (best = o);
-    } else best = u.nudge ?? 0;
-    u.nudge = (u.nudge ?? 0) + (best - (u.nudge ?? 0)) * (1 - Math.exp(-dt * 1.5));
+    const cur = u.nudge ?? 0;
+    let best = 0;
+    if (d > R * 1.2) {
+      const now = this.aground(p.x + nx * cur, p.z + nz * cur, hd, L, null);
+      best = cur;
+      if (now > 0) {
+        let bestV = now;
+        for (const o of NUDGES) {
+          // (a little reluctance to move it, so two equally good offsets never take turns)
+          const vio = this.aground(p.x + nx * o, p.z + nz * o, hd, L, null) + Math.abs(o) * 0.02 + Math.abs(o - cur) * 0.05;
+          if (vio < bestV - 0.05) (bestV = vio), (best = o);
+        }
+      }
+    }
+    u.nudge = cur + Math.max(-dt * 1.2, Math.min(dt * 1.2, best - cur));
     p.x += nx * u.nudge;
     p.z += nz * u.nudge;
+    if (d >= R || !u.berth) return;
+    // her progress: 0 at the rim, 1 at the berth; the sim's last two tiles of crawl brought to rest,
+    // f(d) = 2d²/S - d³/S² meeting the sim's speed at S and stopping at the berth
+    const S = 2, dd = d < S ? d * ((2 * d) / S - (d * d) / (S * S)) : d;
+    const t = 1 - dd / R;
+    const B = u.berth, hb = u.berthHead!, hbx = Math.cos(hb), hbz = -Math.sin(hb);
+    const tx = Math.cos(p.h), tz = -Math.sin(p.h);
+    const k = Math.min(R * 0.5, Math.hypot(B[0] - p.x, B[1] - p.z) * 0.4);
+    // coming in she moves from the track toward the berth, leaving from it toward the track (bow first both ways)
+    const sg = s.status === 'returning' ? 1 : -1;
+    const c1x = p.x + tx * k * sg, c1z = p.z + tz * k * sg, c2x = B[0] - hbx * k * sg, c2z = B[1] - hbz * k * sg;
+    const m = 1 - t, w0 = m * m * m, w1 = 3 * m * m * t, w2 = 3 * m * t * t, w3 = t * t * t;
+    p.x = p.x * w0 + c1x * w1 + c2x * w2 + B[0] * w3;
+    p.z = p.z * w0 + c1z * w1 + c2z * w2 + B[1] * w3;
+  }
+
+  /** which way round she lies at a fitted berth: nearest the heading she has, unless her rig would then reach over land */
+  private berthWay(b: [number, number, number], heading: number, L: number, dock: { x: number; y: number; w: number; h: number }, ext?: [number, number]): number {
+    const fh = b[2];
+    return Math.cos(fh - heading) < 0 && this.aground(b[0], b[1], fh + Math.PI, L, dock, ext) === 0 ? fh + Math.PI : fh;
   }
 
   /**
@@ -1079,8 +1098,8 @@ interface GlideState {
   berthKey?: string;
   berth?: [number, number, number];
   berthHead?: number;
-  /** the water astern of the berth, along its line, is clear to come in on */
-  lineIn?: boolean;
+  /** coming in, she is within reach of her berth (and has picked which way round she lies) */
+  inR?: boolean;
   /** 1 at the berth, 0 an easing length or more out */
   near?: number;
   /** distance from the berth (Infinity without one) */
@@ -1097,6 +1116,11 @@ const NUDGES = [-3, -2, -1.2, -0.6, 0, 0.6, 1.2, 2, 3];
 /** how far out from the berth a ship gathers or loses way */
 function berthEase(L: number): number {
   return Math.max(5, Math.min(8, L * 0.8));
+}
+
+/** how far out from the berth she leaves (or joins) the sim's track for a curve of her own */
+function berthReach(L: number): number {
+  return berthEase(L) * 1.6;
 }
 
 function smooth(e0: number, e1: number, x: number): number {
