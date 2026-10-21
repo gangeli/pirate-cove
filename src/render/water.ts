@@ -11,7 +11,8 @@ export class Water {
   constructor(private map: GameMap) {
     const n = map.size;
     const s = n + 1;
-    this.heightTex = new THREE.DataTexture(toHalf(map.vh) as any, s, s, THREE.RedFormat, THREE.HalfFloatType);
+    // red: ground height; green: 1 where the water is open sea (joined to the map edge), 0 in inland lakes and ponds
+    this.heightTex = new THREE.DataTexture(heightAndSea(map.vh, s) as any, s, s, THREE.RGFormat, THREE.HalfFloatType);
     this.heightTex.magFilter = THREE.LinearFilter;
     this.heightTex.minFilter = THREE.LinearFilter;
     this.heightTex.needsUpdate = true;
@@ -42,9 +43,15 @@ export class Water {
       fog: true,
       depthWrite: true,
       vertexShader: /* glsl */ `
-uniform float uTime;
+uniform float uTime; uniform sampler2D uHeight; uniform float uMapSize;
 varying vec3 vWPos;
 #include <fog_pars_vertex>
+// 1 on the open sea, 0 on inland lakes (green channel of the height map)
+float openSea(vec2 p){
+  vec2 uv = (p + 0.5) / (uMapSize + 1.0);
+  if (uv.x<0.0||uv.y<0.0||uv.x>1.0||uv.y>1.0) return 1.0;
+  return texture2D(uHeight, uv).g;
+}
 vec3 gerstner(vec2 p, vec2 dir, float steep, float wl, float t, inout vec3 tan, inout vec3 bin){
   float k = 6.2831/wl; float c = sqrt(9.8/k); vec2 d = normalize(dir);
   float f = k*(dot(d,p) - c*t); float a = steep/k;
@@ -59,7 +66,7 @@ void main(){
   off += gerstner(wp.xz, vec2(1.0,0.3), 0.08, 18.0, uTime, tan, bin);
   off += gerstner(wp.xz, vec2(-0.4,1.0), 0.06, 11.0, uTime, tan, bin);
   off += gerstner(wp.xz, vec2(0.7,-0.8), 0.05, 6.0, uTime, tan, bin);
-  wp.xyz += off * 0.6;
+  wp.xyz += off * 0.6 * openSea(wp.xz);
   vWPos = wp.xyz;
   vec4 mvPosition = viewMatrix * wp;
   gl_Position = projectionMatrix * mvPosition;
@@ -88,6 +95,11 @@ vec2 fbmGrad(vec2 p){
   }
   return g;
 }
+float openSea(vec2 p){
+  vec2 uv = (p + 0.5) / (uMapSize + 1.0);
+  if (uv.x<0.0||uv.y<0.0||uv.x>1.0||uv.y>1.0) return 1.0;
+  return texture2D(uHeight, uv).g;
+}
 float terrainH(vec2 p){
   vec2 uv = (p + 0.5) / (uMapSize + 1.0);
   if (uv.x<0.0||uv.y<0.0||uv.x>1.0||uv.y>1.0) return -14.0;
@@ -115,7 +127,9 @@ vec3 waveNormal(vec2 p){
 void main(){
   float th = terrainH(vWPos.xz);
   float depth = max(0.0, vWPos.y - th);
-  vec3 N = waveNormal(vWPos.xz);
+  // inland lakes and ponds lie still: no swell or whitecaps, a faint ripple and a little lapping at the edge
+  float open = openSea(vWPos.xz);
+  vec3 N = normalize(mix(normalize(vec3(fbmGrad(vWPos.xz*1.3 + uTime*0.08) * -0.04, 1.0).xzy), waveNormal(vWPos.xz), open));
   vec3 V = normalize(cameraPosition - vWPos);
   // water colour by depth (Beer-Lambert-ish)
   float dk = 1.0 - exp(-depth*0.45);
@@ -139,11 +153,11 @@ void main(){
     float shore = 1.0 - smoothstep(0.0, 1.4, depth);
     float bands = sin(depth*7.0 - uTime*2.2 + fbm(vWPos.xz*0.6)*6.0)*0.5+0.5;
     float foamN = fbm(vWPos.xz*2.5 + uTime*0.3);
-    foam = shore * smoothstep(0.45, 0.9, bands*0.6 + foamN*0.6);
+    foam = shore * smoothstep(0.45, 0.9, bands*0.6 + foamN*0.6) * mix(0.3, 1.0, open);
     foam += (1.0 - smoothstep(0.0, 0.25, depth)) * smoothstep(0.35, 0.6, foamN);
   }
   // open-sea whitecaps
-  if (depth > 3.0) foam += smoothstep(0.78, 0.92, fbm(vWPos.xz*0.35 + uTime*0.05)) * 0.25 * smoothstep(3.0, 10.0, depth);
+  if (depth > 3.0) foam += smoothstep(0.78, 0.92, fbm(vWPos.xz*0.35 + uTime*0.05)) * 0.25 * smoothstep(3.0, 10.0, depth) * open;
   foam = clamp(foam, 0.0, 1.0);
   col = mix(col, vec3(0.95,0.97,1.0), foam*0.85);
   col *= mix(1.0, 0.25, uNight);
@@ -163,13 +177,43 @@ void main(){
   }
 
   syncHeights(): void {
-    (this.heightTex.image.data as unknown as Uint16Array).set(toHalf(this.map.vh));
+    (this.heightTex.image.data as unknown as Uint16Array).set(heightAndSea(this.map.vh, this.map.size + 1));
     this.heightTex.needsUpdate = true;
   }
 }
 
-function toHalf(a: Float32Array): Uint16Array {
-  const o = new Uint16Array(a.length);
-  for (let i = 0; i < a.length; i++) o[i] = THREE.DataUtils.toHalfFloat(a[i]);
+/** heights (R) and an open-sea mask (G) for the s x s vertex grid: water below sea level reached from the edge */
+function heightAndSea(vh: Float32Array, s: number): Uint16Array {
+  const sea = new Uint8Array(s * s);
+  const q: number[] = [];
+  for (let i = 0; i < s; i++)
+    for (const k of [i, (s - 1) * s + i, i * s, i * s + s - 1]) if (vh[k] < 0 && !sea[k]) (sea[k] = 1), q.push(k);
+  for (let h = 0; h < q.length; h++) {
+    const k = q[h], x = k % s, y = (k - x) / s;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= s || ny >= s) continue;
+      const j = ny * s + nx;
+      if (!sea[j] && vh[j] < 0) (sea[j] = 1), q.push(j);
+    }
+  }
+  // calm = inland water, grown two vertices onto the land around it so the lake's own shoreline is calm too; the rest
+  // of the land counts as sea, so the open coast keeps its surf
+  const calm = new Uint8Array(s * s);
+  for (let k = 0; k < s * s; k++) if (vh[k] < 0 && !sea[k]) calm[k] = 1;
+  for (let pass = 0; pass < 2; pass++) {
+    const grow: number[] = [];
+    for (let k = 0; k < s * s; k++) {
+      if (calm[k] || vh[k] < 0) continue;
+      const x = k % s, y = (k - x) / s;
+      if ((x > 0 && calm[k - 1]) || (x < s - 1 && calm[k + 1]) || (y > 0 && calm[k - s]) || (y < s - 1 && calm[k + s])) grow.push(k);
+    }
+    for (const k of grow) calm[k] = 1;
+  }
+  const o = new Uint16Array(s * s * 2), one = THREE.DataUtils.toHalfFloat(1), zero = THREE.DataUtils.toHalfFloat(0);
+  for (let k = 0; k < s * s; k++) {
+    o[k * 2] = THREE.DataUtils.toHalfFloat(vh[k]);
+    o[k * 2 + 1] = calm[k] ? zero : one;
+  }
   return o;
 }
