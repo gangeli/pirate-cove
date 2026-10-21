@@ -9,13 +9,13 @@ import { icon, goodIcon } from './icons';
 
 /** a stack of `n` coins, drawn as engraved discs (n = 0: an empty purse) */
 function coinStack(n: number, max: number): Raw {
-  if (n <= 0) return icon('purse', 22);
+  if (n <= 0) return icon('purse', 24);
   const h = 8 + max * 4;
   const discs = Array.from({ length: n }, (_, i) => {
     const y = h - 5 - i * 4;
     return `<ellipse cx="11" cy="${y}" rx="8" ry="3" class="cdisc"/><path d="M3 ${y}v1.4c0 1.6 3.6 3 8 3s8-1.4 8-3V${y}" class="cedge"/>`;
   }).join('');
-  return raw(`<svg class="ic coins" width="22" height="${h}" viewBox="0 0 22 ${h}" aria-hidden="true">${discs}</svg>`);
+  return raw(`<svg class="ic coins" width="27" height="${Math.round(h * 27 / 22)}" viewBox="0 0 22 ${h}" aria-hidden="true">${discs}</svg>`);
 }
 
 /**
@@ -36,7 +36,7 @@ export function coinPick(act: string, cur: number, levels: number[], labels: str
 export function pennants(act: string, cur: number, names: string[], tip: string): Raw {
   return html`<div class="vpick pennants" role="radiogroup" aria-label="Priority">${names.map((n, i) => {
     const v = i + 1, h = 12 + i * 3.5;
-    const svg = `<svg class="ic pennant" width="22" height="30" viewBox="0 0 22 30" aria-hidden="true"><path d="M6 29V${30 - h - 2}" class="pole"/><path d="M6.5 ${30 - h - 1}l12 3.2-12 3.2z" class="flag"/><circle cx="6" cy="${30 - h - 2.5}" r="1.2" class="knob"/></svg>`;
+    const svg = `<svg class="ic pennant" width="26" height="35" viewBox="0 0 22 30" aria-hidden="true"><path d="M6 29V${30 - h - 2}" class="pole"/><path d="M6.5 ${30 - h - 1}l12 3.2-12 3.2z" class="flag"/><circle cx="6" cy="${30 - h - 2.5}" r="1.2" class="knob"/></svg>`;
     return html`<button class="${v === cur ? 'on' : ''} ${v <= cur ? 'lit' : ''}" data-act="${act}:${v}" role="radio" aria-checked="${v === cur ? 'true' : 'false'}" aria-label="${n} priority" data-tip="<b>${n} priority</b><br>${tip}">${raw(svg)}</button>`;
   })}<span class="vp-val">${names[cur - 1] ?? ''}</span></div>`;
 }

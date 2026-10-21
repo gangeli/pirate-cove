@@ -31,7 +31,7 @@ section.
 - [~] Workers bunching, standing on roofs, inside tents and crops [people agent]
 - [~] Selecting a building highlights its workers, haulers, overseer, guards, customers and residents in colours [people agent]
 - [x] People waiting on a path stand idle (not walking on the spot)
-- [~] Follow doesn't centre the camera on the person [UI agent]
+- [x] Follow doesn't centre the camera on the person [UI agent]
 
 ## Ships
 - [x] Water showing inside the hull (plank floor at the waterline)
@@ -56,14 +56,14 @@ section.
 - [~] Remove "Hide details" (× folds the inspector) [UI agent: done in 7a9d2aa]
 - [~] Sea chart side sheet: too much text; remove the Set sail and Ship details buttons and the orders block; sea, danger, plunder and sail time as icons; nations as a flag row [UI agent]
 - [~] Map views and overlays easy to navigate on desktop and phone (Soil with a crop picker, chips, prev/next) [done; polish ongoing]
-- [~] Bolder × close buttons on menus and overlays [UI agent]
-- [~] Filled worker slots show the person's portrait, empty ones a placeholder [UI agent]
-- [~] Shift-click (hold on touch) a slot to close it and the slots to its right; remove the Open-places stepper [UI agent]
+- [x] Bolder × close buttons on menus and overlays [UI agent]
+- [x] Filled worker slots show the person's portrait, empty ones a placeholder [UI agent]
+- [x] Shift-click (hold on touch) a slot to close it and the slots to its right; remove the Open-places stepper [UI agent]
 - [~] Themed, direct-manipulation controls instead of generic segmented controls: wages as coins, priority as pennants, spoils as a treasure split, prices as coin stacks, missions and tactics as icon cards [UI agent]
-- [~] Remove pointless explanatory lines ("Gold a month for each overseer…", "Higher-priority buildings are staffed first…") [UI agent]
-- [~] Inventory and production as goods icons with tooltips (e.g. "2× Logs → Lumber 92") [UI agent]
-- [~] Soil isn't a bar: a toggle for the soil overlay with its number; progress belongs with production [UI agent]
-- [~] Influence as small subdued icons ("Defense +35 · 2 tiles") [UI agent]
+- [x] Remove pointless explanatory lines ("Gold a month for each overseer…", "Higher-priority buildings are staffed first…") [UI agent]
+- [x] Inventory and production as goods icons with tooltips (e.g. "2× Logs → Lumber 92") [UI agent]
+- [x] Soil isn't a bar: a toggle for the soil overlay with its number; progress belongs with production [UI agent]
+- [x] Influence as small subdued icons ("Defense +35 · 2 tiles") [UI agent]
 - [~] Buttons styled to their purpose: navigation, primary, transactional, social or moral, destructive (Kill, Scuttle and Demolish unmistakably dangerous); toggles look like toggles [UI agent]
 - [~] Letters and reports (e.g. "Night Heron Returns"): icon results (a coin pile for gold, one figure per recruit, skilled profession badges, losses), apply to every message type and the log [UI agent]
 
