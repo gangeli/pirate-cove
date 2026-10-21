@@ -21,6 +21,7 @@ import { installR170Look, SOFT_SHADOW_RADIUS } from './legacy/r170';
 import { PMREMGenerator as PMREM170 } from './legacy/pmrem170';
 import { RB, SOFTWARE_GPU, chooseBackend, isWebGPU, type AnyRenderer, type Backend, type NodesModule } from './backend';
 import type { GpuPost } from './nodes';
+import { ViewVolumes } from './instcull';
 
 export interface Quality {
   shadows: boolean;
@@ -137,6 +138,8 @@ export class World {
   idle = false;
   readonly raycaster = new THREE.Raycaster();
   readonly overlayGroup = new THREE.Group();
+  /** this frame's view and shadow frustums, for per-instance culling (instcull.ts) */
+  readonly volumes = new ViewVolumes();
   private roadTex?: THREE.DataTexture;
 
   /**
@@ -730,9 +733,17 @@ export class World {
     this.ships.update(dt);
     this.effects.update(dt);
     this.updateShadows(dt);
+    this.volumes.update(cam, h * this.pr, this.quality.shadows ? this.sun.shadow.camera : null);
+    this.buildings.cull(this.volumes);
+    this.veg.cull(this.volumes);
     if (this.gpuPost) this.gpuPost.render();
     else if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, cam);
+  }
+
+  /** debug: draw calls and triangles per pass and subsystem over a few frames (costprobe.ts) */
+  async costProbe(frames = 10): Promise<import('./costprobe').CostReport> {
+    return (await import('./costprobe')).probeCost(this, frames);
   }
 
   /** world point under a screen position (terrain or water plane) */

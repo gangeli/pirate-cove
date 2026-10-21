@@ -4,6 +4,7 @@ import type { GameMap } from '../sim/map';
 import { Terrain } from '../sim/map';
 import { loadTex } from './textures';
 import { gpu } from './backend';
+import { InstanceCuller, type ViewVolumes } from './instcull';
 import { fitTree, nearSignature, samplePoints, shapeOf, type TopFn, type TreePose, type TreeShape } from './treefit';
 
 /** ?nofit=1 places trees as generated, through buildings and all (debugging, before/after comparisons) */
@@ -276,6 +277,13 @@ export class Vegetation {
   /** trees are instanced per CHUNK x CHUNK tile block so off-screen blocks drop out of the main and shadow passes */
   static readonly CHUNK = 40;
   private ghost = false;
+  /** a chunk's trees in view (or casting into it) are drawn, the rest of the chunk is not (instcull.ts) */
+  private cullers: InstanceCuller[] = [];
+
+  /** after the frame's view and shadow frustums are known (World.render) */
+  cull(v: ViewVolumes): void {
+    for (const c of this.cullers) c.cull(v);
+  }
 
   /** see-through trees (road tool): the ground underneath stays readable */
   setGhost(on: boolean): void {
@@ -294,6 +302,7 @@ export class Vegetation {
   }
 
   rebuild(): void {
+    this.cullers = [];
     for (const c of [...this.group.children]) {
       this.group.remove(c);
       (c as THREE.InstancedMesh).dispose?.();
@@ -391,5 +400,6 @@ export class Vegetation {
       if (fr) ch.pi.forEach((g, i) => fr.setColorAt(i, col.setHSL(0.2 + hash(g, 4) * 0.06, 0.4 + hash(g, 5) * 0.3, 0.75 + hash(g, 6) * 0.25)));
       mk(this.geo.broad.crown, this.mats.leafMat, ch.bushes, false);
     }
+    for (const c of this.group.children) this.cullers.push(new InstanceCuller(c as THREE.InstancedMesh, 1.5));
   }
 }

@@ -10,6 +10,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { disposeObject, isShared, markShared } from './dispose';
 import { wind } from './vegetation';
 import { gpu } from './backend';
+import { InstanceCuller, type ViewVolumes } from './instcull';
 
 /**
  * Collapse a building's static meshes into one mesh per material (same look, a fraction of the draw calls and
@@ -326,7 +327,14 @@ export class BuildingsView {
    * hidden, so picking, removal and rebuilding work as before. Same geometry, materials and transforms: same image.
    */
   private batches: THREE.InstancedMesh[] = [];
+  /** each batch spans the island: only its instances some pass can see are drawn (instcull.ts) */
+  private cullers: InstanceCuller[] = [];
   private batchDirty = true;
+
+  /** after the frame's view and shadow frustums are known (World.render) */
+  cull(v: ViewVolumes): void {
+    for (const c of this.cullers) c.cull(v);
+  }
 
   private rebuildBatches(): void {
     this.batchDirty = false;
@@ -335,6 +343,7 @@ export class BuildingsView {
       im.dispose();
     }
     this.batches = [];
+    this.cullers = [];
     const lists = new Map<string, THREE.Mesh[]>();
     for (const v of this.views.values()) {
       if (!v.batchable.length && !v.levels) continue;
@@ -367,6 +376,7 @@ export class BuildingsView {
       im.raycast = () => {}; // picking goes through the (hidden) per-building meshes
       this.group.add(im);
       this.batches.push(im);
+      this.cullers.push(new InstanceCuller(im));
     }
   }
 

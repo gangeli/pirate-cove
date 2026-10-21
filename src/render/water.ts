@@ -4,7 +4,8 @@ import { gpu } from './backend';
 
 /** Tropical ocean: gerstner swell, depth-tinted colour from terrain heightmap, shore foam, sun glints. */
 export class Water {
-  readonly mesh: THREE.Mesh;
+  /** the sea: a grid of tiles (one material) so the tiles out of view drop out of every pass */
+  readonly mesh: THREE.Group;
   readonly heightTex: THREE.DataTexture;
   readonly uniforms: Record<string, THREE.IUniform>;
 
@@ -17,9 +18,6 @@ export class Water {
     this.heightTex.minFilter = THREE.LinearFilter;
     this.heightTex.needsUpdate = true;
     const size = n * 8;
-    const geo = new THREE.PlaneGeometry(size, size, 384, 384);
-    geo.rotateX(-Math.PI / 2);
-    geo.translate(n / 2, 0, n / 2);
     this.uniforms = THREE.UniformsUtils.merge([
       THREE.UniformsLib.fog,
       {
@@ -173,9 +171,25 @@ void main(){
 }`,
     });
     mat.userData.textures = [this.heightTex];
-    this.mesh = new THREE.Mesh(geo, mat);
-    this.mesh.renderOrder = 2;
+    // the same 384 x 384 vertex lattice as one plane over the whole sea, cut into SEA_TILES^2 tiles: a single mesh
+    // was drawn whole (290k triangles, in the main and the AO pass) whenever any of it was in view
+    this.mesh = new THREE.Group();
     this.mesh.name = 'water';
+    const T = SEA_TILES, seg = 384 / T, ts = size / T;
+    for (let j = 0; j < T; j++)
+      for (let i = 0; i < T; i++) {
+        // (positions in world space: both shaders take object space for world space)
+        const tile = new THREE.PlaneGeometry(ts, ts, seg, seg);
+        tile.rotateX(-Math.PI / 2);
+        tile.translate(n / 2 - size / 2 + (i + 0.5) * ts, 0, n / 2 - size / 2 + (j + 0.5) * ts);
+        tile.computeBoundingSphere();
+        // the swell lifts and shifts vertices by well under 2 tiles
+        tile.boundingSphere!.radius += 2;
+        const m = new THREE.Mesh(tile, mat);
+        m.renderOrder = 2;
+        m.name = 'water';
+        this.mesh.add(m);
+      }
   }
 
   syncHeights(): void {
@@ -183,6 +197,9 @@ void main(){
     this.heightTex.needsUpdate = true;
   }
 }
+
+/** the sea plane is cut into this many tiles per side (384 divisible by it) */
+const SEA_TILES = 12;
 
 /** heights (R) and an open-sea mask (G) for the s x s vertex grid: water below sea level reached from the edge */
 function heightAndSea(vh: Float32Array, s: number): Uint16Array {
