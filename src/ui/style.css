@@ -1285,7 +1285,7 @@ body.touch .cards > button { min-height: 44px; }
 .tally > small { font-size: 12.5px; color: var(--ink2); letter-spacing: 0.04em; text-transform: uppercase; font-family: var(--head); }
 .tally.gold { flex-direction: row; gap: 8px; align-items: center; }
 .tally.gold > div { display: flex; flex-direction: column; }
-.tally .big { font: 28px/1 var(--head); color: #6a4a08; font-weight: normal; font-variant-numeric: tabular-nums; }
+.tally .amt { font: 28px/1 var(--head); color: #6a4a08; font-weight: normal; font-variant-numeric: tabular-nums; }
 .tally.gold small { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; color: var(--ink2); font-variant-numeric: tabular-nums; }
 .figs { display: inline-flex; flex-wrap: wrap; max-width: 190px; justify-content: center; gap: 0 1px; color: var(--ink); }
 .figs b { font-weight: normal; font-size: 14px; align-self: center; margin-left: 3px; }
@@ -1307,7 +1307,9 @@ body.touch .cards > button { min-height: 44px; }
 .vcompact .tally > small { display: none; }
 .vcompact .tally.gold small { display: none; }
 .vcompact .pile { width: 32px; height: 24px; }
-.vcompact .big { font-size: 17px; }
+.vcompact .amt { font-size: 17px; }
 .vcompact .figs { max-width: 140px; }
 .vcompact .figs .ic { width: 14px; height: 14px; }
 .vcompact .hull { width: 40px; height: 9px; }
+.tally svg.pile { flex: none; width: 52px; height: 38px; }
+.vcompact .tally svg.pile { width: 32px; height: 24px; }

@@ -19,7 +19,7 @@ export interface Plant {
 export function farmKeepOut(W: number, D: number, kind: string): { rects: [number, number, number, number][]; discs: [number, number, number][] } {
   // shelter: centred (W/2 - 0.57, -D/2 + 0.54), roof ~0.43 each way
   const sx = W / 2 - 0.57, sz = -D / 2 + 0.54;
-  const rects: [number, number, number, number][] = [[sx - 0.45, sz - 0.45, sx + 0.45, sz + 0.45]];
+  const rects: [number, number, number, number][] = [[sx - 0.4, sz - 0.4, sx + 0.4, sz + 0.4]];
   const discs: [number, number, number][] = [[-W / 2 + 0.25, D / 2 - 0.2, 0.14]];
   if (kind === 'corn') discs.push([-0.6, 0, 0.24]);
   return { rects, discs };
@@ -39,7 +39,7 @@ export function cropLayout(W: number, D: number, kind: string, bare: boolean, r:
       const x = -W / 2 + m + (c / Math.max(1, cols - 1)) * (W - 2 * m) + (r() - 0.5) * 0.05;
       const z = -D / 2 + m + (rr / Math.max(1, rows - 1)) * (D - 2 * m);
       const rot = r() * 6.28;
-      const sc = Math.min(0.8 + r() * 0.4, (m + 0.03) / R);
+      const sc = Math.min(0.8 + r() * 0.4, m / R);
       const rad = R * sc * 0.7; // leaves may brush a neighbour, stems may not
       if (keep.rects.some(([x0, z0, x1, z1]) => x + rad > x0 && x - rad < x1 && z + rad > z0 && z - rad < z1)) continue;
       if (keep.discs.some(([dx, dz, dr]) => Math.hypot(x - dx, z - dz) < dr + rad)) continue;

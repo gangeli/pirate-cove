@@ -37,7 +37,7 @@ function deaths(d: MessageData): number {
 export function voyageStrip(d: MessageData, withLog = true): Raw {
   const dead = deaths(d);
   const items = [];
-  if (d.gold) items.push(html`<div class="tally gold" data-tip="${fmt(d.gold)} gold in all: ${fmt(d.treasury)} to the treasury, ${fmt(d.gold - d.treasury)} shared by the crew">${coinPile(d.gold)}<div><b class="big">${fmt(d.gold)}</b><small>${icon('chest', 13)} ${fmt(d.treasury)} · ${icon('pirate', 13)} ${fmt(d.gold - d.treasury)}</small></div></div>`);
+  if (d.gold) items.push(html`<div class="tally gold" data-tip="${fmt(d.gold)} gold in all: ${fmt(d.treasury)} to the treasury, ${fmt(d.gold - d.treasury)} shared by the crew">${coinPile(d.gold)}<div><b class="amt">${fmt(d.gold)}</b><small>${icon('chest', 13)} ${fmt(d.treasury)} · ${icon('pirate', 13)} ${fmt(d.gold - d.treasury)}</small></div></div>`);
   if (d.recruits) items.push(html`<div class="tally" data-tip="${d.recruits} new recruits joined the crews">${figures('pirate', d.recruits, 'ok')}<small>Recruits</small></div>`);
   if (d.captives) items.push(html`<div class="tally" data-tip="${d.captives} captives brought back to work the island">${figures('captive', d.captives)}<small>Captives</small></div>`);
   if (d.skilled.length) items.push(html`<div class="tally" data-tip="Skilled captives: ${d.skilled.map((j) => JOB_NAMES[j as keyof typeof JOB_NAMES] ?? j).join(', ')}"><span class="skills">${d.skilled.map((j) => html`<span class="chip ok">${icon('book', 12)} ${JOB_NAMES[j as keyof typeof JOB_NAMES] ?? j}</span>`)}</span><small>Skilled</small></div>`);
