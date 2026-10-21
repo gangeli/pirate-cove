@@ -2,7 +2,6 @@
 import json, os, re, urllib.request
 ROOT = os.path.join(os.path.dirname(__file__), '..')
 MODEL_SRC = {  # shipped glb -> poly haven id
-  'ship_medium': 'dutch_ship_medium', 'ship_large1': 'dutch_ship_large_01', 'ship_large2': 'dutch_ship_large_02', 'ship_pinnace': 'ship_pinnace',
   'cannon': 'cannon_01', 'chest': 'treasure_chest', 'barrel': 'Barrel_01', 'crate': 'wooden_crate_01', 'barrels': 'wooden_barrels_01',
   'lantern': 'Lantern_01', 'firepit': 'stone_fire_pit', 'bucket': 'wooden_bucket_01', 'basket': 'wicker_basket_01', 'table': 'wooden_picnic_table',
   'stool': 'wooden_stool_01', 'roundtable': 'round_wooden_table_01', 'pier': 'modular_wooden_pier', 'fort_kit': 'modular_fort_01',

@@ -36,9 +36,9 @@ section.
 ## Ships
 - [x] Water showing inside the hull (plank floor at the waterline)
 - [x] Ships sailing backwards (bow found per model); jerky movement (eased between sim steps, smooth turns)
-- [~] Restyle ships to match the buildings, starting from the current model [ship agent]
-- [~] Rig and animate: billowing sails, pennants, heel and pitch, wake, furled at the dock [ship agent]
-- [~] Docked ship clips into the beach and palms; fit the berth [ship agent]
+- [x] Restyle ships to match the buildings: six classes rebuilt in the Blender kit (scripts/blender/bld/ships.py), kit materials + baked AO, far LOD [ship agent]
+- [x] Rig and animate: sails billow/flutter in a vertex shader (WebGL + TSL), furl at the dock and set at sea, flags and pennants wave down the wind, heel into turns, pitch underway, bow wave + wake decal [ship agent]
+- [x] Docked ship clips into the beach and palms: render-side berth fitting (hull outline kept in water and clear of the pier); ships underway lean off any shore their hull would cross [ship agent]
 - [x] Rename ships [UI agent: done in 7a9d2aa, deployed]
 
 ## Controls and building

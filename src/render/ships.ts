@@ -117,6 +117,31 @@ function clothMaterial(base: THREE.Material): THREE.Material {
 }
 
 let sailBase: THREE.Material | null = null;
+
+/** sailcloth: the kit's canvas colour, sewn from narrow vertical cloths, a little weathered toward the foot */
+function sailMaterial(): THREE.Material {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#ece4d0';
+  g.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 1500; i++) {
+    const l = Math.random() < 0.5 ? 255 : 120;
+    g.fillStyle = `rgba(${l},${l - 10},${l - 30},0.05)`;
+    g.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 3, 1 + Math.random() * 3);
+  }
+  for (let x = 0; x < 128; x += 32) {
+    g.fillStyle = 'rgba(120,100,70,0.35)';
+    g.fillRect(x, 0, 1.5, 128);
+    g.fillStyle = 'rgba(255,255,245,0.35)';
+    g.fillRect(x + 2, 0, 1, 128);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  return new THREE.MeshStandardMaterial({ map: t, color: new THREE.Color('#ddd2b8').multiplyScalar(1.12), roughness: 0.95, side: THREE.DoubleSide });
+}
 let pennantBase: THREE.Material | null = null;
 
 /** sail grid resolution */
@@ -209,7 +234,7 @@ class Sails {
     g.setAttribute('aSail', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     g.setIndex(idx);
-    sailBase ??= M().canvas;
+    sailBase ??= sailMaterial();
     this.mesh = new THREE.Mesh(g, clothMaterial(sailBase));
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
@@ -324,6 +349,22 @@ function wakeMaterial(): THREE.MeshBasicMaterial {
     g.arc(bowX + 6 - Math.abs(Math.sin(a)) * 30 + Math.cos(a) * 6, cy + Math.sin(a) * r * 1.4, 1.5 + Math.random() * 2, 0, 7);
     g.fill();
   }
+  // soften every edge so the decal never shows its rectangle
+  g.globalCompositeOperation = 'destination-in';
+  const fx = g.createLinearGradient(0, 0, 512, 0);
+  fx.addColorStop(0, 'rgba(0,0,0,0)');
+  fx.addColorStop(0.35, 'rgba(0,0,0,1)');
+  fx.addColorStop(0.92, 'rgba(0,0,0,1)');
+  fx.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = fx;
+  g.fillRect(0, 0, 512, 192);
+  const fy = g.createLinearGradient(0, 0, 0, 192);
+  fy.addColorStop(0, 'rgba(0,0,0,0)');
+  fy.addColorStop(0.2, 'rgba(0,0,0,1)');
+  fy.addColorStop(0.8, 'rgba(0,0,0,1)');
+  fy.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = fy;
+  g.fillRect(0, 0, 512, 192);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   wakeMat = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -332,9 +373,9 @@ function wakeMaterial(): THREE.MeshBasicMaterial {
 }
 
 function wake(L: number): THREE.Mesh {
-  const w = new THREE.Mesh(new THREE.PlaneGeometry(2.4 * L, 0.9 * L).rotateX(-Math.PI / 2), wakeMaterial().clone());
+  const w = new THREE.Mesh(new THREE.PlaneGeometry(1.8 * L, 0.7 * L).rotateX(-Math.PI / 2), wakeMaterial().clone());
   // the texture's bow sits 78% along it: put that at the stem
-  w.position.set(0.46 * L - (0.78 - 0.5) * 2.4 * L, 0.06, 0);
+  w.position.set(0.46 * L - (0.78 - 0.5) * 1.8 * L, 0.06, 0);
   w.renderOrder = 2;
   w.name = 'wake';
   w.raycast = () => {};
@@ -639,7 +680,7 @@ export class ShipsView {
     }
     const wk = v.userData.wake as THREE.Mesh | undefined;
     if (wk) {
-      const op = Math.min(0.85, Math.max(0, ((v.userData as GlideState).speed ?? 0) - 0.15) * 0.6);
+      const op = Math.min(0.6, Math.max(0, ((v.userData as GlideState).speed ?? 0) - 0.15) * 0.4);
       (wk.material as THREE.MeshBasicMaterial).opacity = op;
       wk.visible = op > 0.01;
     }

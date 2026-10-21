@@ -21,42 +21,6 @@
    "license": "CC0 1.0"
   },
   {
-   "asset": "Dutch Ship Large 01",
-   "kind": "model",
-   "authors": [
-    "James Ray Cock",
-    "Rico Cilliers",
-    "Nicol\u00f2 Zubbini"
-   ],
-   "source": "Poly Haven",
-   "url": "https://polyhaven.com/a/dutch_ship_large_01",
-   "license": "CC0 1.0"
-  },
-  {
-   "asset": "Dutch Ship Large 02",
-   "kind": "model",
-   "authors": [
-    "James Ray Cock",
-    "Rico Cilliers",
-    "Nicol\u00f2 Zubbini"
-   ],
-   "source": "Poly Haven",
-   "url": "https://polyhaven.com/a/dutch_ship_large_02",
-   "license": "CC0 1.0"
-  },
-  {
-   "asset": "Dutch Ship Medium",
-   "kind": "model",
-   "authors": [
-    "James Ray Cock",
-    "Rico Cilliers",
-    "Nicol\u00f2 Zubbini"
-   ],
-   "source": "Poly Haven",
-   "url": "https://polyhaven.com/a/dutch_ship_medium",
-   "license": "CC0 1.0"
-  },
-  {
    "asset": "Lantern 01",
    "kind": "model",
    "authors": [
@@ -74,19 +38,6 @@
    ],
    "source": "Poly Haven",
    "url": "https://polyhaven.com/a/round_wooden_table_01",
-   "license": "CC0 1.0"
-  },
-  {
-   "asset": "Ship Pinnace",
-   "kind": "model",
-   "authors": [
-    "James Ray Cock",
-    "Rico Cilliers",
-    "Nicol\u00f2 Zubbini",
-    "Yann Kervran"
-   ],
-   "source": "Poly Haven",
-   "url": "https://polyhaven.com/a/ship_pinnace",
    "license": "CC0 1.0"
   },
   {
