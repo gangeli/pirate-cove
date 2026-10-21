@@ -1,4 +1,5 @@
 import type { Game, CmdResult } from './game';
+import { tell } from './letters';
 import { MONTH } from './time';
 import type { Region, Ship, Person, Building } from './types';
 import type { Rng } from './rng';
@@ -193,7 +194,7 @@ function updateYards(g: Game, dt: number): void {
       s.cutlasses = st.cutlasses;
       s.cannons = st.cannons;
       y.building_ship = undefined;
-      g.msg('ship', 'Ship Launched!', `The ${SHIPS[s.type].name} ${s.name} slides down the slipway and ties up at the dock. She needs a captain!`, 'ship_launched', { x: dock.x, y: dock.y });
+      tell(g.msg('ship', 'Ship Launched!', `The ${SHIPS[s.type].name} ${s.name} slides down the slipway and ties up at the dock. She needs a captain!`, 'ship_launched', { x: dock.x, y: dock.y }), { t: 'ship', name: s.name, type: s.type, fate: 'new' }, { t: 'good', good: 'cannon', n: s.cannons });
       assignCrews(g);
     }
   }
@@ -268,7 +269,7 @@ function depart(g: Game, s: Ship, force: boolean): void {
       const p = g.people.get(id);
       if (p) p.task = { kind: 'idle' };
     }
-    g.msg('bad', 'Voyage Called Off', `Only ${s.crew.length} hands answered the ${s.name}'s bell. She needs at least ${minCrew} to sail.`, undefined, { x: s.vx, y: s.vy });
+    tell(g.msg('bad', 'Voyage Called Off', `Only ${s.crew.length} hands answered the ${s.name}'s bell. She needs at least ${minCrew} to sail.`, undefined, { x: s.vx, y: s.vy }), { t: 'crew', have: s.crew.length, need: minCrew });
     assignCrews(g);
     return;
   }
@@ -284,7 +285,7 @@ function depart(g: Game, s: Ship, force: boolean): void {
   s.voyagePath = seaPath(g, s.vx, s.vy);
   s.pathI = 0;
   g.events.push({ type: 'depart', ship: s.id });
-  g.msg('ship', 'Anchors Aweigh', `The ${s.name} sets sail on a ${missionName(s)}.`, 'set_sail');
+  tell(g.msg('ship', 'Anchors Aweigh', `The ${s.name} sets sail on a ${missionName(s)}.`, 'set_sail'), { t: 'ship', name: s.name, type: s.type, fate: 'sail', mission: missionName(s) }, { t: 'folk', who: 'pirate', n: s.crew.length }, s.mission === 'kidnap' && { t: 'gold', n: -250 });
 }
 
 function missionName(s: Ship): string {
@@ -437,7 +438,7 @@ export function updateShips(g: Game, dt: number): void {
           p.x = dock.door[0] + 0.5;
           p.y = dock.door[1] + 0.5;
           p.task = { kind: 'idle' };
-          g.msg('good', 'Captain Returns', `${p.name} has escaped captivity and returned to the island!`, 'captain_returns', { x: p.x, y: p.y });
+          tell(g.msg('good', 'Captain Returns', `${p.name} has escaped captivity and returned to the island!`, 'captain_returns', { x: p.x, y: p.y }), { t: 'folk', who: 'captain', n: 1, fate: 'new', name: p.name });
           assignCrews(g);
         }
       }
@@ -575,7 +576,7 @@ function onStation(g: Game, s: Ship): void {
     if (!g.nations[target].atWarWith.includes(blamed) && g.rng.chance(0.45)) {
       g.nations[target].atWarWith.push(blamed);
       g.nations[blamed].atWarWith.push(target);
-      g.msg('info', 'War in Europe!', `${NATION_NAMES[target]} has declared war on ${NATION_NAMES[blamed]}! Your false colours worked a treat.`, 'war_declared');
+      tell(g.msg('info', 'War in Europe!', `${NATION_NAMES[target]} has declared war on ${NATION_NAMES[blamed]}! Your false colours worked a treat.`, 'war_declared'), { t: 'nation', nat: target, stance: 'war', vs: blamed });
       logV(g, s, `Flew ${NATION_ADJ[blamed]} colours and fired on ${NATION_ADJ[target]} ships. It's war!`);
     } else logV(g, s, `Flew ${NATION_ADJ[blamed]} colours and fired on ${NATION_ADJ[target]} ships. Tensions are rising.`);
   }
@@ -621,7 +622,8 @@ function arriveHome(g: Game, s: Ship): void {
 
 function mutiny(g: Game, s: Ship): void {
   const cap = g.people.get(s.captain);
-  g.msg('bad', 'Mutiny!', `Starving and lost, the crew of the ${s.name} mutinied${cap ? ` and set ${cap.name} adrift` : ''}. The ship and all aboard are lost to you.`, 'mutiny', undefined, true);
+  tell(g.msg('bad', 'Mutiny!', `Starving and lost, the crew of the ${s.name} mutinied${cap ? ` and set ${cap.name} adrift` : ''}. The ship and all aboard are lost to you.`, 'mutiny', undefined, true),
+    { t: 'ship', name: s.name, type: s.type, fate: 'lost' }, cap && { t: 'folk', who: 'captain', n: 1, fate: 'gone', name: cap.name }, { t: 'folk', who: 'pirate', n: crewOf(g, s).length, fate: 'gone' });
   for (const p of crewOf(g, s)) (p.ship = 0), releaseAll(g, p), g.people.delete(p.id);
   if (cap) {
     releaseAll(g, cap);
@@ -663,7 +665,7 @@ export function checkHomecoming(g: Game): void {
       s.status = 'returning';
       (s as any).berthDir = bdir;
       g.events.push({ type: 'return', ship: s.id });
-      g.msg('ship', 'Sail Ho!', `The ${s.name} has been sighted returning to port.`, 'sail_ho', { x: bx, y: by });
+      tell(g.msg('ship', 'Sail Ho!', `The ${s.name} has been sighted returning to port.`, 'sail_ho', { x: bx, y: by }), { t: 'ship', name: s.name, type: s.type, fate: 'home' });
     }
   }
 }
@@ -938,6 +940,7 @@ function shipLost(g: Game, s: Ship, label: string, nat: Nation | null): void {
   // some of the crew go down with her; the rest are taken prisoner and drift home months later
   let saved = 0;
   const home = MONTH * g.rng.range(3, 6);
+  const hands = crewOf(g, s).length;
   for (const p of crewOf(g, s)) {
     if (g.rng.chance(0.45)) {
       s.crew = s.crew.filter((c) => c !== p.id);
@@ -954,8 +957,11 @@ function shipLost(g: Game, s: Ship, label: string, nat: Nation | null): void {
   if (cap) {
     cap.ship = 0;
     cap.task = { kind: 'atsea', phase: 1, timer: home };
-    g.msg('bad', 'Ship Lost!', `The ${s.name} ${how}. ${fate}, along with Captain ${cap.name}, who swears to return.`, 'ship_sunk', undefined, true);
-  } else g.msg('bad', 'Ship Lost!', `The ${s.name} ${how}. ${fate}.`, 'ship_sunk', undefined, true);
+  }
+  const m = cap ? g.msg('bad', 'Ship Lost!', `The ${s.name} ${how}. ${fate}, along with Captain ${cap.name}, who swears to return.`, 'ship_sunk', undefined, true)
+    : g.msg('bad', 'Ship Lost!', `The ${s.name} ${how}. ${fate}.`, 'ship_sunk', undefined, true);
+  tell(m, { t: 'ship', name: s.name, type: s.type, fate: 'sunk', nat: nat ?? undefined }, hands - saved > 0 && { t: 'folk', who: 'pirate', n: hands - saved, fate: 'dead' },
+    saved > 0 && { t: 'folk', who: 'pirate', n: saved, fate: 'taken' }, cap && { t: 'folk', who: 'captain', n: 1, fate: 'taken', name: cap.name });
   removeShip(g, s);
   if (nat) g.regions[s.region].heat += 1;
 }

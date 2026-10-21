@@ -1,4 +1,5 @@
 import { GameMap, Terrain } from './map';
+import { tell } from './letters';
 import { difficultyOf } from './presets';
 import { Rng } from './rng';
 import { PathFinder } from './path';
@@ -249,8 +250,8 @@ export class Game {
     const red = ashore.filter((p) => p.happiness < 0.3).length / ashore.length;
     if (red > 0.5) {
       this.unrest.coupMonths++;
-      if (this.unrest.coupMonths === 1) this.msg('alert', 'Mutterings of Mutiny', 'Most of the pirates ashore are in a black mood. If this goes on, they will rise against you!', 'coup_warning1', undefined, true);
-      else if (this.unrest.coupMonths === 2) this.msg('alert', 'Coup Brewing!', 'The crews are sharpening their cutlasses and muttering your name. Make them happy, fast, or lose your crown.', 'coup_warning2', undefined, true);
+      if (this.unrest.coupMonths === 1) tell(this.msg('alert', 'Mutterings of Mutiny', 'Most of the pirates ashore are in a black mood. If this goes on, they will rise against you!', 'coup_warning1', undefined, true), { t: 'mood', who: 'pirate', v: this.avgHappiness() }, { t: 'folk', who: 'pirate', n: Math.round(red * ashore.length), fate: 'rebel' });
+      else if (this.unrest.coupMonths === 2) tell(this.msg('alert', 'Coup Brewing!', 'The crews are sharpening their cutlasses and muttering your name. Make them happy, fast, or lose your crown.', 'coup_warning2', undefined, true), { t: 'mood', who: 'pirate', v: this.avgHappiness() }, { t: 'folk', who: 'pirate', n: Math.round(red * ashore.length), fate: 'rebel' });
       else if (this.unrest.coupMonths >= 3) this.endGame(false, 'The pirates rose up and overthrew you. Your head now decorates a pike.');
     } else this.unrest.coupMonths = Math.max(0, this.unrest.coupMonths - 1);
   }
@@ -259,7 +260,9 @@ export class Game {
     if (this.over) return;
     this.over = { win, reason, score: computeScore(this) };
     this.events.push({ type: 'gameover', win });
-    this.msg(win ? 'good' : 'bad', win ? 'Reign Complete' : 'Game Over', reason, win ? 'victory' : 'defeat', undefined, true);
+    const s = this.over.score;
+    tell(this.msg(win ? 'good' : 'bad', win ? 'Reign Complete' : 'Game Over', reason, win ? 'victory' : 'defeat', undefined, true),
+      { t: 'score', win, total: s.total, medal: s.medal, hoard: s.hoard, pirates: s.pirates, fleet: s.fleet, captains: s.captains, happiness: s.happiness });
   }
 
   // ------------------------------------------------------------------ money

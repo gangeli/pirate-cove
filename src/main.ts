@@ -3,7 +3,7 @@ import { installTheme } from './ui/theme';
 import { pending } from './render/textures';
 import { props } from './render/props';
 import { Game } from './sim/game';
-import { initPwa, launchShortcut } from './ui/install';
+import { initPwa, launchShortcut, debugShowUpdate } from './ui/install';
 
 /** Entry point. URL parameters (for testing): ?play=1 starts a game immediately; ?shot=1 renders a still. */
 /** the height the player can actually see: on phones it shrinks while the browser's address bar shows */
@@ -40,6 +40,8 @@ async function boot() {
   }
   bar.style.width = '50%';
   (window as any).__app = app;
+  // test harnesses (scripts/ui_shots.mjs) reach a few modules by name, also in a production build
+  if (params.get('play')) (window as any).__mods = { people: await import('./sim/people'), buildings: await import('./sim/data/buildings'), install: { debugShowUpdate }, profiler: await import('./ui/profiler') };
   const seed = params.get('seed');
   if (params.get('play') || params.get('shot')) {
     await app.newGame({ seed: seed ? +seed : 7, ...(params.get('adv') ? { advantage: params.get('adv') as any } : {}) }, (await import('./sim/data/kings')).KINGS[2], +(params.get('bot') ?? 0));

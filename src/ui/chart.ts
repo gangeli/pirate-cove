@@ -1,6 +1,6 @@
 import type { App } from './app';
 import { el, html, setHTML, patchHTML, delegate, fmt, raw } from './dom';
-import { icon } from './icons';
+import { icon, nationFlag } from './icons';
 import { NATIONS, NATION_NAMES, NATION_ADJ, type Nation } from '../sim/data/kings';
 import { regionReachable, transitTime } from '../sim/sea';
 import { relationLevel } from '../sim/diplomacy';
@@ -845,13 +845,4 @@ export class SeaChart {
 
 const STANCE: Record<string, string> = { Hostile: 'bad', Cold: 'warn', Neutral: '', Cordial: 'ok', Harmonious: 'ok' };
 
-/** a small period flag: St George for England, the lilies for France, the Burgundy cross for Spain */
-function flag(n: string, size = 18) {
-  const w = Math.round(size * 1.4), h = size;
-  const body = n === 'eng'
-    ? '<rect width="28" height="20" fill="#f4ecd8"/><path d="M0 10h28M12 0v20" stroke="#b02418" stroke-width="4"/>'
-    : n === 'fra'
-      ? '<rect width="28" height="20" fill="#24408a"/><g fill="#e2c060"><circle cx="8" cy="7" r="2"/><circle cx="20" cy="7" r="2"/><circle cx="14" cy="14" r="2"/></g>'
-      : '<rect width="28" height="20" fill="#f4ecd8"/><path d="M3 2l22 16M25 2L3 18" stroke="#b02418" stroke-width="2.6" stroke-linecap="round"/>';
-  return raw(`<svg class="flag" width="${w}" height="${h}" viewBox="0 0 28 20" aria-hidden="true">${body}<rect x=".5" y=".5" width="27" height="19" fill="none" stroke="#2a1a0a" stroke-opacity=".7"/></svg>`);
-}
+const flag = nationFlag;

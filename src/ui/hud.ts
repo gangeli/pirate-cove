@@ -2,6 +2,7 @@ import type { App } from './app';
 import { el, html, setHTML, delegate, fmt, raw, esc, setText, setAttr, setStyle, toggleClass, type Raw } from './dom';
 import { undoLabel } from '../sim/undo';
 import { icon } from './icons';
+import { letterStrip } from './tally';
 import { portraitImg, parrotSvg } from './portraits';
 import type { Message } from '../sim/types';
 import { audio } from '../audio/audio';
@@ -76,15 +77,7 @@ export class Hud {
     });
     // tooltips
     let tipFor: HTMLElement | null = null, tipText = '';
-    document.addEventListener('pointerover', (ev) => {
-      if (ev.pointerType === 'touch') return this.tip.classList.add('hidden'); // no hover on touch screens
-      const t = (ev.target as HTMLElement)?.closest?.('[data-tip]') as HTMLElement | null;
-      if (!t) {
-        tipFor = null;
-        return toggleClass(this.tip, 'hidden', true);
-      }
-      // moving between children of the same tipped element: nothing to do (no re-layout)
-      if (t === tipFor && t.dataset.tip === tipText && !this.tip.classList.contains('hidden')) return;
+    const showTip = (t: HTMLElement) => {
       tipFor = t;
       tipText = t.dataset.tip!;
       this.tip.innerHTML = tipText;
@@ -96,6 +89,33 @@ export class Hud {
       x = Math.max(4, Math.min(innerWidth - tw - 4, x));
       // positioned with a transform: no layout pass for the move itself
       this.tip.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px)`;
+    };
+    document.addEventListener('pointerover', (ev) => {
+      if (ev.pointerType === 'touch') return; // touch: tips open on a tap instead (below)
+      const t = (ev.target as HTMLElement)?.closest?.('[data-tip]') as HTMLElement | null;
+      if (!t) {
+        tipFor = null;
+        return toggleClass(this.tip, 'hidden', true);
+      }
+      // moving between children of the same tipped element: nothing to do (no re-layout)
+      if (t === tipFor && t.dataset.tip === tipText && !this.tip.classList.contains('hidden')) return;
+      showTip(t);
+    });
+    // on touch screens there is no hover: tapping something that only explains itself (an icon, a figure, a number,
+    // an (i)) shows its tip for a few seconds; buttons keep their own labels and simply act
+    let tipTimer = 0;
+    document.addEventListener('pointerup', (ev) => {
+      if (ev.pointerType !== 'touch') return;
+      const target = ev.target as HTMLElement;
+      const t = target?.closest?.('[data-tip]') as HTMLElement | null;
+      const acts = target?.closest?.('button, a, input, select, label, summary, [data-act]');
+      clearTimeout(tipTimer);
+      if (!t || (acts && !t.classList.contains('tipi'))) {
+        tipFor = null;
+        return toggleClass(this.tip, 'hidden', true);
+      }
+      showTip(t);
+      tipTimer = window.setTimeout(() => toggleClass(this.tip, 'hidden', true), 3500);
     });
   }
 
@@ -371,9 +391,10 @@ export class Hud {
     t.dataset.act = `toast:${m.focus ? `${m.focus.x},${m.focus.y}` : ''}`;
     const ic = m.kind === 'ship' ? 'ship' : m.kind === 'bad' ? 'skull' : m.kind === 'good' ? 'coin' : m.kind === 'alert' ? 'bell' : 'info';
     // a long letter is clipped to a few lines: "Read on" unfolds the whole of it
-    const long = m.text.length > 84 || m.text.includes('\n');
+    const strip = letterStrip(m, false);
+    const long = !!strip || m.text.length > 84 || m.text.includes('\n');
     if (long) this.letters.set(++this.letterSeq, m);
-    setHTML(t, html`${icon(ic, 22)}<div><b>${m.title}</b><span class="tx">${m.text.split('\n')[0]}</span>${long ? html`<button class="readon" data-act="toastRead:${this.letterSeq}">Read on…</button>` : ''}</div>`);
+    setHTML(t, html`${icon(ic, 22)}<div><b>${m.title}</b>${strip ? html`<div class="vcompact" data-tip="${m.text.split('\n')[0]}">${strip}</div>` : html`<span class="tx">${m.text.split('\n')[0]}</span>`}${long ? html`<button class="readon" data-act="toastRead:${this.letterSeq}">Read on…</button>` : ''}</div>`);
     while (this.ticker.children.length > 5) this.ticker.firstElementChild!.remove();
     setTimeout(() => t.remove(), 12000);
     for (const k of this.letters.keys()) if (k < this.letterSeq - 8) this.letters.delete(k);

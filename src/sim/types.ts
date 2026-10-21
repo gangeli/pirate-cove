@@ -235,7 +235,11 @@ export interface NationState {
   peaceBroken: number;
   plunderGold: number;
   plunderCaptives: number;
-  invasion: { stage: 0 | 1 | 2 | 3; timer: number; strength: number };
+  invasion: {
+    stage: 0 | 1 | 2 | 3; timer: number; strength: number;
+    /** how the landing went, for the letter that ends it (display only: the sim never reads it back) */
+    tally?: { ships: number; soldiers: number; sunk: number; landed: number; piratesDied0: number };
+  };
   reserve: number; // naval reserve pool
   atWarWith: Nation[];
 }
@@ -256,8 +260,39 @@ export interface Message {
   data?: MessageData;
 }
 
-/** structured contents of a letter: a ship's homecoming */
-export type MessageData = {
+/** structured contents of a letter, for the UI to draw as icons: a ship's homecoming, or any other event as a row of facts */
+export type MessageData = VoyageData | EventData;
+
+/** everything else that happens, as things the UI can draw: coins, figures, flags, ships, goods */
+export type EventData = { kind: 'event'; facts: Fact[] };
+
+/** who a row of figures shows */
+export type FolkKind = 'pirate' | 'captive' | 'wealthy' | 'soldier' | 'skeleton' | 'captain' | 'guard';
+
+export type Fact =
+  /** gold earned (n > 0) or spent (n < 0) */
+  | { t: 'gold'; n: number }
+  /** n people: arrived, died, ran off, taken prisoner, freed, rose up, went back to work; a single one may carry a name or a trade */
+  | { t: 'folk'; who: FolkKind; n: number; fate?: 'new' | 'dead' | 'gone' | 'taken' | 'freed' | 'rebel' | 'back' | 'hanged'; name?: string; skill?: string }
+  /** a Great Power: its relation change, whether it now knows where the island is, its stance toward you or `vs` another Power */
+  | { t: 'nation'; nat: Nation; rel?: number; knows?: boolean; stance?: 'war' | 'peace' | 'patron' | 'invade' | 'calm' | 'foe' | 'rumour' | 'fleet'; vs?: Nation }
+  /** ships: yours (named) or a Power's; what became of them */
+  | { t: 'ship'; n?: number; name?: string; type?: string; nat?: Nation; fate: 'new' | 'sail' | 'home' | 'sunk' | 'lost' | 'fled' | 'enemy'; mission?: string }
+  /** a good made (n > 0), used up (n < 0) or wanted (n = 0) */
+  | { t: 'good'; good: string; n: number }
+  /** the pirates' or captives' mood: a change (d) or the level (v, 0..1) */
+  | { t: 'mood'; who: 'pirate' | 'captive'; d?: number; v?: number; need?: string }
+  /** an edict put in force or repealed */
+  | { t: 'edict'; id: string; on: boolean; nat?: Nation }
+  /** a building finished */
+  | { t: 'building'; def: string }
+  /** hands mustered against hands needed */
+  | { t: 'crew'; have: number; need: number }
+  /** the final reckoning */
+  | { t: 'score'; total: number; medal: string; hoard: number; pirates: number; fleet: number; captains: number; happiness: number; win: boolean };
+
+/** a ship's homecoming */
+export type VoyageData = {
   kind: 'voyage';
   ship: string;
   mission: string;

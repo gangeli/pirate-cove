@@ -56,6 +56,8 @@ const P: Record<string, string> = {
   mute: `<g ${S}><path d="M3.5 9.5h3.5l5-4v13l-5-4H3.5z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></g>`,
   info: `<g ${S}><circle cx="12" cy="12" r="8.5"/><path d="M12 10.5V17M10.5 17h3"/></g><circle cx="12" cy="7.3" r="1.1" ${F}/>`,
   heart: `<path d="M12 20s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7.2a4.2 4.2 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z" ${S}/><g ${T}><path d="M7 9.5a2.5 2.5 0 0 1 2-2"/></g>`,
+  soldier: `<g ${S}><circle cx="12" cy="10.5" r="3.2"/><path d="M5.5 21.5c.5-3.6 3-5.8 6.5-5.8s6 2.2 6.5 5.8"/><path d="M9.3 7.6V3.2h5.4v4.4"/><path d="M19.5 22V8.5"/></g><g ${T}><path d="M9.3 5.2h5.4"/></g><path d="M18.6 8.5l.9-2.2.9 2.2z" ${F}/>`,
+  captain: `<g ${S}><circle cx="12" cy="11.2" r="3.4"/><path d="M5 21.5c.5-3.6 3.3-5.8 7-5.8s6.5 2.2 7 5.8"/><path d="M3.5 7.6c2.5 1.2 5.3 1.7 8.5 1.7s6-.5 8.5-1.7c-1.6-.4-2.8-1.3-3.6-2.9-1.4.9-3 1.3-4.9 1.3s-3.5-.4-4.9-1.3c-.8 1.6-2 2.5-3.6 2.9z"/></g><circle cx="12" cy="6.6" r="1" ${F}/>`,
   // ---- goods (g_<good>): the same engraved family, for production, stores and letters
   g_wood: `<g ${S}><circle cx="6.5" cy="15" r="3"/><circle cx="12.5" cy="15" r="3"/><circle cx="9.5" cy="9.8" r="3"/><path d="M6.5 12h0M12.5 12h0"/></g><g ${T}><circle cx="6.5" cy="15" r="1.2"/><circle cx="12.5" cy="15" r="1.2"/><circle cx="9.5" cy="9.8" r="1.2"/><path d="M15.5 13l5-1M15.5 17l5-1M12.5 8l6-1"/></g>`,
   g_lumber: `<g ${S}><path d="M3 9.5l13-3 5 2-13 3z"/><path d="M3 9.5v3l5 2 13-3v-3"/><path d="M8 11.5v3"/><path d="M3 14.5v3l5 2 13-3v-3"/></g><g ${T}><path d="M10 9l6-1.4M10 16l6-1.4"/></g>`,
@@ -90,4 +92,15 @@ export function goodIcon(good: string, size = 20, cls = ''): Raw {
 
 export function icon(name: string, size = 20, cls = ''): Raw {
   return raw(`<svg class="ic ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${P[name] ?? P.info}</svg>`);
+}
+
+/** a small period flag: St George for England, the lilies for France, the Burgundy cross for Spain */
+export function nationFlag(n: string, size = 18): Raw {
+  const w = Math.round(size * 1.4), h = size;
+  const body = n === 'eng'
+    ? '<rect width="28" height="20" fill="#f4ecd8"/><path d="M0 10h28M12 0v20" stroke="#b02418" stroke-width="4"/>'
+    : n === 'fra'
+      ? '<rect width="28" height="20" fill="#24408a"/><g fill="#e2c060"><circle cx="8" cy="7" r="2"/><circle cx="20" cy="7" r="2"/><circle cx="14" cy="14" r="2"/></g>'
+      : '<rect width="28" height="20" fill="#f4ecd8"/><path d="M3 2l22 16M25 2L3 18" stroke="#b02418" stroke-width="2.6" stroke-linecap="round"/>';
+  return raw(`<svg class="flag" width="${w}" height="${h}" viewBox="0 0 28 20" aria-hidden="true">${body}<rect x=".5" y=".5" width="27" height="19" fill="none" stroke="#2a1a0a" stroke-opacity=".7"/></svg>`);
 }

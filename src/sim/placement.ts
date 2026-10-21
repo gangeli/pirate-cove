@@ -1,4 +1,5 @@
 import { BUILDING, defaultPriority, type BuildingDef } from './data/buildings';
+import { tell } from './letters';
 import { Terrain } from './map';
 import type { Game, CmdResult } from './game';
 import { markBlocked } from './game';
@@ -327,7 +328,7 @@ export function onBuilt(g: Game, b: Building): void {
     g.advisorState.firstDockShip = 1;
     if (![...g.ships.values()].length) {
       const s = createShip(g, 'snow', b);
-      g.msg('ship', 'A Ship Arrives!', `A battered snow, the ${s.name}, limps into your new dock. She's yours now.`, 'free_ship', { x: b.x, y: b.y });
+      tell(g.msg('ship', 'A Ship Arrives!', `A battered snow, the ${s.name}, limps into your new dock. She's yours now.`, 'free_ship', { x: b.x, y: b.y }), { t: 'ship', name: s.name, type: s.type, fate: 'new' });
     }
   }
 }

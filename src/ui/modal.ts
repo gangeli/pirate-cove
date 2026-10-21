@@ -6,7 +6,8 @@ import type { Message } from '../sim/types';
 import { audio } from '../audio/audio';
 import { listSaves } from './saves';
 import { portraitImg } from './portraits';
-import { voyageStrip } from './tally';
+import { voyageStrip, letterStrip, useThumbs, scoreBars } from './tally';
+import { thumbOrQueue } from './thumbs';
 import { setBackendPreference } from '../render/backend';
 
 export class Modal {
@@ -24,6 +25,13 @@ export class Modal {
       do: (a) => this.handlers[a]?.(a),
       close: () => this.close(),
     }, () => audio.sfx('ui_click'));
+    // letters show finished buildings as their thumbnails, swapped in when a thumbnail is first drawn
+    useThumbs((id) => thumbOrQueue(app.world, id, (tid, url) => {
+      for (const n of document.querySelectorAll<HTMLElement>(`[data-lthumb="${tid}"]`)) {
+        if (n instanceof HTMLImageElement) n.src = url;
+        else n.outerHTML = `<img class="bthumb" src="${url}" data-lthumb="${tid}" alt="">`;
+      }
+    }));
   }
 
   private show(content: ReturnType<typeof html>, handlers: Record<string, (a: string) => void>, pause = true): void {
@@ -50,11 +58,14 @@ export class Modal {
   message(m: Message): void {
     const focus = m.focus;
     const lines = m.text.split('\n\n');
+    const strip = letterStrip(m);
     this.show(html`<div class="seal">${icon(m.kind === 'ship' ? 'ship' : m.kind === 'bad' || m.kind === 'alert' ? 'skull' : 'coin', 30)}</div>
       <h2>${m.title}</h2><div class="sub">${m.date}</div>
       ${m.data?.kind === 'voyage'
         ? html`<div class="body letter-v"><div class="lede">Back from her ${m.data.mission}.</div>${voyageStrip(m.data)}</div>`
-        : html`<div class="body">${lines[0]}${lines.length > 1 ? html`<hr class="rule"><div style="font-size:14px;color:#4a3018">${lines.slice(1).join('\n\n')}</div>` : ''}</div>`}
+        : strip
+          ? html`<div class="body letter-v">${strip}<div class="lede after">${lines.join(' ')}</div></div>`
+          : html`<div class="body">${lines[0]}${lines.length > 1 ? html`<hr class="rule"><div style="font-size:14px;color:#4a3018">${lines.slice(1).join('\n\n')}</div>` : ''}</div>`}
       <div class="row">${focus ? html`<button class="btn ghost" data-act="do:go">${icon('eye', 15)} Show me</button>` : ''}<button class="btn primary" data-act="do:ok">Aye!</button></div>`, {
       ok: () => this.close(),
       go: () => {
@@ -164,17 +175,19 @@ export class Modal {
     const a = audio.vol;
     const q = this.app.quality;
     const adv = this.app.hud.advisorMode;
-    const slider = (k: keyof typeof a, label: string) => html`<label class="slider"><span>${label}</span><input type="range" min="0" max="1" step="0.05" value="${a[k]}" data-vol="${k}"><output>${Math.round(a[k] * 100)}%</output></label>`;
+    const slider = (k: keyof typeof a, label: string, ic: string) => html`<label class="slider" data-tip="${label} volume"><span>${icon(ic, 16)} ${label}</span><input type="range" min="0" max="1" step="0.05" value="${a[k]}" data-vol="${k}" aria-label="${label} volume"><output>${Math.round(a[k] * 100)}%</output></label>`;
+    const w = this.app.world;
+    const rend = `<b>Renderer</b><br>${w.backend === 'webgpu' ? 'WebGPU (experimental)' : 'WebGL'} · ${w.gpu.renderer}${w.gpu.software ? ' (software, no graphics acceleration)' : ''}<br>Resolution ${Math.round(w.pr * 100)}%`;
+    const seg = (items: [string, string, string, boolean][], aria: string) => html`<div class="seg full" role="radiogroup" aria-label="${aria}">${items.map(([act, label, tip, on]) => html`<button class="${on ? 'on' : ''}" data-act="do:${act}" role="radio" aria-checked="${on ? 'true' : 'false'}" data-tip="${tip}">${label}</button>`)}</div>`;
     this.show(html`<h2>Settings</h2><div class="body settings">
-      <section class="sect"><h4 class="eng">Sound</h4>${slider('master', 'Master')}${slider('music', 'Music')}${slider('voice', 'Voices')}${slider('sfx', 'Effects')}${slider('ambient', 'Ambience')}</section>
-      <section class="sect"><h4 class="eng">Graphics</h4><div class="seg full" role="radiogroup">${(['low', 'medium', 'high'] as const).map((x) => html`<button class="${q === x ? 'on' : ''}" data-act="do:q_${x}">${x[0].toUpperCase() + x.slice(1)}</button>`)}</div>
-      <div class="sub" style="font-size:12px;margin-top:4px;user-select:text;-webkit-user-select:text">Renderer: ${this.app.world.backend === 'webgpu' ? 'WebGPU (experimental)' : 'WebGL'} &middot; ${this.app.world.gpu.renderer}${this.app.world.gpu.software ? ' (software, no graphics acceleration)' : ''} &middot; resolution ${Math.round(this.app.world.pr * 100)}%</div>
-      <div class="seg full" role="radiogroup" style="margin-top:8px" aria-label="Frame rate">${([[0, 'Smooth (full frame rate)'], [30, 'Cool (30 fps, quieter laptop)']] as const).map(([v, n]) => html`<button class="${this.app.frameCap === v ? 'on' : ''}" data-act="do:fps_${v}">${n}</button>`)}</div>
-      ${'gpu' in navigator ? html`<label class="check" style="margin-top:6px"><input type="checkbox" data-webgpu ${this.app.world.backend === 'webgpu' ? 'checked' : ''}><span>WebGPU renderer (experimental; reloads the game, so save first)</span></label>` : ''}
-      <div class="row start" style="margin-top:8px;align-items:center;gap:8px"><button class="btn ghost small" data-act="do:profile">Record performance (60 s)</button><span class="sub" style="font-size:12px">Play normally for a minute, then copy the report.</span></div></section>
-      <section class="sect"><h4 class="eng">Advisor</h4><div class="seg full" role="radiogroup">${(['full', 'brief', 'off'] as const).map((x) => html`<button class="${adv === x ? 'on' : ''}" data-act="do:a_${x}">${x === 'full' ? 'Chatty' : x === 'brief' ? 'Brief' : 'Silent'}</button>`)}</div>
-        <div class="seg-note">${adv === 'full' ? 'Barnaby speaks his mind in full.' : adv === 'brief' ? 'Barnaby keeps it to one line.' : 'Barnaby holds his tongue; important news still arrives as notes.'}</div></section>
-      <section class="sect"><h4 class="eng">Camera</h4><label class="check"><input type="checkbox" data-edge ${this.app.world.rig.edgeScroll ? 'checked' : ''}><span>Scroll when the pointer touches the screen edges</span></label></section></div>
+      <section class="sect"><h4 class="eng">${icon('speaker', 16)} Sound</h4>${slider('master', 'Master', 'speaker')}${slider('music', 'Music', 'bell')}${slider('voice', 'Voices', 'pirate')}${slider('sfx', 'Effects', 'g_cannon')}${slider('ambient', 'Ambience', 'sprout')}</section>
+      <section class="sect"><h4 class="eng">${icon('eye', 16)} Graphics <span class="tipi" data-tip="${rend}" tabindex="0" aria-label="Renderer details">${icon('info', 14)}</span></h4>
+        ${seg((['low', 'medium', 'high'] as const).map((x) => [`q_${x}`, x[0].toUpperCase() + x.slice(1), `<b>${x[0].toUpperCase() + x.slice(1)} detail</b>`, q === x]), 'Detail')}
+        <div class="field-row"><span class="lbl" data-tip="Frame rate">${icon('fast', 15)}</span>${seg([['fps_0', 'Smooth', '<b>Smooth</b><br>The full frame rate', this.app.frameCap === 0], ['fps_30', '30 fps', '<b>Cool</b><br>30 frames a second: a quieter, cooler laptop', this.app.frameCap === 30]], 'Frame rate')}</div>
+        <div class="row start set-row">${'gpu' in navigator ? html`<label class="check" data-tip="Experimental. Changing it reloads the game, so save first."><input type="checkbox" data-webgpu ${w.backend === 'webgpu' ? 'checked' : ''}><span>WebGPU</span></label>` : ''}
+          <button class="btn nav small" data-act="do:profile" data-tip="<b>Record performance</b><br>Play normally for a minute, then copy the report.">${icon('gear', 14)} Record 60 s</button></div></section>
+      <section class="sect"><h4 class="eng">${icon('quill', 16)} Advisor</h4>${seg([['a_full', 'Chatty', 'Barnaby speaks his mind in full.', adv === 'full'], ['a_brief', 'Brief', 'Barnaby keeps it to one line.', adv === 'brief'], ['a_off', 'Silent', 'Barnaby holds his tongue; important news still arrives as notes.', adv === 'off']], 'Advisor')}</section>
+      <section class="sect"><h4 class="eng">${icon('compass', 16)} Camera</h4><label class="check" data-tip="Scroll the view when the pointer touches the screen edges"><input type="checkbox" data-edge ${w.rig.edgeScroll ? 'checked' : ''}><span>Edge scrolling</span></label></section></div>
       <div class="row"><button class="btn primary" data-act="do:done">Done</button></div>`, {
       done: () => this.close(),
       profile: () => {
@@ -249,12 +262,7 @@ export class Modal {
     this.show(html`<div class="gameover"><h2>${o.win ? 'Your Reign Is Complete' : 'Your Reign Has Ended'}</h2>
       <p class="reason">${o.reason}</p>
       ${o.win ? html`<div class="medal-wrap"><div class="medal ${s.medal}" role="img" aria-label="${s.medal} medal"><span>${s.medal[0].toUpperCase() + s.medal.slice(1)}</span></div></div>` : ''}
-      <div class="score kv">
-        <span>Hoard</span><span>${fmt(s.hoard)}</span><span>Pirate happiness</span><span>${fmt(s.happiness)}</span>
-        <span>Fleet</span><span>${fmt(s.fleet)}</span><span>Captains</span><span>${fmt(s.captains)}</span><span>Pirates</span><span>${fmt(s.pirates)}</span>
-        <span>Bonus (${s.bonusKey})</span><span>×3</span><span>Difficulty</span><span>${Math.round(s.difficulty * 100)}%</span>
-        <span class="tot">Final score</span><span class="tot">${fmt(s.total)}</span>
-      </div></div>
+      <div class="score">${scoreBars(s)}</div></div>
       <div class="row">${o.win ? html`<button class="btn ghost" data-act="do:cont">Keep playing</button>` : ''}<button class="btn primary" data-act="do:menu">Main menu</button></div>`, {
       cont: () => {
         g.over = null;

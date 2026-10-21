@@ -394,7 +394,9 @@ def dock(k):
                 k.beam('bark', V(sx * (aw / 2 - 0.05), dy - 0.15, z), V(sx * (aw / 2 - 0.05), -0.5, z2), 0.05, round_=True)
             k.beam('bark', V(-aw / 2 + 0.05, -0.3, z), V(aw / 2 - 0.05, -0.3, z), 0.05, round_=True)
     # T-head (runs along x, planks along z)
-    hz0, hz1 = -D / 2 + 1.3, -D / 2 - 0.25
+    # (the head's seaward face, fender piles and all, stays on the dock's own tiles: docks built side by side
+    # along a beach used to run their heads into each other)
+    hz0, hz1 = -D / 2 + 1.3, -D / 2 + 0.16
     hw = W - 0.2
     k.push(0, 0, (hz0 + hz1) / 2)
     deck(k, hw, hz0 - hz1, dy, 'planks', along='z', joists=True)
@@ -418,7 +420,7 @@ def dock(k):
     for x in (-hw / 2 + 0.35, -0.7, 0.7, hw / 2 - 0.35):
         bollard(k, x, hz1 + 0.22, dy)
     if not k.lod:
-        k.beam('rope', V(-0.7, dy + 0.18, hz1 + 0.22), V(-0.9, dy - 0.2, hz1 - 0.5), 0.02, round_=True, seg=5)
+        k.beam('rope', V(-0.7, dy + 0.18, hz1 + 0.22), V(-0.85, dy - 0.25, hz1 - 0.1), 0.02, round_=True, seg=5)
         rope_coil(k, -0.95, hz0 - 0.35)
         k.push(0, dy, 0)
         rope_coil(k, 0.4, hz0 - 0.3)

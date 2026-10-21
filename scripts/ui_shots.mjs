@@ -1,7 +1,7 @@
 // UI screenshot harness: every panel/state on several devices (desktop, phones, landscape, tablet, 1920), with layout
 // checks (off-screen, overlapping HUD pieces, content poking out of panels, small touch targets) that fail loudly.
 //   UI_SHOTS_DIR=/tmp/ui_shots node scripts/ui_shots.mjs <round> [--base=http://localhost:5173] [--dev=desk,pix] [--only=hud,b_palace] [--skip=setup]
-// Needs a dev server (npx vite). Contact sheets: python3 scripts/ui_contact.py /tmp/ui_shots/round_<n>
+// Needs a server: a dev server (npx vite), or a build served with `npx vite preview` (--base=http://localhost:4190). Contact sheets: python3 scripts/ui_contact.py /tmp/ui_shots/round_<n>
 import { chromium, devices } from 'playwright';
 import fs from 'node:fs';
 
@@ -36,7 +36,7 @@ S.hud = `0`;
 S.hud_run = `a.hud.advisorMode = 'off'; g.speed = 4; g.paused = false; a.hud.updateSpeed(); h.after = () => { g.paused = true; g.speed = 1; a.hud.advisorMode = 'full'; a.hud.updateSpeed(); }`;
 S.undo = `(() => { const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); for (let r = 3; r < 20; r++) for (let dx = -r; dx <= r; dx++) for (const dy of [-r, r]) { const x = pal.x + dx, y = pal.y + dy; if (g.cmd({ type: 'road', x, y }).ok) { a.hud.update(); h.look(x, y); h.after = () => { g.cmd({ type: 'undo' }); a.hud.update(); }; return; } } return 'missing'; })()`;
 // the "Update ready" toast together with the floating undo seal (they used to sit on top of each other)
-S.toast_undo = `await (async () => { const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); let ok = false; for (let r = 3; r < 20 && !ok; r++) for (let dx = -r; dx <= r && !ok; dx++) for (const dy of [-r, r]) { const x = pal.x + dx, y = pal.y + dy; if (g.cmd({ type: 'road', x, y }).ok) { a.hud.update(); h.look(x, y); ok = true; break; } } (await import('/src/ui/install.ts')).debugShowUpdate(); await new Promise((r) => setTimeout(r, 400)); h.after = () => { g.cmd({ type: 'undo' }); a.hud.update(); document.querySelector('.pwa-toast [data-x]')?.click(); }; })()`;
+S.toast_undo = `await (async () => { const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); let ok = false; for (let r = 3; r < 20 && !ok; r++) for (let dx = -r; dx <= r && !ok; dx++) for (const dy of [-r, r]) { const x = pal.x + dx, y = pal.y + dy; if (g.cmd({ type: 'road', x, y }).ok) { a.hud.update(); h.look(x, y); ok = true; break; } } (window.__mods?.install ?? await import('/src/ui/install.ts')).debugShowUpdate(); await new Promise((r) => setTimeout(r, 400)); h.after = () => { g.cmd({ type: 'undo' }); a.hud.update(); document.querySelector('.pwa-toast [data-x]')?.click(); }; })()`;
 S.b_palace = bld('palace');
 S.b_dock = bld('dock');
 S.b_farm = bld('corn_farm');
@@ -53,7 +53,7 @@ S.b_boatyard = bld('boatyard');
 S.b_cave = bld('cave');
 S.b_smuggler = bld('smugglers_cove');
 S.b_tower = bld('watch_tower');
-S.b_closed = `${bld('sawmill')}; (() => { const b = a.selection && g.buildings.get(a.selection.id); g.cmd({ type: 'blockSlot', id: b.id, delta: 1 }); a.inspector.refresh(true); h.after = () => g.cmd({ type: 'blockSlot', id: b.id, delta: -1 }); })()`;
+S.b_closed = `${bld('sawmill')}; (() => { const b = a.selection && g.buildings.get(a.selection.id); g.cmd({ type: 'blockSlot', id: b.id, delta: 1, row: 0 }); a.inspector.refresh(true); h.after = () => g.cmd({ type: 'blockSlot', id: b.id, delta: -1, row: 0 }); })()`;
 S.b_folded = `${bld('corn_farm')}; a.inspector.fold(true)`;
 S.b_construction = `(() => { const b = [...g.buildings.values()].find((b) => b.built < 1); if (!b) return 'missing'; a.select({ type: 'building', id: b.id }); h.look(b.x, b.y); })()`;
 S.p_pirate = per(`p.kind === 'pirate' && !p.captain`);
@@ -96,7 +96,7 @@ S.advisor = `await new Promise((r) => setTimeout(r, 600)); a.hud.message({ id: 9
 S.toasts = `for (const [k, t, x] of [['ship', 'The Sloop returns', 'She brings 340 gold and 6 captives from the Windward Passage.'], ['bad', 'A captive escaped', 'Maria Lopez slipped away at night and will tell the Spanish where we are.'], ['good', 'Tavern opened', 'The Rusty Anchor pours its first grog.'], ['alert', 'Invasion rumoured', 'Word is the English are assembling a fleet at Port Royal, forty sail of the line and two regiments of foot, and mean to hang every one of us.\\n\\nDouble the guard at the stockade and keep the cannon loaded.']]) a.hud.message({ id: Math.random(), kind: k, title: t, text: x, date: g.date })`;
 S.toast_read = `${S.toasts}; await new Promise((r) => setTimeout(r, 400)); h.click('.toast .readon')`;
 S.gpu = `try { localStorage.removeItem('bc_gpu_notice'); } catch {} document.querySelector('.gpu-notice')?.remove(); a.hud.gpuNotice('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)'); h.after = () => document.querySelector('.gpu-notice')?.remove()`;
-S.prof_report = `const P = await import('/src/ui/profiler.ts'); P.recordProfile(a, 1); await new Promise((r) => setTimeout(r, 1200)); a.prof?.finish(); await new Promise((r) => setTimeout(r, 300)); h.after = () => document.querySelectorAll('.prof-report,.prof-badge').forEach((e) => e.remove())`;
+S.prof_report = `const P = window.__mods?.profiler ?? await import('/src/ui/profiler.ts'); P.recordProfile(a, 1); await new Promise((r) => setTimeout(r, 1200)); a.prof?.finish(); await new Promise((r) => setTimeout(r, 300)); h.after = () => document.querySelectorAll('.prof-report,.prof-badge').forEach((e) => e.remove())`;
 S.tooltip = `h.hover('[data-tool="views"]')`;
 S.menu_game = `a.modal.gameMenu()`;
 S.menu_settings = `a.modal.settings()`;
@@ -104,6 +104,24 @@ S.menu_help = `a.modal.help()`;
 S.menu_confirm = `(() => { const b = [...g.buildings.values()].find((b) => b.def === 'dive'); a.demolishAsk ? a.demolishAsk(b.id) : a.modal.confirm('Demolish the Dive?', 'Nothing will be refunded.', () => {}); })()`;
 S.menu_voyage = `a.modal.message({ id: 9e6 + 2, kind: 'ship', title: 'Night Heron Returns', text: 'The Night Heron is back.', date: g.date, focus: { x: 60, y: 60 }, data: { kind: 'voyage', ship: 'Night Heron', mission: 'cruise in the Windward Passage', gold: 821, treasury: 328, captives: 6, skilled: ['gunsmith'], wealthy: 1, recruits: 3, cannons: 0, hull: 0.54, log: [{ date: 'May 1681', text: 'Grappling hooks away! Boarders!' }, { date: 'May 1681', text: 'Took a Spanish Merchant Brig! Plunder: 821 gold, skilled Gunsmith, 3 recruits. Lost 2 men.' }] } })`;
 S.menu_message = `a.modal.message({ id: 9e6 + 1, kind: 'ship', title: 'The Snow Returns', text: 'Captain Flint brings the Revenge home from the Windward Passage with 820 gold, 14 captives and 3 recruits.\\n\\nThe crew took 410 gold as their share. 6 hands were lost.', date: g.date, focus: { x: 60, y: 60 } })`;
+// letters for every other kind of event: the sim's facts drawn as icons (one figure per soul, coin piles, flags)
+const letter = (kind, title, text, facts, extra = '') => `a.modal.message({ id: 9e6 + Math.floor(Math.random() * 1e5), kind: '${kind}', title: '${title}', text: '${text}', date: g.date, ${extra} data: { kind: 'event', facts: ${JSON.stringify(facts)} } })`;
+S.letter_repelled = letter('good', 'Invasion Repelled!', 'The English invasion has been thrown back into the sea! Your pirates will sing of this for years.', [{ t: 'nation', nat: 'eng', rel: 15 }, { t: 'ship', n: 2, nat: 'eng', fate: 'sunk' }, { t: 'ship', n: 1, nat: 'eng', fate: 'fled' }, { t: 'folk', who: 'soldier', n: 9, fate: 'dead' }, { t: 'folk', who: 'pirate', n: 3, fate: 'dead' }]);
+S.letter_invasion = letter('alert', 'INVASION!', 'Spain is invading with 3 ships and 14 soldiers! All hands to arms!', [{ t: 'nation', nat: 'spa', stance: 'invade' }, { t: 'ship', n: 3, nat: 'spa', fate: 'enemy' }, { t: 'folk', who: 'soldier', n: 14 }], 'focus: { x: 60, y: 60 },');
+S.letter_ransom = letter('good', 'Ransom Paid', 'Don Diego de la Vega’s family paid 640 gold for their return.', [{ t: 'gold', n: 640 }, { t: 'folk', who: 'wealthy', n: 1, fate: 'freed', name: 'Don Diego de la Vega' }]);
+S.letter_edict = letter('info', 'Edict Issued', 'Curfew is now in force.', [{ t: 'edict', id: 'curfew', on: true }, { t: 'gold', n: -200 }]);
+S.letter_grog = letter('good', 'Free Rum!', 'The pirates raise a toast to their generous king!', [{ t: 'gold', n: -300 }, { t: 'good', good: 'rum', n: -10 }, { t: 'mood', who: 'pirate', d: 0.3, need: 'drink' }]);
+S.letter_lost = letter('bad', 'Ship Lost!', 'The Night Heron was sunk by a Spanish frigate. 4 survivors were taken prisoner, along with Captain Flint, who swears to return.', [{ t: 'ship', name: 'Night Heron', type: 'sloop', fate: 'sunk', nat: 'spa' }, { t: 'folk', who: 'pirate', n: 7, fate: 'dead' }, { t: 'folk', who: 'pirate', n: 4, fate: 'taken' }, { t: 'folk', who: 'captain', n: 1, fate: 'taken', name: 'Captain Flint' }]);
+S.letter_rebellion = letter('alert', 'Rebellion!', 'Maria Lopez has roused 11 captives to revolt! They are marching on the palace. If they outnumber your guards, it’s all over!', [{ t: 'folk', who: 'captive', n: 11, fate: 'rebel' }, { t: 'folk', who: 'guard', n: 4 }], 'focus: { x: 60, y: 60 },');
+S.letter_war = letter('info', 'War in Europe', 'France and Spain are at war!', [{ t: 'nation', nat: 'fra', stance: 'war', vs: 'spa' }]);
+S.letter_built = letter('info', 'Construction Complete', 'The Tavern is finished.', [{ t: 'building', def: 'tavern' }], 'focus: { x: 60, y: 60 },');
+S.letter_calloff = letter('bad', 'Voyage Called Off', 'Only 3 hands answered the Revenge’s bell. She needs at least 6 to sail.', [{ t: 'crew', have: 3, need: 6 }]);
+S.letter_coup = letter('alert', 'Coup Brewing!', 'The crews are sharpening their cutlasses and muttering your name. Make them happy, fast, or lose your crown.', [{ t: 'mood', who: 'pirate', v: 0.24 }, { t: 'folk', who: 'pirate', n: 17, fate: 'rebel' }]);
+S.letter_over = letter('good', 'Reign Complete', 'Your reign is complete.', [{ t: 'score', win: true, total: 31200, medal: 'silver', hoard: 18200, pirates: 1300, fleet: 2400, captains: 900, happiness: 3400 }]);
+// toasts and the Letters tab with event letters
+const sample = `[['bad', 'Escaped!', 'Maria Lopez slipped away on a drifting log.', [{ t: 'folk', who: 'captive', n: 1, fate: 'gone', name: 'Maria Lopez' }, { t: 'nation', nat: 'spa' }]], ['good', 'New Arrivals', '3 would-be buccaneers have come ashore.', [{ t: 'folk', who: 'pirate', n: 3, fate: 'new' }, { t: 'mood', who: 'pirate', v: 0.66 }]], ['info', 'Construction Complete', 'The Tavern is finished.', [{ t: 'building', def: 'tavern' }]], ['alert', 'Discovered!', 'England now knows the location of your island.', [{ t: 'nation', nat: 'eng', knows: true }]], ['good', 'Enemy Ship Sunk!', 'A Spanish warship goes down with 4 soldiers still aboard!', [{ t: 'ship', n: 1, nat: 'spa', fate: 'sunk' }, { t: 'folk', who: 'soldier', n: 4, fate: 'dead' }]]]`;
+S.toasts_event = `for (const [k, t, x, f] of ${sample}) a.hud.message({ id: Math.random(), kind: k, title: t, text: x, date: g.date, data: { kind: 'event', facts: f } })`;
+S.log_letters = `(() => { const n0 = g.messages.length; for (const [k, t, x, f] of ${sample}) g.messages.push({ id: g.nextId++, t: g.time, date: g.date, kind: k, title: t, text: x, data: { kind: 'event', facts: f } }); a.log.open('messages'); h.after = () => g.messages.splice(n0); })()`;
 S.menu_gameover = `(() => { g.over = { win: true, reason: 'Your 20-year reign is complete. The Brethren toast your name.', score: { hoard: 18200, happiness: 3400, fleet: 2400, captains: 900, pirates: 1300, bonusKey: 'captains', difficulty: 1, total: 31200, medal: 'silver' } }; a.modal.gameOver(); })()`;
 S.place_build = `(() => { a.setTool({ kind: 'build', def: 'tavern', rot: 0 }); const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); h.hoverTile(pal.x + pal.w + 3, pal.y + 1); })()`;
 S.place_road = `(() => { a.setTool({ kind: 'road' }); const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); h.hoverTile(pal.x + pal.w + 3, pal.y + 1); })()`;
@@ -117,6 +135,8 @@ S.menu_load = `a.modal.loadDialog()`;
 S.title = `(async () => { a.modal.queue = []; if (a.modal.open) a.modal.close(); a.quitToMenu(); for (let i = 0; i < 60; i++) { await new Promise((r) => setTimeout(r, 500)); if ([...document.querySelectorAll('.menu .item')].some((e) => e.offsetParent)) break; } })()`;
 S.credits = `[...document.querySelectorAll('.menu .item')].find((e) => /credits/i.test(e.textContent))?.click()`;
 S.setup = `(async () => { document.querySelector('.panel.credits')?.classList.add('hidden'); a.quitToMenu(); for (let i = 0; i < 60; i++) { await new Promise((r) => setTimeout(r, 500)); const it = [...document.querySelectorAll('.menu .item')].find((e) => /new game/i.test(e.textContent) && e.offsetParent); if (it) { it.click(); break; } } })()`;
+S.setup_island = `h.click('[data-act="tab:island"]')`;
+S.setup_cond = `h.click('[data-act="tab:conditions"]')`;
 S.setup_king = `h.click('[data-act="tab:king"]')`;
 
 // ------------------------------------------------------------------------------------------- checks
@@ -179,7 +199,7 @@ for (const dk of devList) {
   const bar = d.bar ?? 0;
   delete d.bar;
   delete d.defaultBrowserType;
-  const ctx = await browser.newContext(d);
+  const ctx = await browser.newContext({ ...d, serviceWorkers: 'block' });
   const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log(`[${dk}] PAGEERROR ${e.message}`));
   const t0 = Date.now();
@@ -198,7 +218,7 @@ for (const dk of devList) {
     a.touchMode = matchMedia('(pointer: coarse)').matches;
     if (a.touchMode) document.body.classList.add('touch');
     // a docked ship with a captain, a soldier and a wealthy captive, for the inspectors
-    const P = await import('/src/sim/people.ts');
+    const P = window.__mods?.people ?? await import('/src/sim/people.ts');
     const dock = [...g.buildings.values()].find((b) => b.def === 'dock' && !b.ship) ?? [...g.buildings.values()].find((b) => b.def === 'dock');
     if (dock.ship) { const old = g.ships.get(dock.ship); if (old) dock.ship = 0; }
     const s = P.createShip(g, 'sloop', dock);
@@ -210,7 +230,7 @@ for (const dk of devList) {
     P.createPerson(g, 'soldier', pal.x - 2, pal.y + 2, { nat: 'eng' });
     P.createPerson(g, 'wealthy', pal.x - 3, pal.y + 3, { nat: 'spa', wealthy: true });
     window.__h = { dockedShip: s.id };
-    window.__B = (await import('/src/sim/data/buildings.ts')).BUILDING;
+    window.__B = (window.__mods?.buildings ?? await import('/src/sim/data/buildings.ts')).BUILDING;
     // freeze the 3D view (SwiftShader frames take seconds); each shot renders one frame explicitly
     window.__render = a.world.render.bind(a.world);
     a.world.render = () => {};

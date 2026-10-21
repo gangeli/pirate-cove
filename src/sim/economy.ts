@@ -1,4 +1,5 @@
 import type { Game } from './game';
+import { tell } from './letters';
 import { BUILDING, SKILLED_ONLY, JOB_SEX, buildWork, type Job, type BuildingDef } from './data/buildings';
 import type { Good } from './data/goods';
 import { SMUGGLER_PRICE } from './data/goods';
@@ -265,7 +266,7 @@ export function updateEconomy(g: Game, dt: number): void {
         if (site.built >= 1) {
           onBuilt(g, site);
           const def = BUILDING[site.def];
-          g.msg('info', 'Construction Complete', `The ${def.name} is finished.`, undefined, { x: site.x + site.w / 2, y: site.y + site.h / 2 });
+          tell(g.msg('info', 'Construction Complete', `The ${def.name} is finished.`, undefined, { x: site.x + site.w / 2, y: site.y + site.h / 2 }), { t: 'building', def: def.id });
         }
       }
     } else if (t.kind === 'work' && p.kind !== 'pirate') {
@@ -330,7 +331,7 @@ function workSlots(def: BuildingDef): number {
 
 function announceAccessory(g: Game, b: Building, good: Good): void {
   const what = good === 'pegleg' ? 'A peg leg has been carved' : good === 'hat' ? 'A splendid hat is ready' : 'A parrot is trained';
-  g.msg('good', 'Accoutrement Ready', `${what}. Use the Outfit Pirate edict to bestow it.`, `accessory_${good}`, { x: b.x, y: b.y });
+  tell(g.msg('good', 'Accoutrement Ready', `${what}. Use the Outfit Pirate edict to bestow it.`, `accessory_${good}`, { x: b.x, y: b.y }), { t: 'good', good, n: 1 });
 }
 
 function workEff(g: Game, p: Person, job: Job): number {
@@ -709,7 +710,7 @@ export function monthlyEconomy(g: Game): void {
     const at = g.findBuilding('dock') ?? g.findBuilding('palace');
     if (at) {
       createPerson(g, 'captive', at.door[0], at.door[1], { skilled: 'shipwright' });
-      g.msg('good', 'A Shipwright Washes Up', 'A shipwright, marooned by his own crew, has staggered ashore. He will build you a hull if you give him a boatyard.', undefined, { x: at.door[0], y: at.door[1] });
+      tell(g.msg('good', 'A Shipwright Washes Up', 'A shipwright, marooned by his own crew, has staggered ashore. He will build you a hull if you give him a boatyard.', undefined, { x: at.door[0], y: at.door[1] }), { t: 'folk', who: 'captive', n: 1, fate: 'new', skill: 'shipwright' });
     }
   }
   // shipwreck advantage: castaways
@@ -727,11 +728,13 @@ function castaways(g: Game): void {
     const x = g.rng.int(1, m.size - 2), y = g.rng.int(1, m.size - 2);
     if (m.terrain[m.idx(x, y)] !== Terrain.Beach) continue;
     const n = g.rng.int(2, 5);
+    const trades: Job[] = [];
     for (let i = 0; i < n; i++) {
       const skilled = g.rng.chance(0.25) ? g.rng.pick(['farmer', 'cook', 'server', 'wench', 'trader', 'priest'] as Job[]) : undefined;
       createPerson(g, 'captive', x, y, { skilled });
+      if (skilled) trades.push(skilled);
     }
-    g.msg('good', 'Castaways!', `${n} shipwrecked souls have washed up on your beach. Welcome to your new life.`, 'castaways', { x, y });
+    tell(g.msg('good', 'Castaways!', `${n} shipwrecked souls have washed up on your beach. Welcome to your new life.`, 'castaways', { x, y }), { t: 'folk', who: 'captive', n, fate: 'new' }, ...trades.map((skill) => ({ t: 'folk', who: 'captive', n: 1, skill }) as const));
     return;
   }
 }
@@ -752,5 +755,5 @@ function immigration(g: Game): void {
     p.earned = g.rng.int(0, 120);
     p.gold = g.rng.int(10, 60);
   }
-  g.msg('good', 'New Arrivals', `${n === 1 ? 'A would-be buccaneer has' : `${n} would-be buccaneers have`} come ashore, drawn by tales of your free and merry island.`, undefined, { x: dock.door[0], y: dock.door[1] });
+  tell(g.msg('good', 'New Arrivals', `${n === 1 ? 'A would-be buccaneer has' : `${n} would-be buccaneers have`} come ashore, drawn by tales of your free and merry island.`, undefined, { x: dock.door[0], y: dock.door[1] }), { t: 'folk', who: 'pirate', n, fate: 'new' }, { t: 'mood', who: 'pirate', v: hap });
 }

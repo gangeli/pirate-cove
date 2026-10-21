@@ -113,7 +113,7 @@ function analyse() {
           }
         }
       }
-      terrain.push({ id: b.id, def: b.def, buried, floating });
+      terrain.push({ id: b.id, def: b.def, buried, floating, x: b.x, y: b.y, w: b.w, h: b.h });
     } else {
       // a dock's deck against the beach it lands on
       const deckY = base + (v.model.userData.deckY ?? 0.35);
@@ -223,6 +223,7 @@ for (const seed of seeds) {
     ...r.pairs.slice(0, shots).map((x) => ({ name: `pair_${x.aDef}_${x.bDef}`, at: x.at })),
     ...r.treeHits.slice(0, Math.ceil(shots / 2)).map((x) => ({ name: `tree_${x.what.replace(/ /g, '_')}`, at: x.at })),
     ...r.model.slice(0, Math.ceil(shots / 2)).map((x) => ({ name: `model_${x.def}`, at: [x.x + x.w / 2, 0, x.y + x.h / 2] })),
+    ...r.terrain.filter((x) => !x.dock).slice(0, Math.ceil(shots / 2)).map((x) => ({ name: `terrain_${x.def}`, at: [x.x + x.w / 2, 0, x.y + x.h / 2] })),
   ];
   for (const [i, c] of cases.entries()) {
     await p.evaluate(([x, z]) => {

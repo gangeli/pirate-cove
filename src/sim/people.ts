@@ -1,4 +1,5 @@
 import type { Game } from './game';
+import { tell } from './letters';
 import { MONTH, YEAR } from './time';
 import type { Building, Kind, Person, Ship, Task } from './types';
 import { BUILDING, HOUSE_LEVELS, RANKS, SKILLED_ONLY, JOB_SEX, type Job, type PirateNeed } from './data/buildings';
@@ -344,7 +345,7 @@ function decayNeeds(g: Game, p: Person, dt: number): void {
       p.hp -= dt / 240;
       if (p.hp <= 0) {
         killPerson(g, p, 'starvation');
-        g.msg('bad', 'Starvation', `${p.name} has starved to death. Your captives need more slop!`, 'starvation', { x: p.x, y: p.y });
+        tell(g.msg('bad', 'Starvation', `${p.name} has starved to death. Your captives need more slop!`, 'starvation', { x: p.x, y: p.y }), { t: 'folk', who: 'captive', n: 1, fate: 'dead', name: p.name }, { t: 'good', good: 'slop', n: 0 });
       }
     } else p.hp = Math.min(1, p.hp + dt / 300);
   }
@@ -506,7 +507,7 @@ function startEscape(g: Game, p: Person): void {
   if (!goTo(g, p, best[0], best[1], { kind: 'escape' })) return;
   p.thoughts.unshift("I'm going to make it!");
   g.events.push({ type: 'escape', id: p.id });
-  g.msg('alert', 'Escape!', `${p.name} is making a run for the beach!`, 'escape', { x: p.x, y: p.y });
+  tell(g.msg('alert', 'Escape!', `${p.name} is making a run for the beach!`, 'escape', { x: p.x, y: p.y }), { t: 'folk', who: p.kind === 'wealthy' ? 'wealthy' : 'captive', n: 1, fate: 'gone', name: p.name });
   // rebellion check
   let followers = 0;
   for (const q of g.people.values()) {
@@ -543,7 +544,7 @@ function startRebellion(g: Game, leader: Person): void {
     goTo(g, q, palace.door[0], palace.door[1], { kind: 'rebel' });
   }
   g.events.push({ type: 'rebellion' });
-  g.msg('alert', 'Rebellion!', `${leader.name} has roused ${rebels.length} captives to revolt! They are marching on the palace. If they outnumber your guards, it's all over!`, 'rebellion', { x: leader.x, y: leader.y }, true);
+  tell(g.msg('alert', 'Rebellion!', `${leader.name} has roused ${rebels.length} captives to revolt! They are marching on the palace. If they outnumber your guards, it's all over!`, 'rebellion', { x: leader.x, y: leader.y }, true), { t: 'folk', who: 'captive', n: rebels.length, fate: 'rebel' }, { t: 'folk', who: 'guard', n: palace.guards.length });
   // all pirates ashore take up arms
   for (const q of g.people.values()) if (q.kind === 'pirate' && q.task.kind !== 'atsea' && q.task.kind !== 'dead') q.task = { kind: 'fight', phase: 1, timer: 60 };
 }
@@ -864,11 +865,11 @@ function arrive(g: Game, p: Person): void {
       // reached the beach: gone!
       g.stats.escapes++;
       g.effects.recentEscapes++;
-      g.msg('bad', 'Escaped!', `${p.name} slipped away on a drifting log. They may tell their countrymen where you are...`, 'escaped', { x: p.x, y: p.y });
+      tell(g.msg('bad', 'Escaped!', `${p.name} slipped away on a drifting log. They may tell their countrymen where you are...`, 'escaped', { x: p.x, y: p.y }), { t: 'folk', who: p.kind === 'wealthy' ? 'wealthy' : 'captive', n: 1, fate: 'gone', name: p.name }, { t: 'nation', nat: p.nat });
       const leak = g.ongoing.has('loose_lips') ? 0.12 : 0.4;
       if (!g.nations[p.nat].knows && g.rng.chance(leak)) {
         g.nations[p.nat].knows = true;
-        g.msg('alert', 'Discovered!', `${p.nat === 'eng' ? 'England' : p.nat === 'fra' ? 'France' : 'Spain'} now knows the location of your island.`, 'discovered');
+        tell(g.msg('alert', 'Discovered!', `${p.nat === 'eng' ? 'England' : p.nat === 'fra' ? 'France' : 'Spain'} now knows the location of your island.`, 'discovered'), { t: 'nation', nat: p.nat, knows: true });
       }
       releaseAll(g, p);
       g.people.delete(p.id);
@@ -944,7 +945,7 @@ function act(g: Game, p: Person, dt: number): void {
           if (p.mood === 'enraged') {
             p.mood = 'ok';
             p.happiness = Math.max(p.happiness, 0.45);
-            g.msg('bad', 'Murder!', `${p.name} flew into a rage and killed ${target.name}.`, 'murder', { x: p.x, y: p.y });
+            tell(g.msg('bad', 'Murder!', `${p.name} flew into a rage and killed ${target.name}.`, 'murder', { x: p.x, y: p.y }), { t: 'folk', who: 'pirate', n: 1, name: p.name }, { t: 'folk', who: target.kind === 'pirate' ? 'pirate' : target.kind === 'wealthy' ? 'wealthy' : target.kind === 'soldier' ? 'soldier' : target.kind === 'skeleton' ? 'skeleton' : 'captive', n: 1, fate: 'dead', name: target.name });
           }
           t.timer = 0;
         }
@@ -1105,7 +1106,7 @@ export function rebellionMonthly(g: Game): void {
     q.path = null;
   }
   g.unrest.rebellion = false;
-  g.msg('good', 'Revolt Crushed', rebels.length ? `The revolt has collapsed. ${rebels.length} sullen rebels have gone back to work.` : 'The last of the rebels are dead. The revolt is over.', 'rebellion_over');
+  tell(g.msg('good', 'Revolt Crushed', rebels.length ? `The revolt has collapsed. ${rebels.length} sullen rebels have gone back to work.` : 'The last of the rebels are dead. The revolt is over.', 'rebellion_over'), rebels.length > 0 && { t: 'folk', who: 'captive', n: rebels.length, fate: 'back' }, !rebels.length && { t: 'folk', who: 'captive', n: 1, fate: 'dead' });
 }
 
 /** a captured sailor escapes or is exchanged and turns up at the docks */
@@ -1118,5 +1119,5 @@ function returnFromCaptivity(g: Game, p: Person): void {
   p.needs.rest = Math.min(p.needs.rest, 0.2);
   p.needs.feast = Math.min(p.needs.feast, 0.2);
   g.events.push({ type: 'disembark', id: p.id });
-  if (p.captain) g.msg('good', 'Captain Returns', `${p.name} has escaped captivity and is back on the island, looking for a new ship.`, undefined, { x: p.x, y: p.y });
+  if (p.captain) tell(g.msg('good', 'Captain Returns', `${p.name} has escaped captivity and is back on the island, looking for a new ship.`, undefined, { x: p.x, y: p.y }), { t: 'folk', who: 'captain', n: 1, fate: 'new', name: p.name });
 }

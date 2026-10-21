@@ -1,4 +1,5 @@
 import type { Game } from './game';
+import { tell } from './letters';
 import { MONTH } from './time';
 import { NATIONS, NATION_NAMES, NATION_ADJ, type Nation } from './data/kings';
 import { Terrain } from './map';
@@ -46,7 +47,7 @@ export function piracyAgainst(g: Game, nat: Nation, amount: number): void {
   // without secrecy, attacks may reveal you
   if (!st.knows && g.rng.chance(g.ongoing.has('walk_plank') ? 0.01 : 0.04)) {
     st.knows = true;
-    g.msg('alert', 'Discovered!', `Survivors have told ${NATION_NAMES[nat]} where your island lies.`, 'discovered');
+    tell(g.msg('alert', 'Discovered!', `Survivors have told ${NATION_NAMES[nat]} where your island lies.`, 'discovered'), { t: 'nation', nat, knows: true });
   }
 }
 
@@ -55,7 +56,7 @@ export function breakPeace(g: Game, nat: Nation): void {
   g.ongoing.delete(`peace:${nat}`);
   st.relation = Math.max(-100, st.relation - 40);
   st.peaceBroken = g.time;
-  g.msg('bad', 'Peace Broken!', `Your captains attacked ${NATION_ADJ[nat]} ships despite your promise of peace. ${NATION_NAMES[nat]} is furious!`, 'peace_broken', undefined, true);
+  tell(g.msg('bad', 'Peace Broken!', `Your captains attacked ${NATION_ADJ[nat]} ships despite your promise of peace. ${NATION_NAMES[nat]} is furious!`, 'peace_broken', undefined, true), { t: 'nation', nat, rel: -40, stance: 'foe' }, { t: 'edict', id: 'peace', on: false, nat });
 }
 
 export function monthlyDiplomacy(g: Game): void {
@@ -77,7 +78,7 @@ export function monthlyDiplomacy(g: Game): void {
         if (g.rng.chance(p)) {
           inv.stage = 1;
           inv.timer = 2;
-          g.msg('alert', 'Rumours of War', `Word from the taverns: ${NATION_NAMES[n]} is talking about putting an end to your little kingdom.`, 'invasion_rumour', undefined, true);
+          tell(g.msg('alert', 'Rumours of War', `Word from the taverns: ${NATION_NAMES[n]} is talking about putting an end to your little kingdom.`, 'invasion_rumour', undefined, true), { t: 'nation', nat: n, stance: 'rumour' });
         }
       }
     } else if (inv.stage === 1 || inv.stage === 2) {
@@ -85,14 +86,14 @@ export function monthlyDiplomacy(g: Game): void {
       // it still hates you
       if (st.relation > -15 || protectedBy || (g.ongoing.has(`peace:${n}`) && st.relation > -45)) {
         inv.stage = 0;
-        g.msg('good', 'Crisis Averted', `${NATION_NAMES[n]} has called off its plans against you.`, 'invasion_cancelled');
+        tell(g.msg('good', 'Crisis Averted', `${NATION_NAMES[n]} has called off its plans against you.`, 'invasion_cancelled'), { t: 'nation', nat: n, stance: 'calm' });
         continue;
       }
       if (--inv.timer <= 0) {
         if (inv.stage === 1) {
           inv.stage = 2;
           inv.timer = g.rng.int(1, 2);
-          g.msg('alert', 'Fleet Assembling!', `A ${NATION_ADJ[n]} invasion fleet is gathering. Build forts and keep your ships in port!`, 'invasion_fleet', undefined, true);
+          tell(g.msg('alert', 'Fleet Assembling!', `A ${NATION_ADJ[n]} invasion fleet is gathering. Build forts and keep your ships in port!`, 'invasion_fleet', undefined, true), { t: 'nation', nat: n, stance: 'fleet' }, { t: 'building', def: 'fort' });
         } else {
           inv.stage = 3;
           inv.strength = Math.round(3 + Math.max(0, -st.relation) / 18 + g.yearsElapsed * 1.2 + st.reserve * 0.5);
@@ -108,7 +109,7 @@ export function monthlyDiplomacy(g: Game): void {
     if (!g.nations[a].atWarWith.includes(b)) {
       g.nations[a].atWarWith.push(b);
       g.nations[b].atWarWith.push(a);
-      g.msg('info', 'War in Europe', `${NATION_NAMES[a]} and ${NATION_NAMES[b]} are at war!`, 'war_declared');
+      tell(g.msg('info', 'War in Europe', `${NATION_NAMES[a]} and ${NATION_NAMES[b]} are at war!`, 'war_declared'), { t: 'nation', nat: a, stance: 'war', vs: b });
     }
   }
   if (g.rng.chance(0.02)) {
@@ -116,7 +117,7 @@ export function monthlyDiplomacy(g: Game): void {
       const b = g.nations[a].atWarWith[0];
       g.nations[a].atWarWith = g.nations[a].atWarWith.filter((x) => x !== b);
       g.nations[b].atWarWith = g.nations[b].atWarWith.filter((x) => x !== a);
-      g.msg('info', 'Peace in Europe', `${NATION_NAMES[a]} and ${NATION_NAMES[b]} have signed a peace treaty.`);
+      tell(g.msg('info', 'Peace in Europe', `${NATION_NAMES[a]} and ${NATION_NAMES[b]} have signed a peace treaty.`), { t: 'nation', nat: a, stance: 'peace', vs: b });
       break;
     }
   }
@@ -126,7 +127,7 @@ export function monthlyDiplomacy(g: Game): void {
   if (pat && g.treasury < 100 && g.time - lastGift > MONTH * 12 && g.rng.chance(0.3)) {
     g.effects.patronGift = g.time;
     g.earn(600, 'patron');
-    g.msg('good', 'Emergency Funding', `Your patron, ${NATION_NAMES[pat]}, sends 600 gold to keep their colony afloat.`, 'patron_gift');
+    tell(g.msg('good', 'Emergency Funding', `Your patron, ${NATION_NAMES[pat]}, sends 600 gold to keep their colony afloat.`, 'patron_gift'), { t: 'gold', n: 600 }, { t: 'nation', nat: pat, stance: 'patron' });
   }
 }
 
@@ -153,7 +154,9 @@ export function launchInvasion(g: Game, nat: Nation, strength: number): void {
       soldiers: Math.ceil(strength / ships), tx: best[0], ty: best[1], state: 'approach', timer: 0, fireCd: 3 + i,
     });
   }
-  g.msg('alert', 'INVASION!', `${NATION_NAMES[nat]} is invading with ${ships} ships and ${strength} soldiers! All hands to arms!`, 'invasion', { x: best[0], y: best[1] }, true);
+  g.nations[nat].invasion.tally = { ships, soldiers: ships * Math.ceil(strength / ships), sunk: 0, landed: 0, piratesDied0: g.stats.piratesDied };
+  tell(g.msg('alert', 'INVASION!', `${NATION_NAMES[nat]} is invading with ${ships} ships and ${strength} soldiers! All hands to arms!`, 'invasion', { x: best[0], y: best[1] }, true),
+    { t: 'nation', nat, stance: 'invade' }, { t: 'ship', n: ships, nat, fate: 'enemy' }, { t: 'folk', who: 'soldier', n: strength });
   g.events.push({ type: 'invasion', nat });
 }
 
@@ -214,11 +217,13 @@ export function updateInvasion(g: Game, dt: number): void {
             for (const p of g.people.values()) if (p.kind === 'pirate' && p.task.kind !== 'atsea' && p.task.kind !== 'dead' && p.mood !== 'disgruntled') {
               p.task = { kind: 'fight', phase: 1, timer: 120 };
             }
-            g.msg('alert', 'To Arms!', 'Enemy marines are coming ashore! Every pirate on the island is grabbing a cutlass.', undefined, { x: shore[0], y: shore[1] });
+            tell(g.msg('alert', 'To Arms!', 'Enemy marines are coming ashore! Every pirate on the island is grabbing a cutlass.', undefined, { x: shore[0], y: shore[1] }), { t: 'folk', who: 'soldier', n: v.soldiers, name: NATION_ADJ[v.nat] }, { t: 'folk', who: 'pirate', n: g.pirates().filter((p) => p.task.kind === 'fight').length });
           }
           const s = createPerson(g, 'soldier', shore[0], shore[1], { nat: v.nat, sex: 'M' });
           s.name = `${NATION_ADJ[v.nat]} Marine`;
           s.hp = 1.4;
+          const tl = g.nations[v.nat].invasion.tally;
+          if (tl) tl.landed++;
         }
         v.soldiers--;
       }
@@ -266,7 +271,9 @@ export function updateInvasion(g: Game, dt: number): void {
     v.state = 'sunk';
     v.timer = 0;
     g.events.push({ type: 'shipSunk', x: v.x, y: v.y });
-    g.msg('good', 'Enemy Ship Sunk!', `A ${NATION_ADJ[v.nat]} warship goes down with ${v.soldiers} soldiers still aboard!`, 'enemy_sunk', { x: v.x, y: v.y });
+    const tl = g.nations[v.nat].invasion.tally;
+    if (tl) tl.sunk++;
+    tell(g.msg('good', 'Enemy Ship Sunk!', `A ${NATION_ADJ[v.nat]} warship goes down with ${v.soldiers} soldiers still aboard!`, 'enemy_sunk', { x: v.x, y: v.y }), { t: 'ship', n: 1, nat: v.nat, fate: 'sunk' }, v.soldiers > 0 && { t: 'folk', who: 'soldier', n: v.soldiers, fate: 'dead' });
   }
   g.invaders = g.invaders.filter((v) => !(v.state === 'sunk' && v.timer > 20) && !(v.state === 'leaving' && Math.hypot(v.x - m.size / 2, v.y - m.size / 2) > m.size));
   endInvasionIfOver(g);
@@ -280,7 +287,11 @@ function endInvasionIfOver(g: Game): void {
       g.nations[n].invasion.stage = 0;
       g.nations[n].reserve = Math.max(0, g.nations[n].reserve - 4);
       g.nations[n].relation = Math.min(100, g.nations[n].relation + 15);
-      g.msg('good', 'Invasion Repelled!', `The ${NATION_ADJ[n]} invasion has been thrown back into the sea! Your pirates will sing of this for years.`, 'invasion_repelled', undefined, true);
+      const tl = g.nations[n].invasion.tally;
+      tell(g.msg('good', 'Invasion Repelled!', `The ${NATION_ADJ[n]} invasion has been thrown back into the sea! Your pirates will sing of this for years.`, 'invasion_repelled', undefined, true),
+        { t: 'nation', nat: n, rel: 15 }, tl && tl.sunk > 0 && { t: 'ship', n: tl.sunk, nat: n, fate: 'sunk' }, tl && tl.ships - tl.sunk > 0 && { t: 'ship', n: tl.ships - tl.sunk, nat: n, fate: 'fled' },
+        tl && tl.landed > 0 && { t: 'folk', who: 'soldier', n: tl.landed, fate: 'dead' }, tl && g.stats.piratesDied - tl.piratesDied0 > 0 && { t: 'folk', who: 'pirate', n: g.stats.piratesDied - tl.piratesDied0, fate: 'dead' });
+      g.nations[n].invasion.tally = undefined;
       for (const p of g.pirates()) p.needs.drink = Math.max(0, p.needs.drink - 0.2); // they need a drink now
     }
   }

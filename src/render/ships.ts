@@ -206,7 +206,7 @@ class Sails {
           uv[k * 2] = u * width * 1.1;
           uv[k * 2 + 1] = v * height * 1.1;
           // furled: rolled up tight along the pinned edge (the yard, the boom or the foot of the stay)
-          const r = 0.045 + 0.035 * Math.sin(Math.PI * u);
+          const r = 0.06 + 0.05 * Math.sin(Math.PI * u);
           const a = v * Math.PI * 2.6;
           if (s.kind === 'sq') {
             q.lerpVectors(A, B, 0.04 + u * 0.92).add(new THREE.Vector3(0.03 + Math.cos(a) * r, -0.08 + Math.sin(a) * r, 0));

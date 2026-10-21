@@ -1,10 +1,10 @@
 import type { App } from './app';
 import { el, html, patchHTML, delegate, fmt, pct, bar, raw } from './dom';
-import { icon } from './icons';
+import { icon, nationFlag } from './icons';
 import { RANKS, JOB_NAMES, BUILDING } from '../sim/data/buildings';
 import { NATIONS, NATION_NAMES, NATION_ADJ, BACKGROUNDS, QUALITIES, FLAWS } from '../sim/data/kings';
 import { SHIPS, MISSION_NAMES } from '../sim/data/ships';
-import { voyageStrip } from './tally';
+import { letterStrip, scoreBars } from './tally';
 import { computeScore, medalThresholds } from '../sim/score';
 import { relationLevel } from '../sim/diplomacy';
 import { activityText, shipStatusName } from './inspector';
@@ -108,40 +108,49 @@ export class IslandLog {
     const g = this.app.game;
     const s = computeScore(g);
     const k = g.king;
+    const left = Math.max(0, g.settings.years - g.yearsElapsed);
+    const cave = g.buildingCount('cave') > 0;
+    const deed = (ic: string, n: number | string, tip: string, cls = '') => html`<span class="deed ${cls}" data-tip="${tip}">${icon(ic, 18)}<b>${typeof n === 'number' ? fmt(n) : n}</b></span>`;
     return html`<div class="cols2">
-      <div><div class="king-card">${raw(portraitImg(k.portrait, 110))}
-        <div><h3 style="margin-top:0">${k.name}, Pirate ${k.sex === 'F' ? 'Queen' : 'King'}</h3>
-        <div style="font-size:14px">${BACKGROUNDS[k.bg].name} · ${k.q.map((q) => QUALITIES[q].name).join(', ')} · <i>${FLAWS[k.flaw].name}</i></div>
-        <div class="sub">Reigning since January 1680. ${Math.max(0, g.settings.years - g.yearsElapsed).toFixed(1)} of ${g.settings.years} years remain.</div></div></div>
-        <h3>Score so far</h3>
-        <table class="ledger"><tr><td>Hoard</td><td>${fmt(s.hoard)}</td></tr><tr><td>Pirate happiness</td><td>${fmt(s.happiness)}</td></tr><tr><td>Fleet</td><td>${fmt(s.fleet)}</td></tr>
-        <tr><td>Captains</td><td>${fmt(s.captains)}</td></tr><tr><td>Pirates</td><td>${fmt(s.pirates)}</td></tr><tr><td>Bonus objective: ${s.bonusKey}</td><td>×3</td></tr>
-        <tr><td>Difficulty</td><td>${Math.round(s.difficulty * 100)}%</td></tr><tr><td><b>Total</b></td><td><b>${fmt(s.total)}</b> (${s.medal})</td></tr></table>
-        <div class="sub">For a ${g.settings.years}-year reign: gold medal at ${fmt(medalThresholds(g.settings.years).gold)} points, silver at ${fmt(medalThresholds(g.settings.years).silver)}.</div></div>
-      <div><h3 style="margin-top:0">Your Hoard</h3>
-        <div style="font-size:15px">${g.buildingCount('cave') ? html`Skimming <b>${Math.round(g.hoardRate * 100)}%</b> of all income into your cave. The treasury pays for everything else.` : 'Build a Pirate Cave to start your hoard. The hoard is your score.'}</div>
-        <div class="field-row"><span class="lbl">Skim</span><div class="seg full" role="radiogroup">${[0, 0.05, 0.1, 0.15, 0.2, 0.25].map((v) => html`<button class="${Math.abs(g.hoardRate - v) < 0.001 ? 'on' : ''}" data-act="hoard:${v}">${Math.round(v * 100)}%</button>`)}</div></div>
+      <div><div class="king-card">${raw(portraitImg(k.portrait, 96))}
+        <div><h3 style="margin-top:0">${k.name}</h3>
+        <div class="kchips"><span class="chip" data-tip="${BACKGROUNDS[k.bg].name}">${icon('book', 12)} ${BACKGROUNDS[k.bg].name}</span>${k.q.map((q) => html`<span class="chip ok" data-tip="${QUALITIES[q].desc ?? QUALITIES[q].name}">${QUALITIES[q].name}</span>`)}<span class="chip bad" data-tip="${FLAWS[k.flaw].desc ?? FLAWS[k.flaw].name}">${FLAWS[k.flaw].name}</span></div>
+        <div class="reign" data-tip="Reigning since January 1680: ${left.toFixed(1)} of ${g.settings.years} years remain">${icon('crown', 15)}<span class="track"><i style="width:${Math.round((1 - left / Math.max(1, g.settings.years)) * 100)}%"></i></span><b>${left.toFixed(1)}</b><small>yrs left</small></div></div></div>
+        <h3>Score</h3>${scoreBars(s, medalThresholds(g.settings.years))}</div>
+      <div><h3 style="margin-top:0" data-tip="${cave ? 'A share of all income is skimmed into your cave; the treasury pays for everything else. The hoard is your score.' : 'Build a Pirate Cave to start your hoard. The hoard is your score.'}">Hoard ${icon('info', 13, 'dim')}</h3>
+        <div class="hoard-row"><span class="deed lg" data-tip="Hoard">${icon('chest', 22)}<b>${fmt(g.hoard)}</b></span><span class="deed" data-tip="Treasury">${icon('coin', 18)}<b>${fmt(g.treasury)}</b></span></div>
+        ${cave ? html`<div class="field-row"><span class="lbl" data-tip="Share of all income skimmed into the cave">${icon('chest', 15)} Skim</span><div class="seg full" role="radiogroup" aria-label="Skim">${[0, 0.05, 0.1, 0.15, 0.2, 0.25].map((v) => html`<button class="${Math.abs(g.hoardRate - v) < 0.001 ? 'on' : ''}" data-act="hoard:${v}" role="radio" aria-checked="${Math.abs(g.hoardRate - v) < 0.001 ? 'true' : 'false'}">${Math.round(v * 100)}%</button>`)}</div></div>`
+          : html`<div class="callout info">${icon('hammer', 16)}<span>Build a <b>Pirate Cave</b> to start a hoard.</span></div>`}
         <h3>Treasury & Hoard</h3><canvas data-graph="money" width="460" height="150" style="width:100%;height:150px"></canvas>
         <h3>Happiness & Resignation</h3><canvas data-graph="mood" width="460" height="120" style="width:100%;height:120px"></canvas>
-        <h3>Deeds</h3><div class="kv">
-        <span>Gold plundered</span><span>${fmt(g.stats.plundered)}</span><span>Souls captured</span><span>${g.stats.captured}</span><span>Recruits</span><span>${g.stats.recruits}</span>
-        <span>Ships lost</span><span>${g.stats.shipsSunk}</span><span>Escapes</span><span>${g.stats.escapes} (${g.stats.escapeKills} caught)</span><span>Deaths</span><span>${g.stats.deaths}</span></div></div></div>`;
+        <h3>Deeds</h3><div class="deeds">
+        ${deed('coin', g.stats.plundered, 'Gold plundered')}${deed('captive', g.stats.captured, 'Souls captured')}${deed('pirate', g.stats.recruits, 'Recruits')}
+        ${deed('ship', g.stats.shipsSunk, 'Ships lost', g.stats.shipsSunk ? 'bad' : '')}${deed('unchain', `${g.stats.escapes}`, `${g.stats.escapes} escapes, ${g.stats.escapeKills} caught`)}${deed('skull', g.stats.deaths, 'Deaths')}</div></div></div>`;
   }
 
   private finances() {
     const g = this.app.game;
     const inc = g.finance.lastIncome, exp = g.finance.lastExpense, cur = g.finance.income, cure = g.finance.expense;
-    const cats = [...new Set([...Object.keys(inc), ...Object.keys(cur)])];
-    const ecats = [...new Set([...Object.keys(exp), ...Object.keys(cure)])];
     const sum = (o: Record<string, number>) => Object.values(o).reduce((a, b) => a + b, 0);
-    const venues = [...g.buildings.values()].filter((b) => BUILDING[b.def].service).sort((a, b) => b.lastIncome - a.lastIncome).slice(0, 12);
-    return html`<div class="cols2"><div>
-      <h3 style="margin-top:0">Income</h3><table class="ledger"><tr><th>Source</th><th>Last month</th><th>This month</th></tr>
-      ${cats.map((c) => html`<tr><td>${c[0].toUpperCase() + c.slice(1)}</td><td>${fmt(inc[c] ?? 0)}</td><td>${fmt(cur[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(inc))}</b></td><td><b>${fmt(sum(cur))}</b></td></tr></table>
-      <h3>Expenses</h3><table class="ledger"><tr><th>Item</th><th>Last month</th><th>This month</th></tr>
-      ${ecats.map((c) => html`<tr><td>${c[0].toUpperCase() + c.slice(1)}</td><td>${fmt(exp[c] ?? 0)}</td><td>${fmt(cure[c] ?? 0)}</td></tr>`)}<tr><td><b>Total</b></td><td><b>${fmt(sum(exp))}</b></td><td><b>${fmt(sum(cure))}</b></td></tr></table></div>
-      <div><h3 style="margin-top:0">Best Earning Establishments</h3><table class="ledger"><tr><th>Name</th><th>Type</th><th>Last month</th></tr>
-      ${venues.map((b) => html`<tr><td>${b.name ?? ''}</td><td>${BUILDING[b.def].name}</td><td>${fmt(b.lastIncome)}</td></tr>`)}</table>
+    const venues = [...g.buildings.values()].filter((b) => BUILDING[b.def].service && b.lastIncome > 0).sort((a, b) => b.lastIncome - a.lastIncome).slice(0, 10);
+    const net = sum(inc) - sum(exp), netNow = sum(cur) - sum(cure);
+    // one bar per category: last month solid, this month so far as a thin line under it
+    const bars = (last: Record<string, number>, now: Record<string, number>, cls: string) => {
+      const cats = [...new Set([...Object.keys(last), ...Object.keys(now)])].sort((a, b) => (last[b] ?? 0) - (last[a] ?? 0));
+      const max = Math.max(1, ...cats.map((c) => Math.max(last[c] ?? 0, now[c] ?? 0)));
+      if (!cats.length) return html`<div class="sub">Nothing yet.</div>`;
+      return html`<div class="fbars ${cls}">${cats.map((c) => html`<div class="fbar" data-tip="<b>${c[0].toUpperCase() + c.slice(1)}</b><br>Last month ${fmt(last[c] ?? 0)} · this month ${fmt(now[c] ?? 0)}">${icon(FIN_ICON[c] ?? 'coin', 16)}<span class="nm">${c[0].toUpperCase() + c.slice(1)}</span><span class="track"><i style="width:${Math.round(((last[c] ?? 0) / max) * 100)}%"></i><i class="now" style="width:${Math.round(((now[c] ?? 0) / max) * 100)}%"></i></span><b>${fmt(last[c] ?? 0)}</b></div>`)}</div>`;
+    };
+    const vmax = Math.max(1, ...venues.map((b) => b.lastIncome));
+    return html`<div class="fsum">
+        <span class="deed ok" data-tip="Income last month (this month so far: ${fmt(sum(cur))})">${icon('coin', 18)}<b>+${fmt(sum(inc))}</b></span>
+        <span class="deed bad" data-tip="Expenses last month (this month so far: ${fmt(sum(cure))})">${icon('purse', 18)}<b>−${fmt(sum(exp))}</b></span>
+        <span class="deed lg ${net >= 0 ? 'ok' : 'bad'}" data-tip="Balance last month (this month so far: ${netNow >= 0 ? '+' : '−'}${fmt(Math.abs(netNow))})">${icon('chest', 20)}<b>${net >= 0 ? '+' : '−'}${fmt(Math.abs(net))}</b></span>
+        <span class="flegend"><i class="l"></i>last month <i class="n"></i>this month</span></div>
+      <div class="cols2"><div>
+      <h3 style="margin-top:0">Income</h3>${bars(inc, cur, 'inc')}
+      <h3>Expenses</h3>${bars(exp, cure, 'exp')}</div>
+      <div><h3 style="margin-top:0">Best earners</h3>${venues.length ? html`<div class="fbars inc">${venues.map((b) => html`<div class="fbar" data-tip="<b>${b.name ?? BUILDING[b.def].name}</b> (${BUILDING[b.def].name})<br>${fmt(b.lastIncome)} last month">${icon('g_rum', 16)}<span class="nm">${b.name ?? BUILDING[b.def].name}</span><span class="track"><i style="width:${Math.round((b.lastIncome / vmax) * 100)}%"></i></span><b>${fmt(b.lastIncome)}</b></div>`)}</div>` : html`<div class="sub">No venue has earned yet.</div>`}
       <h3>Income vs Expenses</h3><canvas data-graph="flow" width="460" height="160" style="width:100%;height:160px"></canvas></div></div>`;
   }
 
@@ -188,16 +197,19 @@ export class IslandLog {
     return html`<div class="cards-grid">${NATIONS.map((n) => {
       const st = g.nations[n];
       const rel = relationLevel(st.relation);
-      const policy = g.ongoing.has(`patron:${n}`) ? 'Patron' : g.ongoing.has(`peace:${n}`) ? 'Promised Peace' : g.ongoing.has(`prohibit_${n}`) ? 'Leave Their Ships Alone' : 'Fair Game';
-      return html`<div class="ecard"><h4>${NATION_NAMES[n]}</h4>
-        <div class="meters"><span>Relations</span>${bar((st.relation + 100) / 200)}<span>${st.relation > 0 ? "+" : ""}${Math.round(st.relation)}</span></div>
-        <div style="font-size:15px"><b>${rel}</b> · Policy: ${policy}</div>
-        <div style="font-size:14px">${st.knows ? html`<b style="color:#8a1a10">They know where your island is.</b>` : 'Your island is still a secret.'}</div>
-        <div style="font-size:14px">Plundered from them: ${fmt(st.plunderGold)} gold</div>
-        <div style="font-size:14px">${st.atWarWith.length ? `At war with ${st.atWarWith.map((x) => NATION_NAMES[x]).join(' and ')}` : 'At peace in Europe'}</div>
-        ${st.invasion.stage ? html`<div class="why">Invasion ${['', 'rumoured', 'fleet assembling', 'underway!'][st.invasion.stage]}</div>` : ''}</div>`;
+      const pol = g.ongoing.has(`patron:${n}`) ? ['crown', 'Patron', 'ok'] : g.ongoing.has(`peace:${n}`) ? ['scales', 'Promised peace', 'ok'] : g.ongoing.has(`prohibit_${n}`) ? ['shield', 'Leave their ships alone', ''] : ['skull', 'Fair game', 'bad'];
+      const r = Math.round(st.relation);
+      return html`<div class="ecard power ${STANCE[rel] ?? ''}"><div class="ehead">${nationFlag(n, 26)}<h4>${NATION_NAMES[n]}</h4><span class="chip ${STANCE[rel] ?? ''}">${rel}</span></div>
+        <div class="relbar" data-tip="Relations ${r > 0 ? '+' : ''}${r} of ±100"><span class="track"><i class="mid"></i><i class="v ${r < 0 ? 'neg' : ''}" style="${r < 0 ? `right:50%;width:${Math.abs(r) / 2}%` : `left:50%;width:${r / 2}%`}"></i></span><b>${r > 0 ? '+' : ''}${r}</b></div>
+        <div class="pfacts">
+          <span class="stat ${pol[2]}" data-tip="Your policy: ${pol[1]}">${icon(pol[0], 15)} ${pol[1]}</span>
+          <span class="stat ${st.knows ? 'bad' : ''}" data-tip="${st.knows ? 'They know where your island is' : 'Your island is still a secret to them'}">${icon(st.knows ? 'eye' : 'shield', 15)} ${st.knows ? 'Knows' : 'Secret'}</span>
+          <span class="stat" data-tip="Gold plundered from them">${icon('coin', 15)} ${fmt(st.plunderGold)}</span>
+          ${st.atWarWith.length ? html`<span class="stat bad" data-tip="At war in Europe with ${st.atWarWith.map((x) => NATION_NAMES[x]).join(' and ')}">${icon('g_cannon', 15)} ${st.atWarWith.map((x) => nationFlag(x, 14))}</span>` : ''}
+        </div>
+        ${st.invasion.stage ? html`<div class="callout bad">${icon(st.invasion.stage === 3 ? 'skull' : st.invasion.stage === 2 ? 'ship' : 'bell', 16)}<span>Invasion ${['', 'rumoured', 'fleet assembling', 'underway!'][st.invasion.stage]}</span></div>` : ''}</div>`;
     })}</div>
-    <div class="sub" style="margin-top:10px">A Power that hates you and knows where you are will eventually invade. Forts and warships defend the island. Announcing peace improves relations every month, and with harmonious relations a Power can become your patron, which protects you from all invasions.</div>`;
+    <details class="explain"><summary>${icon('info', 14)} How the Powers behave</summary><p>A Power that hates you and knows where you are will eventually invade. Forts and warships defend the island. Announcing peace improves relations every month, and with harmonious relations a Power can become your patron, which protects you from all invasions.</p></details>`;
   }
 
   private ships() {
@@ -210,7 +222,10 @@ export class IslandLog {
 
   private messages() {
     const g = this.app.game;
-    return html`<table class="ledger"><tr><th>Date</th><th>Event</th><th></th></tr>${[...g.messages].reverse().slice(0, 120).map((m) => html`<tr data-act="msg:${m.id}" style="cursor:pointer"><td style="white-space:nowrap">${m.date}</td><td><b style="font-family:var(--head);font-weight:normal">${m.title}</b>${m.data?.kind === 'voyage' ? html`<div class="vcompact">${voyageStrip(m.data, false)}</div>` : html`: ${m.text.split('\n')[0].slice(0, 140)}`}</td><td><span class="chip ${m.kind === 'bad' || m.kind === 'alert' ? 'bad' : m.kind === 'good' ? 'ok' : ''}">${m.kind === 'bad' ? 'trouble' : m.kind === 'alert' ? 'alarm' : m.kind}</span></td></tr>`)}</table>`;
+    return html`<table class="ledger"><tr><th>Date</th><th>Event</th><th></th></tr>${[...g.messages].reverse().slice(0, 120).map((m) => html`<tr data-act="msg:${m.id}" style="cursor:pointer"><td style="white-space:nowrap">${m.date}</td><td><b style="font-family:var(--head);font-weight:normal">${m.title}</b>${(() => {
+        const st = letterStrip(m, false);
+        return st ? html`<div class="vcompact">${st}</div>` : html`: ${m.text.split('\n')[0].slice(0, 140)}`;
+      })()}</td><td><span class="chip ${m.kind === 'bad' || m.kind === 'alert' ? 'bad' : m.kind === 'good' ? 'ok' : ''}">${m.kind === 'bad' ? 'trouble' : m.kind === 'alert' ? 'alarm' : m.kind}</span></td></tr>`)}</table>`;
   }
 
   private graph(c: HTMLCanvasElement, kind: string): void {
@@ -246,3 +261,10 @@ export class IslandLog {
     });
   }
 }
+
+const STANCE: Record<string, string> = { Hostile: 'bad', Cold: 'warn', Neutral: '', Cordial: 'ok', Harmonious: 'ok' };
+/** an engraving for each line of the accounts */
+const FIN_ICON: Record<string, string> = {
+  plunder: 'chest', entertainment: 'g_rum', smuggling: 'ship', ransom: 'purse', patron: 'crown', 'black market': 'scales', housing: 'hammer',
+  construction: 'hammer', edicts: 'scroll', kidnapping: 'captive', maintenance: 'gear', shipbuilding: 'anchor', wages: 'coin',
+};

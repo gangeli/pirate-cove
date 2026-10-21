@@ -1,4 +1,5 @@
 import type { Game, CmdResult } from './game';
+import { tell } from './letters';
 import { MONTH } from './time';
 import { EDICT } from './data/edicts';
 import { NATIONS, NATION_NAMES, NATION_ADJ, type Nation } from './data/kings';
@@ -120,7 +121,7 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
       g.nations[nation].peaceBroken = g.time;
     }
     g.aura.dirty = true;
-    g.msg('info', 'Edict Repealed', `${e.name}${nation ? ` (${NATION_NAMES[nation]})` : ''} has been repealed.`);
+    tell(g.msg('info', 'Edict Repealed', `${e.name}${nation ? ` (${NATION_NAMES[nation]})` : ''} has been repealed.`), { t: 'edict', id, on: false, nat: nation }, id === 'peace' && nation ? { t: 'nation', nat: nation, rel: -15 } : null);
     return { ok: true };
   }
   if (e.ongoing && g.ongoing.has(key)) return { ok: false, reason: 'Already in force.' };
@@ -135,7 +136,7 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
       g.nations[p.nat].relation += 2;
       if (!g.nations[p.nat].knows && g.rng.chance(g.ongoing.has('loose_lips') ? 0.1 : 0.35)) {
         g.nations[p.nat].knows = true;
-        g.msg('alert', 'Discovered!', `The freed ${NATION_ADJ[p.nat]} captive told everyone where you are.`, 'discovered');
+        tell(g.msg('alert', 'Discovered!', `The freed ${NATION_ADJ[p.nat]} captive told everyone where you are.`, 'discovered'), { t: 'nation', nat: p.nat, knows: true });
       }
       releaseAll(g, p);
       g.people.delete(p.id);
@@ -163,7 +164,7 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
       if (!p || (p.kind !== 'wealthy' && !(p.kind === 'captive' && p.skilled))) return { ok: false, reason: 'Only skilled or wealthy captives fetch a ransom.' };
       const amt = Math.round(p.ransom);
       g.earn(amt, 'ransom');
-      g.msg('good', 'Ransom Paid', `${p.name}'s family paid ${amt} gold for their return.`, 'ransom', undefined);
+      tell(g.msg('good', 'Ransom Paid', `${p.name}'s family paid ${amt} gold for their return.`, 'ransom', undefined), { t: 'gold', n: amt }, { t: 'folk', who: p.kind === 'wealthy' ? 'wealthy' : 'captive', n: 1, fate: 'freed', name: p.name });
       releaseAll(g, p);
       g.people.delete(p.id);
       g.events.push({ type: 'despawn', id: p.id });
@@ -186,10 +187,10 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
       const ts = p.kind === 'pirate' ? p.skills.swordsmanship + p.skills.marksmanship + g.rng.range(0, 5) : g.rng.range(0, 4);
       if (gs >= ts) {
         killPerson(g, p, 'assassinated');
-        g.msg('info', 'Assassination', `${guard.name} has quietly dealt with ${p.name}.`, 'assassination');
+        tell(g.msg('info', 'Assassination', `${guard.name} has quietly dealt with ${p.name}.`, 'assassination'), av.cost ? { t: 'gold', n: -av.cost } : null, { t: 'folk', who: p.kind === 'pirate' ? 'pirate' : 'captive', n: 1, fate: 'dead', name: p.name });
       } else {
         killPerson(g, guard, 'assassination failed');
-        g.msg('bad', 'Assassination Failed', `${p.name} got the better of your guard ${guard.name}!`, 'assassination_failed');
+        tell(g.msg('bad', 'Assassination Failed', `${p.name} got the better of your guard ${guard.name}!`, 'assassination_failed'), av.cost ? { t: 'gold', n: -av.cost } : null, { t: 'folk', who: 'guard', n: 1, fate: 'dead', name: guard.name });
       }
       return { ok: true };
     }
@@ -226,6 +227,7 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
       pay();
       const good = id === 'free_beer' ? 'beer' : 'rum';
       let need = 10;
+      const want = need;
       for (const b of g.buildings.values()) {
         const t = Math.min(need, b.inv[good] ?? 0);
         b.inv[good] = (b.inv[good] ?? 0) - t;
@@ -235,7 +237,7 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
         q.needs.drink = Math.min(1, q.needs.drink + (id === 'free_beer' ? 0.5 : 1));
         q.opinion.drink = Math.min(1, (q.opinion.drink ?? 0.5) + (id === 'free_beer' ? 0.15 : 0.3));
       }
-      g.msg('good', id === 'free_beer' ? 'Free Beer!' : 'Free Rum!', 'The pirates raise a toast to their generous king!', 'free_grog');
+      tell(g.msg('good', id === 'free_beer' ? 'Free Beer!' : 'Free Rum!', 'The pirates raise a toast to their generous king!', 'free_grog'), av.cost ? { t: 'gold', n: -av.cost } : null, want > need && { t: 'good', good, n: -(want - need) }, { t: 'mood', who: 'pirate', d: id === 'free_beer' ? 0.15 : 0.3, need: 'drink' });
       g.events.push({ type: 'celebrate' });
       return { ok: true };
     }
@@ -249,7 +251,7 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
         }
       }
       g.aura.dirty = true;
-      g.msg('good', 'Pirate Festival!', 'Rum flows, fiddles screech and the bonfires roar. What a party!', 'festival');
+      tell(g.msg('good', 'Pirate Festival!', 'Rum flows, fiddles screech and the bonfires roar. What a party!', 'festival'), av.cost ? { t: 'gold', n: -av.cost } : null, { t: 'mood', who: 'pirate', d: 0.12 });
       g.events.push({ type: 'celebrate' });
       return { ok: true };
     case 'betray': {
@@ -260,7 +262,7 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
         n++;
       }
       g.nations[nation!].relation = Math.min(100, g.nations[nation!].relation + 10 + n * 3);
-      g.msg('info', 'Betrayal', `${n} ${NATION_ADJ[nation!]} pirates were handed over to the hangman. ${NATION_NAMES[nation!]} is grateful. The rest of your crews are nervous.`, 'betray');
+      tell(g.msg('info', 'Betrayal', `${n} ${NATION_ADJ[nation!]} pirates were handed over to the hangman. ${NATION_NAMES[nation!]} is grateful. The rest of your crews are nervous.`, 'betray'), { t: 'folk', who: 'pirate', n, fate: 'hanged' }, { t: 'nation', nat: nation!, rel: 10 + n * 3 }, { t: 'mood', who: 'pirate', d: -0.05 });
       for (const q of g.pirates()) q.happiness -= 0.05;
       return { ok: true };
     }
@@ -277,7 +279,7 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
       const dock = [...g.buildings.values()].find((b) => b.def === 'dock' && b.built >= 1) ?? g.findBuilding('palace')!;
       const c = createCaptain(g, dock.door[0], dock.door[1]);
       assignCrews(g);
-      g.msg('good', 'A New Captain', `The infamous ${c.name} has signed on to sail under your flag.`, 'new_captain', { x: c.x, y: c.y });
+      tell(g.msg('good', 'A New Captain', `The infamous ${c.name} has signed on to sail under your flag.`, 'new_captain', { x: c.x, y: c.y }), av.cost ? { t: 'gold', n: -av.cost } : null, { t: 'folk', who: 'captain', n: 1, fate: 'new', name: c.name });
       return { ok: true };
     }
     // ---------------------------------------------------- captive policy
@@ -290,8 +292,9 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
         n++;
       }
       g.nations[nation!].relation = Math.min(100, g.nations[nation!].relation + 5 + n * 1.5);
+      const knew = g.nations[nation!].knows;
       if (!g.nations[nation!].knows && g.rng.chance(0.6)) g.nations[nation!].knows = true;
-      g.msg('info', 'Captives Freed', `${n} ${NATION_ADJ[nation!]} captives sail for home, singing your praises.`, 'free_all');
+      tell(g.msg('info', 'Captives Freed', `${n} ${NATION_ADJ[nation!]} captives sail for home, singing your praises.`, 'free_all'), { t: 'folk', who: 'captive', n, fate: 'freed' }, { t: 'nation', nat: nation!, rel: 5 + n * 1.5, knows: !knew && g.nations[nation!].knows });
       return { ok: true };
     }
     case 'raise_dead': {
@@ -302,19 +305,19 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
       sk.name = `${corpse.name} (deceased)`;
       sk.nat = corpse.nat;
       g.effects.skeletonsRaised++;
-      g.msg('info', 'The Dead Walk', `${corpse.name} claws out of the grave, ready to haul cargo forever.`, 'raise_dead', { x: sk.x, y: sk.y });
+      tell(g.msg('info', 'The Dead Walk', `${corpse.name} claws out of the grave, ready to haul cargo forever.`, 'raise_dead', { x: sk.x, y: sk.y }), av.cost ? { t: 'gold', n: -av.cost } : null, { t: 'folk', who: 'skeleton', n: 1, fate: 'new', name: corpse.name });
       return { ok: true };
     }
     // ---------------------------------------------------- diplomacy
     case 'peace':
       g.ongoing.add(key);
       g.nations[nation!].relation = Math.min(100, g.nations[nation!].relation + 12);
-      g.msg('info', 'Peace Announced', `You have promised ${NATION_NAMES[nation!]} that your captains will leave their ships alone.`, 'peace');
+      tell(g.msg('info', 'Peace Announced', `You have promised ${NATION_NAMES[nation!]} that your captains will leave their ships alone.`, 'peace'), { t: 'edict', id, on: true, nat: nation }, { t: 'nation', nat: nation!, rel: 12, stance: 'peace' });
       return { ok: true };
     case 'patron':
       g.ongoing.add(key);
       g.nations[nation!].knows = true;
-      g.msg('good', 'Patronage', `${NATION_NAMES[nation!]} now protects your island as a colony. No-one will dare invade.`, 'patron');
+      tell(g.msg('good', 'Patronage', `${NATION_NAMES[nation!]} now protects your island as a colony. No-one will dare invade.`, 'patron'), { t: 'nation', nat: nation!, stance: 'patron', knows: true });
       return { ok: true };
     case 'jolly_roger':
       g.ongoing.add(key);
@@ -323,14 +326,14 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
         g.ongoing.delete(`patron:${n}`);
         g.ongoing.delete(`marque:${n}`);
       }
-      g.msg('alert', 'The Jolly Roger Flies!', 'Your island answers to no crown! Every Power is now fair game, and every Power may come for you.', 'jolly_roger');
+      tell(g.msg('alert', 'The Jolly Roger Flies!', 'Your island answers to no crown! Every Power is now fair game, and every Power may come for you.', 'jolly_roger'), { t: 'edict', id, on: true }, ...NATIONS.map((nat) => ({ t: 'nation', nat, stance: 'foe' }) as const));
       g.aura.dirty = true;
       return { ok: true };
     case 'open_cove':
       g.ongoing.add(key);
       if (!g.nations[nation!].knows) {
         g.nations[nation!].knows = true;
-        g.msg('alert', 'Location Revealed', `${NATION_ADJ[nation!]} smugglers now know where to find you.`, 'discovered');
+        tell(g.msg('alert', 'Location Revealed', `${NATION_ADJ[nation!]} smugglers now know where to find you.`, 'discovered'), { t: 'nation', nat: nation!, knows: true });
       }
       return { ok: true };
   }
@@ -338,7 +341,7 @@ export function issueEdict(g: Game, id: string, target?: number, nation?: Nation
     pay();
     g.ongoing.add(key);
     g.aura.dirty = true;
-    g.msg('info', 'Edict Issued', `${e.name}${nation ? ` (${NATION_NAMES[nation]})` : ''} is now in force.`, 'edict');
+    tell(g.msg('info', 'Edict Issued', `${e.name}${nation ? ` (${NATION_NAMES[nation]})` : ''} is now in force.`, 'edict'), { t: 'edict', id, on: true, nat: nation }, av.cost ? { t: 'gold', n: -av.cost } : null);
     return { ok: true };
   }
   return { ok: false, reason: 'Not implemented' };
