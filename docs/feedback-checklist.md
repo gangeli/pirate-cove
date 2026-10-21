@@ -25,6 +25,16 @@ section.
 - [x] Trees fade while the road tool is out (now 15%; the player said "not opaque enough", taken as "fade more": confirm)
 - [x] Calm inland lakes: no swell, whitecaps or surf (deployed db846dc; open sea checked unchanged, a lake itself not yet seen on screen)
 - [~] Everything overlapping with everything (buildings vs footprints and each other, trees through buildings, props, terrain, UI) [overlap agent]
+  Detectors: `npx tsx scripts/overlap/footprints.mts` (models vs footprint), `crops.mts`, `hooks.mts` (flags/smoke), `node scripts/overlap/world.mjs` (in-world: models, neighbours, trees, terrain), `shot.mjs` (close-ups)
+  - [x] Trees through buildings and trunks in roads: trees lean away, move, shrink or are left out (seed 7: 79 crowns + 18 trunks -> 0)
+  - [x] Terrain: a new building re-levelled its neighbour's shared edge (walls buried/floating up to 1.5); now it takes the neighbour's level (45 -> 10 footprints)
+  - [x] Dock approach buried in the beach: ground under/in front of a new dock graded to the deck
+  - [x] Farm crops vs. the field shelter, water butt and scarecrow, and banana/papaya leaves over the field walls
+  - [x] Farm walls 0.08 past every edge (two farms side by side doubled up): inset
+  - [~] Models past their footprint (31 -> rebuilding): chuck tent guy ropes 0.34 (done), construction tent, bunkhouse, house 6/9 steps, eatery, inn, gambling den, iron mine, graveyard, smugglers' cove, courtesan, anarchy shrubs, school sign, fort lantern, slipways 1.4-2 tiles past the yard
+  - [x] Flags flying through their roofs or off small lots; smoke rising through tent flies and roofs (runtime fix in bldmodels.ts)
+  - [x] "Update ready" toast over the undo seal / toolbar / minimap: placed clear of them (ui_shots state toast_undo, 7 devices clean)
+  - [ ] Dock T-head reaches 0.25-0.4 past its footprint to seaward (ship berths: ship agent)
 
 ## People
 - [~] Walking out of time with the animation (feet sliding) [people agent]

@@ -130,7 +130,7 @@ const CHECK = () => {
   const els = {};
   const pick = (k, sel) => { const e = [...document.querySelectorAll(sel)].find(vis); if (e) els[k] = e; };
   pick('topbar', '.topbar'); pick('clock', '.clock'); pick('toolbar', '.toolbar'); pick('minimap', '.minimap'); pick('advisor', '.advisor .bubble');
-  pick('advface', '.advisor .face'); pick('sound', '.soundbtn'); pick('touchbar', '.touchbar'); pick('hint', '.hint'); pick('undo', '.undobtn'); pick('toast', '.pwa-toast'); pick('ticker', '.ticker .toast');
+  pick('advface', '.advisor .face'); pick('sound', '.soundbtn'); pick('touchbar', '.touchbar'); pick('hint', '.hint'); pick('undo', '.undobtn'); pick('toast', '.pwa-toast'); pick('ticker', '.ticker .toast'); pick('quick', '.quickring .qr-row'); pick('qtag', '.quickring .qr-tag');
   const panels = [...document.querySelectorAll('#ui .panel')].filter(vis).filter((p) => !p.classList.contains('bubble'));
   panels.forEach((p, i) => (els[`panel${i}${name(p)}`] = p));
   const modalOpen = panels.some((p) => p.classList.contains('modal') || p.classList.contains('gpu-notice') || p.classList.contains('prof-report'));

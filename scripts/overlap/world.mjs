@@ -90,7 +90,8 @@ function analyse() {
         const id = m.occupied[tz * n + tx];
         if (!id || id === b.id) continue;
         const nb = info.get(id);
-        if (!nb || y > nb.top) continue;
+        // (below the neighbour's ground, e.g. a dock's piles, nothing shows)
+        if (!nb || y > nb.top || y < nb.base - 0.05) continue;
         const d = Math.min(x - nb.b.x, nb.b.x + nb.b.w - x, z - nb.b.y, nb.b.y + nb.b.h - z);
         const key = `${b.id}>${id}`;
         const pr = pairs.get(key) ?? { a: b.id, b: id, aDef: b.def, bDef: nb.b.def, depth: 0, n: 0, at: [x, y, z] };
