@@ -71,8 +71,10 @@ const TURN_STEP = 0.3;
 const LANE = 0.15;
 /** people nearer than this (tiles, ~ shoulder width at scale) are nudged apart */
 const PERSONAL = 0.3;
+/** standing spots on a tile: a sunflower spiral, r = STAND_SPACING * sqrt(k + 0.6), neighbours ~0.3 apart */
+const STAND_SPACING = 0.17;
 /** the nudge rate (tiles per sim second) for someone standing (slow enough to read as shifting weight) and walking */
-const NUDGE_STAND = 0.12, NUDGE_WALK = 0.5, NUDGE_MAX = 0.3;
+const NUDGE_STAND = 0.12, NUDGE_WALK = 0.9, NUDGE_MAX = 0.32;
 const TAU = Math.PI * 2;
 /** limp: the clip phase runs up to this much (fraction of its rate) faster and slower within a cycle; the dip (radians) */
 const LIMP_WARP = 0.4, LIMP_DIP = 0.07;
@@ -176,7 +178,8 @@ export class PeopleView {
 
   private makeRoleRings(cap: number): THREE.InstancedMesh {
     const m = new THREE.InstancedMesh(
-      new THREE.RingGeometry(0.22, 0.29, 24).rotateX(-Math.PI / 2),
+      // small enough (0.21) that a ring round a farmer's spot (>= 0.48 in) clears the field wall (0.12-0.27 in)
+      new THREE.RingGeometry(0.155, 0.21, 24).rotateX(-Math.PI / 2),
       // depth-tested (pulled toward the camera so the ground does not cover them): a wall, roof or crop in front hides
       // the ring as it would a mark on the ground, so no ring seems to sit on a wall or a roof
       new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: false, transparent: true, opacity: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
@@ -365,6 +368,7 @@ export class PeopleView {
   private grid = new Map<number, Mover[]>();
   private gridPool: Mover[][] = [];
   private slotCount = new Map<number, number>();
+  private standCount = new Map<number, number>();
   private feet = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
 
   /** the motion state of a person drawn this frame: picks up the latest sim position, snaps after a gap or a jump */
@@ -439,8 +443,9 @@ export class PeopleView {
       const R = PLANT_R[kind] ?? 0.3, mz = Math.max(0.25, R * 1.12);
       const rows = Math.round(D * 2.2);
       const keep = farmKeepOut(W, D, kind);
-      // the field walls stand 0.12-0.27 in from the lot's edge: a body (0.16) clear of their inner face
-      const BODY = 0.16, EDGE = 0.43;
+      // the field walls stand 0.12-0.27 in from the lot's edge: a body (0.16) and a role ring (0.21) clear of their
+      // inner face
+      const BODY = 0.16, EDGE = 0.48;
       const cols = Math.max(2, Math.round((W - 2 * EDGE) / 0.42) + 1);
       for (let r = 0; r < rows - 1; r++) {
         const z = -D / 2 + mz + ((r + 0.5) / Math.max(1, rows - 1)) * (D - 2 * mz);
@@ -515,7 +520,8 @@ export class PeopleView {
       }
     }
     if (t.phase === 0) {
-      // waiting for a path, or blocked: stay where they are
+      // not moving on (waiting for a path, queueing at a door, blocked): standing about like anyone else
+      if (m.x1 === m.x0 && m.y1 === m.y0) return this.standSpot(ix, iy);
       if (!m.hx && !m.hy) return [m.ox, m.oy];
       const lx = -m.hy * LANE, ly = m.hx * LANE; // the right hand of the heading (x east, y south: right = (-hy, hx))
       return this.clearAt(ix + lx, iy + ly) ? [lx, ly] : [0, 0];
@@ -548,10 +554,29 @@ export class PeopleView {
     if (t.kind === 'fight' || t.kind === 'chase' || t.kind === 'sleep') return [0, 0];
     // builders face the work going up
     if (t.kind === 'build' && b) m.face = Math.atan2(b.x + b.w / 2 - ix, b.y + b.h / 2 - iy);
-    // standing about (hauling at a door, guarding, partying, idling): a spot of their own on the tile
-    const ang = hash(per.id, 40) * TAU, r = 0.1 + hash(per.id, 41) * 0.22;
-    const sx = Math.cos(ang) * r, sy = Math.sin(ang) * r;
-    return this.clearAt(ix + sx, iy + sy) ? [sx, sy] : [0, 0];
+    // standing about (hauling at a door, guarding, partying, idling, queueing): a spot of their own on the tile
+    return this.standSpot(ix, iy);
+  }
+
+  /**
+   * the next free standing spot on a tile this frame: a sunflower spiral round the tile centre (~0.3 apart, the first
+   * a little off centre, turned per tile), skipping spots in walls. People are visited in a stable order, so everyone
+   * keeps their spot while the group stays the same.
+   */
+  private standSpot(ix: number, iy: number): [number, number] {
+    const tx = Math.floor(ix), ty = Math.floor(iy), key = tx * 4096 + ty;
+    let k = this.standCount.get(key) ?? 0;
+    const base = hash(tx * 7919 + ty, 43) * TAU, cx = tx + 0.5, cy = ty + 0.5;
+    for (let tries = 0; tries < 10; tries++, k++) {
+      const r = STAND_SPACING * Math.sqrt(k + 0.6), a = base + k * 2.39996;
+      const wx = cx + Math.cos(a) * r, wy = cy + Math.sin(a) * r;
+      if (this.clearAt(wx, wy)) {
+        this.standCount.set(key, k + 1);
+        return [wx - ix, wy - iy];
+      }
+    }
+    this.standCount.set(key, k);
+    return [0, 0];
   }
 
   /** a worker's slot at their workplace: their place in its worker list, overseer and guards after */
@@ -584,6 +609,7 @@ export class PeopleView {
     this.drawnN = 0;
     this.frameNo++;
     this.slotCount.clear();
+    this.standCount.clear();
     // render time runs one sim step behind the sim, so every drawn position lies between two known sim positions
     const now = g.time + g.pending;
     let dts = now - this.simPrev;
