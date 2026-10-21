@@ -219,8 +219,27 @@ export async function walktest(app: App, params: URLSearchParams) {
 export async function closeup(app: App, params: URLSearchParams) {
   const g = app.game;
   const def = params.get('closeup')!;
+  // ?add=sugar_farm:2 puts one up first (built, on free ground near the palace), and that is the one shown
+  let added = 0;
+  if (params.get('add')) {
+    const { canPlace, placeBuilding } = await import('./sim/placement');
+    const { BUILDING } = await import('./sim/data/buildings');
+    const [ad, ar] = params.get('add')!.split(':');
+    const bd = BUILDING[ad], rot = +(ar ?? 0);
+    const pal = [...g.buildings.values()].find((b) => b.def === 'palace');
+    const cx = pal ? pal.x : g.map.size / 2, cy = pal ? pal.y : g.map.size / 2;
+    search: for (let r = 4; r < 40 && bd; r++)
+      for (let k = 0; k < 8 * r; k++) {
+        const ang = (k / (8 * r)) * Math.PI * 2;
+        const pl = canPlace(g, bd, Math.round(cx + Math.cos(ang) * r), Math.round(cy + Math.sin(ang) * r), rot);
+        if (pl.ok) {
+          added = placeBuilding(g, bd, pl, true).id;
+          break search;
+        }
+      }
+  }
   const bs = [...g.buildings.values()].filter((b) => b.def === def).sort((a, b) => b.workers.length + b.haulers.length - (a.workers.length + a.haulers.length));
-  const b = bs[+(params.get('nth') ?? 0)] ?? bs[0];
+  const b = (added && g.buildings.get(added)) || bs[+(params.get('nth') ?? 0)] || bs[0];
   if (!b) return;
   if (params.get('yaw')) app.world.rig.yaw = app.world.rig.yawGoal = +params.get('yaw')!;
   app.world.rig.minDist = 1.5;
