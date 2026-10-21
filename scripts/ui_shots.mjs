@@ -64,6 +64,8 @@ S.p_skilled = per(`p.kind === 'captive' && p.skilled`);
 S.p_soldier = per(`p.kind === 'soldier'`);
 S.p_wealthy = per(`p.kind === 'wealthy'`);
 S.s_docked = `(() => { const s = g.ships.get(h.dockedShip); if (!s) return 'missing'; s.mission = 'cruise'; a.select({ type: 'ship', id: s.id }); h.look(s.vx, s.vy); })()`;
+S.s_help = `${S.s_docked}; a.inspector.help = true; a.inspector.refresh(true); h.after = () => { a.inspector.help = false; }`;
+S.s_folded = `${S.s_docked}; a.inspector.fold(true)`;
 S.s_raid = `(() => { const s = g.ships.get(h.dockedShip); if (!s) return 'missing'; s.mission = 'raid'; a.select({ type: 'ship', id: s.id }); })()`;
 S.s_kidnap = `(() => { const s = g.ships.get(h.dockedShip); if (!s) return 'missing'; s.mission = 'kidnap'; a.select({ type: 'ship', id: s.id }); })()`;
 S.s_foster = `(() => { const s = g.ships.get(h.dockedShip); if (!s) return 'missing'; s.mission = 'foster_war'; a.select({ type: 'ship', id: s.id }); })()`;

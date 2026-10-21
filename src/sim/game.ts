@@ -36,6 +36,7 @@ export type Command =
   | { type: 'setPrice'; id: number; price: number }
   | { type: 'setQuality'; id: number; quality: number }
   | { type: 'rename'; id: number; name: string }
+  | { type: 'renameShip'; ship: number; name: string }
   | { type: 'commission'; yard: number; ship: ShipType }
   | { type: 'shipOrders'; ship: number; mission?: Mission; orders?: Orders; spoils?: Spoils; region?: number; kidnapJob?: Job; foster?: Nation }
   | { type: 'setSail'; ship: number; force?: boolean }
@@ -480,6 +481,14 @@ export class Game {
         if (c.type === 'setPrice') b.price = Math.max(0, Math.min(2, c.price));
         if (c.type === 'setQuality') b.quality = Math.max(0, Math.min(4, c.quality));
         if (c.type === 'rename') b.name = c.name.slice(0, 32);
+        return { ok: true };
+      }
+      case 'renameShip': {
+        const s = this.ships.get(c.ship);
+        // printable characters only, single-spaced, at most 24 of them; a blank name keeps the old one
+        const name = String(c.name ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 24).trim();
+        if (!s || !name) return { ok: false, reason: 'Ships need a name.' };
+        s.name = name;
         return { ok: true };
       }
       case 'blockSlot': {
