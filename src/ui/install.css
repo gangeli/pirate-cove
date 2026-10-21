@@ -15,14 +15,15 @@
 /* "Update ready" card: parchment, like the in-game toasts */
 .pwa-toast {
   position: fixed; z-index: 250; left: 50%; top: calc(var(--app-h, 100dvh) - max(16px, env(safe-area-inset-bottom))); transform: translate(-50%, -100%);
-  display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 12px; max-width: calc(100vw - 32px); box-sizing: border-box;
+  display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 12px; width: max-content; max-width: calc(100vw - 24px); box-sizing: border-box;
   background: var(--paper); background-size: 512px 512px; color: var(--ink); font-size: 14px; line-height: 1.25;
   border: 1px solid #000; border-left: 4px solid var(--brass-lo, #7a5a1a);
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45), inset 0 0 18px rgba(90, 55, 20, 0.35); animation: pwa-up 0.35s ease-out;
 }
 .pwa-toast b { font-family: var(--head); font-weight: normal; font-size: 16px; display: block; line-height: 1.05; color: #2a140a; letter-spacing: 0.02em; }
 .pwa-toast .x { background: none; border: 0; cursor: pointer; color: var(--ink3); font-size: 18px; line-height: 1; padding: 2px 4px; }
-@keyframes pwa-up { from { opacity: 0; transform: translate(-50%, calc(-100% + 20px)); } to { opacity: 1; transform: translate(-50%, -100%); } }
+/* (a fade only: the card is placed clear of the bottom HUD by measuring it, see install.ts placeToast) */
+@keyframes pwa-up { from { opacity: 0; } to { opacity: 1; } }
 
 /* Window Controls Overlay (desktop installs): keep the HUD clear of the window buttons and give
    the window a draggable strip where the title bar would be */

@@ -39,7 +39,7 @@ section.
 - [~] Restyle ships to match the buildings, starting from the current model [ship agent]
 - [~] Rig and animate: billowing sails, pennants, heel and pitch, wake, furled at the dock [ship agent]
 - [~] Docked ship clips into the beach and palms; fit the berth [ship agent]
-- [~] Rename ships [UI agent: done in 7a9d2aa, deployed]
+- [x] Rename ships [UI agent: done in 7a9d2aa, deployed]
 
 ## Controls and building
 - [x] Delete (Delete key, Demolish for buildings and roads, road quick action) and undo (button, Ctrl/Cmd+Z)
@@ -51,20 +51,20 @@ section.
 
 ## Panels and visual language (apply to ALL pages, not just the examples)
 - [~] Less text, more visual hierarchy everywhere; explanations into tooltips [UI agent]
-- [~] Ship panel: Set sail always in the panel (done in 7a9d2aa), quieter orders, spoils bar, rename [UI agent]
-- [~] "Treat crew" was unclear: now "Bonus −500" with a tooltip; restyle as a transactional button [UI agent]
-- [~] Remove "Hide details" (× folds the inspector) [UI agent: done in 7a9d2aa]
+- [x] Ship panel: Set sail always in the panel (done in 7a9d2aa), quieter orders, spoils bar, rename [UI agent]
+- [x] "Treat crew" was unclear: now "Bonus −500" with a tooltip; restyle as a transactional button [UI agent]
+- [x] Remove "Hide details" (× folds the inspector) [UI agent: done in 7a9d2aa]
 - [x] Sea chart side sheet: too much text; remove the Set sail and Ship details buttons and the orders block; sea, danger, plunder and sail time as icons; nations as a flag row [UI agent]
 - [~] Map views and overlays easy to navigate on desktop and phone (Soil with a crop picker, chips, prev/next) [done; polish ongoing]
 - [x] Bolder × close buttons on menus and overlays [UI agent]
 - [x] Filled worker slots show the person's portrait, empty ones a placeholder [UI agent]
 - [x] Shift-click (hold on touch) a slot to close it and the slots to its right; remove the Open-places stepper [UI agent]
-- [~] Themed, direct-manipulation controls instead of generic segmented controls: wages as coins, priority as pennants, spoils as a treasure split, prices as coin stacks, missions and tactics as icon cards [UI agent]
+- [x] Themed, direct-manipulation controls instead of generic segmented controls: wages as coins, priority as pennants, spoils as a treasure split, prices as coin stacks, missions and tactics as icon cards [UI agent]
 - [x] Remove pointless explanatory lines ("Gold a month for each overseer…", "Higher-priority buildings are staffed first…") [UI agent]
 - [x] Inventory and production as goods icons with tooltips (e.g. "2× Logs → Lumber 92") [UI agent]
 - [x] Soil isn't a bar: a toggle for the soil overlay with its number; progress belongs with production [UI agent]
 - [x] Influence as small subdued icons ("Defense +35 · 2 tiles") [UI agent]
-- [~] Buttons styled to their purpose: navigation, primary, transactional, social or moral, destructive (Kill, Scuttle and Demolish unmistakably dangerous); toggles look like toggles [UI agent]
+- [x] Buttons styled to their purpose: navigation, primary, transactional, social or moral, destructive (Kill, Scuttle and Demolish unmistakably dangerous); toggles look like toggles [UI agent]
 - [~] Letters and reports (e.g. "Night Heron Returns"): icon results (a coin pile for gold, one figure per recruit, skilled profession badges, losses), apply to every message type and the log [UI agent]
 
 ## Mobile

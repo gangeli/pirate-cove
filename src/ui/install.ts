@@ -273,8 +273,8 @@ function warm(): void {
 
 let toast: HTMLElement | null = null;
 let toastTimer: ReturnType<typeof setInterval> | null = null;
-/** what sits along the bottom of the screen, which the toast must clear (the bar, the undo seal, touch buttons, hints) */
-const BOTTOM_HUD = '#ui > .toolbar, #ui > .undobtn, #ui > .touchbar, #ui > .hint, #ui > .placectl';
+/** what sits along the bottom of the screen, which the toast must clear (the bar, the undo seal, touch buttons, hints, the minimap) */
+const BOTTOM_HUD = '#ui > .toolbar, #ui > .undobtn, #ui > .touchbar, #ui > .hint, #ui > .placectl, #ui .minimap';
 /** lift the toast above any visible bottom-anchored HUD piece it would otherwise cover */
 function placeToast(): void {
   if (!toast) return;

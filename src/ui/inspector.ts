@@ -711,7 +711,7 @@ export class Inspector {
     }
     let foot = null;
     const pay = EDICT.donate_crew;
-    const payBtn = html`<button class="btn coin small" data-act="shipEdict:donate_crew" data-tip="<b>Pay the crew a bonus</b><br>Shares ${fmt(pay.cost)} gold from the treasury among the captain and crew: more to spend ashore, and it counts toward their rank.">Crew bonus <span class="cbadge">${icon('coin', 13)}−${fmt(pay.cost)}</span></button>`;
+    const payBtn = html`<button class="btn coin small" data-act="shipEdict:donate_crew" data-tip="<b>Pay the crew a bonus</b><br>Shares ${fmt(pay.cost)} gold from the treasury among the captain and crew: more to spend ashore, and it counts toward their rank.">Bonus <span class="cbadge">${icon('coin', 13)}−${fmt(pay.cost)}</span></button>`;
     if (inPort) {
       const mission = s.mission;
       const missions: [string, string, string][] = [['cruise', 'Cruise', 'ship'], ['raid', 'Raid', 'flag'], ['kidnap', 'Kidnap', 'chain'], ['explore', 'Explore', 'telescope'], ['foster_war', 'Foster war', 'scroll']];
