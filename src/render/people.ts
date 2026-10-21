@@ -165,6 +165,8 @@ export class PeopleView {
   legacy = false;
   /** far character models for small figures (debug A/B: off draws everyone with the full model) */
   charLod = true;
+  /** debug: everyone on the far model (true) or the full one (false) whatever their size; null routes by size */
+  forceFar: boolean | null = null;
   /** debug: record the drawn foot contact points of these people every frame */
   footLog: Map<number, { t: number; body: [number, number]; pts: [number, number, number][]; ground: number; clip: string }[]> | null = null;
   private movers = new Map<number, Mover>();
@@ -647,7 +649,7 @@ export class PeopleView {
         q.setFromAxisAngle(UP, d.dir);
         const y = g.map.heightAt(d.x, d.z);
         mtx.compose(p3.set(d.x, y, d.z), q, s.set(this.scale, this.scale, this.scale));
-        m.add(mtx, d.clip, d.t ?? this.t, d.look);
+        m.add(mtx, d.clip, d.t ?? this.t, d.look, !!this.forceFar && this.charLod);
       }
     }
     // 1. where everyone is: sim positions interpolated between steps, plus their placement offset
@@ -790,7 +792,8 @@ export class PeopleView {
       mtx.compose(p3.set(px + Math.sin(m.yaw) * lurch, y, py + Math.cos(m.yaw) * lurch), q, s.set(sc, sc, sc));
       // near or far model by the height the figure stands on screen (with a little hysteresis, so nobody flickers
       // between the two at the threshold); the far model passes for the full one below model.farBelowPx
-      if (model.hasFar && this.charLod && cullDebug.lod) {
+      if (this.forceFar !== null) m.far = this.forceFar && this.charLod;
+      else if (model.hasFar && this.charLod && cullDebug.lod) {
         const pix = this.world.volumes.pixels(px, y + 0.5 * model.height * sc, py, model.height * sc);
         m.far = pix < Math.min(model.farBelowPx, FAR_PX_MAX) * (m.far ? 1.1 : 0.9);
       } else m.far = false;

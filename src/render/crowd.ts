@@ -322,9 +322,9 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
   }
 
   /** add an instance; t = seconds into the clip */
-  add(matrix: THREE.Matrix4, clip: string, t: number, look: Look): void {
+  add(matrix: THREE.Matrix4, clip: string, t: number, look: Look, far = false): void {
     const c = this.clips.get(clip) ?? this.clips.get('idle')!;
-    this.addPose(matrix, clip, t / c.duration, null, 0, 0, look);
+    this.addPose(matrix, clip, t / c.duration, null, 0, 0, look, far);
   }
 
   /** a clip's info (frames, duration, measured gait), falling back to idle */
