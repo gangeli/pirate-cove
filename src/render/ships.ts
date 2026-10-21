@@ -65,10 +65,35 @@ async function loadShipModelNow(k: string): Promise<THREE.Object3D> {
   root.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y - size.y * 0.13, -(bb.min.z + bb.max.z) / 2);
   if (size.z > size.x) root.rotation.y = Math.PI / 2;
   wrap.add(root);
+  wrap.add(bilgeFloor(root, len));
   wrap.scale.setScalar(1 / len);
   wrap.userData.height = size.y / len;
   markSharedTree(wrap); // cached for the whole session: never freed with a game's views
   return wrap;
+}
+
+/**
+ * The models' hulls are open shells: looking down into the waist you saw the sea inside the ship. A dark plank floor
+ * just above the waterline, inset within the hull's waterline footprint, closes it (it rides along with the ship).
+ */
+function bilgeFloor(root: THREE.Object3D, len: number): THREE.Mesh {
+  root.updateMatrixWorld(true);
+  let hull: THREE.Box3 | null = null;
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && /hull/i.test(m.name)) (hull ??= new THREE.Box3()).union(new THREE.Box3().setFromObject(m));
+  });
+  const bb = hull ?? new THREE.Box3().setFromObject(root);
+  const size = bb.getSize(new THREE.Vector3()), c = bb.getCenter(new THREE.Vector3());
+  const along = size.x >= size.z;
+  const L = (along ? size.x : size.z) * 0.78, B = (along ? size.z : size.x) * 0.82;
+  const g = new THREE.CircleGeometry(0.5, 40).rotateX(-Math.PI / 2);
+  g.scale(along ? L : B, 1, along ? B : L);
+  const floor = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0x2a1c10, roughness: 0.95 }));
+  floor.position.set(c.x, 0.012 * len, c.z);
+  floor.name = 'bilge_floor';
+  floor.receiveShadow = true;
+  return floor;
 }
 
 /** the loaded model for a ship type, or null (its load is started, and the caller asks again next frame) */
