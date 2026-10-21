@@ -406,8 +406,11 @@ export function updateShips(g: Game, dt: number): void {
           let da = want - s.vdir;
           while (da > Math.PI) da -= Math.PI * 2;
           while (da < -Math.PI) da += Math.PI * 2;
-          // turn harder when the waypoint is close so we never orbit it
-          const turn = d < 5 ? 2.5 : 0.8;
+          // turn harder when the waypoint is close so we never orbit it; leaving, no harder than her way lets her
+          // (0.7 rad a tile: she gathers way off the berth before she turns instead of pivoting, and a turning circle that tight
+          // still always passes within the 2.2 tiles that count as reaching a waypoint)
+          let turn = d < 5 ? 2.5 : 0.8;
+          if (s.status === 'departing') turn = Math.min(turn, (0.7 * sp) / dt);
           s.vdir += Math.max(-dt * turn, Math.min(dt * turn, da));
           s.vx += Math.cos(s.vdir) * sp;
           s.vy += Math.sin(s.vdir) * sp;

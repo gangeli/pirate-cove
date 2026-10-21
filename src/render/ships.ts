@@ -29,9 +29,11 @@ export const NAV_LENGTH = 9;
 const LOD_LENGTHS = 2.6;
 /** the direction flags and pennants stream (world, radians about y) */
 const WIND_DIR = 0.6;
+/** the way flags stream under sail, relative to the ship (radians about y: toward the bow, a little to starboard) */
+const SAIL_WIND = -0.6;
 
 interface SailDef { kind: 'sq' | 'fa' | 'jib' | 'lat'; c: number[][] }
-interface Plan { length: number; height: number; beam: number; deck: number; draft: number; sails: SailDef[]; flags: { p: number[]; kind: string }[] }
+interface Plan { length: number; xmin: number; xmax: number; height: number; beam: number; deck: number; draft: number; sails: SailDef[]; flags: { p: number[]; kind: string }[] }
 interface ShipModel { near: THREE.Object3D | null; far: THREE.Object3D; plan: Plan }
 
 const models = new Map<string, ShipModel>();
@@ -94,14 +96,29 @@ const CLOTH_GLSL = `#include <begin_vertex>
     float breathe = sin(uTime * 1.3 + ph) * 0.12 + sin(uTime * 2.9 + ph * 1.7) * 0.05;
     transformed += objectNormal * (aSail.x * breathe + aSail.y * sin(uTime * 6.0 - aSail.z + ph));
   }`;
+/**
+ * Set while the ambient occlusion's normal pass draws (WebGL GTAO renders the scene with one override material, which
+ * knows nothing of the cloth shader: the sails would sit there flat at rest, behind the billowed sails drawn in the
+ * frame, and the occlusion worked out from that flat canvas, its yards and rigging falls on them in dark blotches).
+ * The cloth keeps its own material in that pass and writes its normal instead of its colour, from where it billows.
+ */
+const aoNormalPass = { value: 0 };
 function clothShader(m: THREE.Material, key: string): void {
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uTime = wind.uTime;
+    sh.uniforms.uAONormal = aoNormalPass;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute vec3 aSail;')
       .replace('#include <begin_vertex>', CLOTH_GLSL);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uAONormal;')
+      .replace('#include <dithering_fragment>', '#include <dithering_fragment>\n  if (uAONormal > 0.5) gl_FragColor = vec4(normalize(normal) * 0.5 + 0.5, 1.0);');
   };
   m.customProgramCacheKey = () => key;
+  m.allowOverride = false;
+  m.onBeforeRender = (_r, scene) => {
+    aoNormalPass.value = (scene as THREE.Scene).overrideMaterial ? 1 : 0;
+  };
 }
 const clothMats = new Map<THREE.Material, THREE.Material>();
 function clothMaterial(base: THREE.Material): THREE.Material {
@@ -253,7 +270,9 @@ class Sails {
             const rl = 0.05 + 0.06 * Math.sin(Math.PI * v) ** 0.7, al = u * Math.PI * 2.6;
             q.lerpVectors(A, D, 0.03 + v * 0.94).add(new THREE.Vector3(0, -rl * 0.4 + Math.sin(al) * rl, Math.cos(al) * rl));
           } else {
-            q.lerpVectors(D, C, u * 0.25).lerp(D, 0.15).add(new THREE.Vector3(0, 0.04 + Math.sin(a) * r, Math.cos(a) * r));
+            // a headsail: hauled down its stay and stowed in a slim bundle along the stay's foot, above the tack
+            const rj = 0.03 + 0.045 * Math.sin(Math.PI * v) ** 0.6, aj = u * Math.PI * 2.6;
+            q.lerpVectors(D, A, 0.03 + (1 - v) * 0.16).add(new THREE.Vector3(0, Math.sin(aj) * rj, Math.cos(aj) * rj));
           }
           q.toArray(this.furled, k * 3);
         }
@@ -646,6 +665,8 @@ export class ShipsView {
     this.group.add(wk.mesh);
     g.userData.wake = wk;
     g.userData.L = L;
+    // the rig's reach fore and aft of midships (bowsprit, booms, a lateen yard), in tiles
+    g.userData.ext = [src.plan.xmin * s, src.plan.xmax * s];
     return g;
   }
 
@@ -761,7 +782,7 @@ export class ShipsView {
         this.group.add(v);
       }
       this.simPose(v, iv.x, iv.y, iv.dir);
-      this.glide(v, this.pose.x, this.pose.z, this.pose.h, iv.state === 'approach', dt);
+      this.glide(v, this.pose.x, this.pose.z, this.pose.h, iv.state === 'approach' || iv.state === 'leaving', dt);
       if (iv.state === 'sunk') {
         v.position.y = -iv.timer * 0.4;
         v.rotation.x = Math.min(0.6, iv.timer * 0.08);
@@ -862,11 +883,13 @@ export class ShipsView {
       const key = `${dock.id}:${bx},${by}:${s.type}`;
       if (u.berthKey !== key) {
         u.berthKey = key;
-        u.berth = this.fitBerth(bx, by, -bdir, L, dock);
+        u.berth = this.fitBerth(bx, by, -bdir, L, dock, v.userData.ext as [number, number] | undefined);
         // she lies either way round (the fitted hull outline is the same both ways): as the sim has her lie, since she
         // leaves the berth on that heading (sailing off bow first) and the sim brings her in to it
         const fh = u.berth[2];
-        u.berthHead = Math.cos(fh + bdir) >= 0 ? fh : fh + Math.PI;
+        // (unless turned about, her bowsprit or boom would reach out over the land)
+        const turn = Math.cos(fh + bdir) < 0 && this.aground(u.berth[0], u.berth[1], fh + Math.PI, L, dock, v.userData.ext) === 0;
+        u.berthHead = turn ? fh + Math.PI : fh;
         // coming in, she rounds up onto her berth's line from astern, where that water is clear
         const E = berthEase(L), ax = Math.cos(u.berthHead), az = -Math.sin(u.berthHead);
         u.lineIn = [0.35, 0.7, 1, 1.4].every((k) => this.aground(u.berth![0] - ax * E * k, u.berth![1] - az * E * k, u.berthHead!, L, dock) === 0);
@@ -909,8 +932,11 @@ export class ShipsView {
     p.z += nz * u.nudge;
   }
 
-  /** how far a hull of length L at (x, z, heading) is out of the water (0 = afloat), sampling its outline */
-  private aground(x: number, z: number, head: number, L: number, avoid: { x: number; y: number; w: number; h: number } | null): number {
+  /**
+   * how far a hull of length L at (x, z, heading) is out of the water (0 = afloat), sampling its outline; with `ext`
+   * (the rig's reach fore and aft), also any bowsprit or boom end reaching out over land
+   */
+  private aground(x: number, z: number, head: number, L: number, avoid: { x: number; y: number; w: number; h: number } | null, ext?: [number, number]): number {
     const m = this.game.map;
     const c = Math.cos(head), sn = Math.sin(head);
     const hl = L * 0.4, hb = L * 0.11, need = -Math.min(0.5, L * 0.035);
@@ -926,11 +952,19 @@ export class ShipsView {
         if (avoid && wx > avoid.x - 0.5 && wx < avoid.x + avoid.w + 0.5 && wz > avoid.y - 0.5 && wz < avoid.y + avoid.h + 0.5) v += 1;
       }
     }
+    if (ext)
+      for (const e of ext)
+        if (Math.abs(e) > hl)
+          for (let i = 1; i <= 3; i++) {
+            const lx = Math.sign(e) * hl + ((e - Math.sign(e) * hl) * i) / 3;
+            const h = m.heightAt(x + lx * c, z - lx * sn);
+            if (h > -0.15) v += h + 0.2;
+          }
     return v;
   }
 
   /** the nearest clear berth to the sim's: alongside (either way round) or bow out from the pier head */
-  private fitBerth(bx: number, by: number, head: number, L: number, dock: { x: number; y: number; w: number; h: number }): [number, number, number] {
+  private fitBerth(bx: number, by: number, head: number, L: number, dock: { x: number; y: number; w: number; h: number }, ext?: [number, number]): [number, number, number] {
     let best: [number, number, number] = [bx, by, head], bestC = Infinity;
     const m = this.game.map;
     // the sim's berth stands well off the pier head: aim close alongside it (the hull outline is kept half a tile
@@ -944,13 +978,15 @@ export class ShipsView {
           const d = Math.hypot(bx + dx - ax, by + dz - az);
           if (d + hc >= bestC) continue;
           const x = bx + dx, z = by + dz;
-          if (this.aground(x, z, h, L, dock) > 0) continue;
+          if (this.aground(x, z, h, L, dock, ext) > 0) continue;
           // bow toward the deeper water (seaward), all else equal
           const bow = m.heightAt(x + c * L * 0.4, z - sn * L * 0.4), stern = m.heightAt(x - c * L * 0.4, z + sn * L * 0.4);
           const cost = d + hc + Math.max(-0.5, Math.min(0.5, bow - stern));
           if (cost < bestC) (bestC = cost), (best = [x, z, h]);
         }
     }
+    // nowhere keeps the bowsprit and booms over water too: at least the hull
+    if (bestC === Infinity && ext) return this.fitBerth(bx, by, head, L, dock);
     return best;
   }
 
@@ -968,8 +1004,15 @@ export class ShipsView {
       wk.update(v.position.x + c * L * 0.47, v.position.z - sn * L * 0.47, v.position.x - c * L * 0.4, v.position.z + sn * L * 0.4, u.speed ?? 0, this.t);
     }
     const flags = v.userData.flags as THREE.Object3D[] | undefined;
-    const head = v.rotation.y;
-    if (flags) for (let i = 0; i < flags.length; i++) flags[i].rotation.y = WIND_DIR - head + Math.sin(this.t * 0.7 + id + i) * 0.15;
+    if (flags) {
+      // lying furled, the flags stream down the world's wind; under sail, down the wind her canvas is filling with
+      // (from the port quarter: square sails belly forward, fore-and-aft ones to starboard), whichever way she heads
+      let down = WIND_DIR - v.rotation.y;
+      down = Math.atan2(Math.sin(down), Math.cos(down));
+      const set = sails ? 1 - sails.furl : 0;
+      down += (SAIL_WIND - down) * set;
+      for (let i = 0; i < flags.length; i++) flags[i].rotation.y = down + Math.sin(this.t * 0.7 + id + i) * 0.15;
+    }
   }
 
   /**

@@ -9,7 +9,7 @@ ship_<name>.json: the sail plan and flag mounts. The sails are not in the GLB: t
 Model space is the game's: x toward the bow, y up with the waterline at y = 0, z abeam, midships at x = 0, in tiles.
 A person is ~0.85 tall, so casks, crates and rails share the buildings' scale.
 """
-import sys, os, math, json, time
+import sys, os, math, json, time, zlib
 sys.path.insert(0, os.path.dirname(__file__))
 import bpy
 from mathutils import Vector
@@ -314,8 +314,9 @@ class Ship:
                 k.cbox('black', 0.17, 0.15, 0.02, 0, 0, 0)
                 k.pop()
                 k.push(x, y, sz * (w - 0.2), ry=0 if sz > 0 else math.pi)
+                # the carriage in the far model too: without it the guns lighten and thin out at the switch
+                k.box('darkwood', 0.2, 0.1, 0.3, 0, 0, 0)
                 if not k.lod:
-                    k.box('darkwood', 0.2, 0.1, 0.3, 0, 0, 0)
                     for (wx, wz) in ((-0.09, -0.1), (0.09, -0.1), (-0.09, 0.1), (0.09, 0.1)):
                         k.cyl('darkwood', 0.04, 0.04, 0.025, wx + (0.0125 if wx > 0 else -0.0125), 0.04, wz, seg=8, rz=math.pi / 2)
                 k.cyl('iron', 0.05, 0.035, 0.48, 0, 0.17, -0.12, seg=8 if not k.lod else 5, rx=math.pi / 2)
@@ -844,9 +845,11 @@ def main():
     names = argv or list(SPECS)
     fast = bool(os.environ.get('FAST'))
     os.makedirs(OUT, exist_ok=True)
+    lod_only = bool(os.environ.get('LODONLY'))  # rebuild just the far models (and the sail plan)
     for name in names:
         t0 = time.time()
-        k = Kit(seed=abs(hash(name)) % 10007)
+        seed = zlib.crc32(name.encode()) % 10007  # (str hash() changes from run to run)
+        k = Kit(seed=seed)
         sh, opts = SPECS[name](k)
         lo, hi = bounds(k)
         for sl in sh.sails:
@@ -858,8 +861,9 @@ def main():
             'sails': [{'kind': s_['kind'], 'c': [[round(v, 3) for v in c] for c in s_['c']]} for s_ in sh.sails],
             'flags': sh.flags,
         }
-        k.finish('ship_' + name, OUT, ao_size=opts.get('ao', 2048), ao_samples=32 if fast else 96, ao_dist=1.0, ground=False)
-        k2 = Kit(seed=abs(hash(name)) % 10007, lod=True)
+        if not lod_only:
+            k.finish('ship_' + name, OUT, ao_size=opts.get('ao', 2048), ao_samples=32 if fast else 96, ao_dist=1.0, ground=False)
+        k2 = Kit(seed=seed, lod=True)
         SPECS[name](k2)
         k2.finish('ship_' + name + '_lod', OUT, ao_size=512, ao_samples=16, ao_dist=1.0, ground=False)
         json.dump(plan, open(os.path.join(OUT, 'ship_' + name + '.json'), 'w'), separators=(',', ':'))

@@ -229,8 +229,13 @@ export function updateInvasion(g: Game, dt: number): void {
       }
       if (v.soldiers <= 0) v.state = 'leaving';
     } else if (v.state === 'leaving') {
-      v.x -= Math.cos(v.dir) * dt * 2;
-      v.y -= Math.sin(v.dir) * dt * 2;
+      // she comes about and stands out to sea, bow first, gathering way as she turns
+      const want = Math.atan2(v.y - m.size / 2, v.x - m.size / 2);
+      const da = ((want - v.dir + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      v.dir += Math.max(-dt * 0.5, Math.min(dt * 0.5, da));
+      const sp = dt * 2 * (0.35 + 0.65 * Math.max(0, Math.cos(da)));
+      v.x += Math.cos(v.dir) * sp;
+      v.y += Math.sin(v.dir) * sp;
     }
   }
   // defenders fire
