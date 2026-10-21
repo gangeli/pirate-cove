@@ -124,7 +124,10 @@ export interface Building {
   priority: number; // 1..5 hiring priority
   wage: number; // overseer/guard wage per month
   workers: number[]; // person ids (captives)
-  blocked: number; // count of blocked worker slots
+  /** closed worker places not tied to a row (older saves, fired overseers and guards): spread over the rows' vacancies in order */
+  blocked: number;
+  /** closed places in each worker row (index = the row in the building's `workers`), from the right-hand end */
+  shut?: number[];
   haulers: number[];
   overseer: number; // person id
   guards: number[];

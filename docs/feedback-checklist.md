@@ -69,6 +69,7 @@ section.
 - [x] Bolder × close buttons on menus and overlays [UI agent]
 - [x] Filled worker slots show the person's portrait, empty ones a placeholder [UI agent]
 - [x] Shift-click (hold on touch) a slot to close it and the slots to its right; remove the Open-places stepper [UI agent]
+- [x] Closing places is exact per row: on buildings with several worker rows (dive, eatery, inn) a shift-click no longer closes a place in an earlier row; fired workers keep their own place closed [UI agent]
 - [x] Themed, direct-manipulation controls instead of generic segmented controls: wages as coins, priority as pennants, spoils as a treasure split, prices as coin stacks, missions and tactics as icon cards [UI agent]
 - [x] Remove pointless explanatory lines ("Gold a month for each overseer…", "Higher-priority buildings are staffed first…") [UI agent]
 - [x] Inventory and production as goods icons with tooltips (e.g. "2× Logs → Lumber 92") [UI agent]

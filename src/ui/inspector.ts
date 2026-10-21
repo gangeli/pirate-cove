@@ -8,7 +8,7 @@ import { SHIPS, SHIP_LIST, MISSION_NAMES, SPOILS_TREASURY, type ShipType } from 
 import { NATION_ADJ, NATION_NAMES, NATIONS } from '../sim/data/kings';
 import type { Building, Person, Ship } from '../sim/types';
 import { serviceFee, serviceBand, pirateFactors } from '../sim/people';
-import { farmFertility, treesNear } from '../sim/economy';
+import { farmFertility, treesNear, closedRows } from '../sim/economy';
 import { portrait, portraitImg, portraitIdFor, type PortraitSpec } from './portraits';
 import { audio } from '../audio/audio';
 import { thumbOrQueue, THUMB_PLACEHOLDER } from './thumbs';
@@ -538,28 +538,14 @@ export class Inspector {
     })}</div></div>`;
   }
 
-  /**
-   * The worker rows and how many places at the right end of each are closed. The sim keeps `blocked` places from
-   * being filled, taking them from the vacancies row by row; any left over will close as their workers leave.
-   */
+  /** the worker rows and how many places at the right end of each are closed (as the sim hires by them) */
   private closedPlaces(b: Building): { job: Job; count: number; ids: number[]; shut: number }[] {
     const g = this.app.game;
-    const rows = BUILDING[b.def].workers.map((sl) => {
+    const shut = closedRows(g, b);
+    return BUILDING[b.def].workers.map((sl, ri) => {
       const ids = [...new Set(sl.job === 'hauler' ? b.haulers.concat(b.workers.filter((id) => g.people.get(id)?.jobRole === 'hauler')) : b.workers.filter((id) => g.people.get(id)?.jobRole === sl.job))];
-      return { job: sl.job, count: sl.count, ids, shut: 0 };
+      return { job: sl.job, count: sl.count, ids, shut: shut[ri] };
     });
-    let left = b.blocked;
-    for (const r of rows) {
-      const v = Math.min(left, Math.max(0, r.count - r.ids.length));
-      r.shut += v;
-      left -= v;
-    }
-    for (const r of rows) {
-      const v = Math.min(left, r.count - r.shut);
-      r.shut += v;
-      left -= v;
-    }
-    return rows;
   }
 
   /** Shift-click or long press on the place at `row:i`: close it and the places to its right, or reopen it and those to its left */
@@ -570,10 +556,10 @@ export class Inspector {
     const r = this.closedPlaces(b)[ri];
     if (!r) return;
     const want = i >= r.count - r.shut ? r.count - i - 1 : r.count - i;
-    const delta = Math.max(-b.blocked, want - r.shut);
+    const delta = want - r.shut;
     if (!delta) return;
     audio.sfx('quill');
-    this.bcmd({ type: 'blockSlot', id: b.id, delta });
+    this.bcmd({ type: 'blockSlot', id: b.id, delta, row: ri });
   }
 
   // ------------------------------------------------------------------------------------------------ person

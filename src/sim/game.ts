@@ -11,7 +11,7 @@ import type { Building, KingState, Message, NationState, Person, Region, Setting
 import { canPlace, placeBuilding, removeBuilding, placeRoad, removeRoad, setupStartingIsland, wouldWallOff, type Placement } from './placement';
 import { updatePeople, createPerson, killPerson, rebellionMonthly } from './people';
 import { pushUndo, undoLast, treeTiles, type UndoEntry } from './undo';
-import { updateEconomy, monthlyEconomy, lumberTotal, consumeLumber, goodTotal } from './economy';
+import { updateEconomy, monthlyEconomy, lumberTotal, consumeLumber, goodTotal, shutRow } from './economy';
 import { updateShips, makeRegions, launchShip, commissionShip, assignCrews } from './sea';
 import { monthlyDiplomacy, updateInvasion, launchInvasion } from './diplomacy';
 import { issueEdict, edictAvailability } from './edicts';
@@ -44,7 +44,8 @@ export type Command =
   | { type: 'buyBlackMarket'; ship: number; budget?: number }
   | { type: 'edict'; id: string; target?: number; nation?: Nation; arg?: string; repeal?: boolean }
   | { type: 'hoardRate'; rate: number }
-  | { type: 'blockSlot'; id: number; delta: number }
+  /** close (delta > 0) or reopen places: at the end of worker row `row`, or (no row) from the loose pool */
+  | { type: 'blockSlot'; id: number; delta: number; row?: number }
   | { type: 'fire'; id: number; person: number }
   | { type: 'undo' }
   | { type: 'cheat'; code: string };
@@ -498,7 +499,8 @@ export class Game {
       case 'blockSlot': {
         const b = this.buildings.get(c.id);
         if (!b) return { ok: false };
-        b.blocked = Math.max(0, b.blocked + c.delta);
+        if (c.row != null) shutRow(this, b, c.row, c.delta);
+        else b.blocked = Math.max(0, b.blocked + c.delta);
         return { ok: true };
       }
       case 'fire': {
@@ -506,11 +508,15 @@ export class Game {
         const p = this.people.get(c.person);
         if (!b || !p) return { ok: false };
         if (p.job === b.id) {
+          // the fired worker's own place stays closed (folding the loose pool into the rows while they still hold it)
+          const row = BUILDING[b.def].workers.findIndex((w) => w.job === p.jobRole);
+          if (row >= 0) shutRow(this, b, row, 0);
           b.workers = b.workers.filter((w) => w !== p.id);
           b.haulers = b.haulers.filter((w) => w !== p.id);
           p.job = 0;
           p.jobRole = undefined;
-          b.blocked++;
+          if (row >= 0) shutRow(this, b, row, 1);
+          else b.blocked++;
         }
         if (p.shoreJob === b.id) {
           b.guards = b.guards.filter((w) => w !== p.id);

@@ -465,18 +465,13 @@ function employ(g: Game): void {
   };
   for (const b of bl) {
     const def = BUILDING[b.def];
-    let blocked = b.blocked;
-    for (const slot of def.workers) {
+    const closed = closedRows(g, b);
+    for (const [ri, slot] of def.workers.entries()) {
       const isHaul = slot.job === 'hauler';
       const list = isHaul ? b.haulers : b.workers;
       const have = list.filter((id) => g.people.get(id)?.jobRole === slot.job).length;
-      let open = slot.count - have;
+      let open = Math.max(0, slot.count - have - closed[ri]);
       while (open > 0) {
-        if (blocked > 0) {
-          blocked--;
-          open--;
-          continue;
-        }
         let p = take(b, slot.job);
         if (!p) p = poach(b, slot.job);
         if (!p) break;
@@ -536,6 +531,39 @@ function employ(g: Game): void {
 }
 
 /**
+ * How many places at the right-hand end of each worker row are closed: the row's own count (`shut`), plus the
+ * loose `blocked` pool spread over the vacancies row by row and then over filled places (those close as their
+ * workers leave). Hiring and the building card both read this, so a closed place is the one the player sees.
+ */
+export function closedRows(g: Game, b: Building): number[] {
+  const rows = BUILDING[b.def].workers;
+  const out = rows.map((sl, i) => Math.max(0, Math.min(sl.count, b.shut?.[i] ?? 0)));
+  let left = b.blocked;
+  if (left <= 0) return out;
+  const have = rows.map((sl) => (sl.job === 'hauler' ? b.haulers : b.workers).filter((id) => g.people.get(id)?.jobRole === sl.job).length);
+  for (let i = 0; i < rows.length && left > 0; i++) {
+    const v = Math.min(left, Math.max(0, rows[i].count - have[i] - out[i]));
+    out[i] += v;
+    left -= v;
+  }
+  for (let i = 0; i < rows.length && left > 0; i++) {
+    const v = Math.min(left, rows[i].count - out[i]);
+    out[i] += v;
+    left -= v;
+  }
+  return out;
+}
+
+/** close (delta > 0) or reopen places at the end of worker row `row`, folding the loose pool into the rows first */
+export function shutRow(g: Game, b: Building, row: number, delta: number): void {
+  const rows = BUILDING[b.def].workers;
+  if (!rows[row]) return;
+  b.shut = closedRows(g, b);
+  b.blocked = 0;
+  b.shut[row] = Math.max(0, Math.min(rows[row].count, b.shut[row] + delta));
+}
+
+/**
  * Most kitchen and venue posts can only be filled by women. When one stands empty while a woman hauls,
  * farms or builds, a man takes over her work (an unemployed man, or one from a job that matters less than
  * the empty post) and she takes the post. A few such swaps per pass.
@@ -546,7 +574,7 @@ function swapForWomensPosts(g: Game, bl: Building[], free: Person[], eff: (b: Bu
   let swaps = 0;
   for (const b of bl) {
     if (swaps >= 6) return;
-    if (b.blocked) continue;
+    if (b.blocked || b.shut?.some((n) => n > 0)) continue;
     for (const slot of BUILDING[b.def].workers) {
       if (JOB_SEX[slot.job] !== 'F' || SKILLED_ONLY.includes(slot.job)) continue;
       let open = slot.count - b.workers.filter((id) => g.people.get(id)?.jobRole === slot.job).length;
