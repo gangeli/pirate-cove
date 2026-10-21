@@ -16,7 +16,7 @@ function glbVertices(file: string): number {
 }
 
 describe('character LOD bakes', () => {
-  for (const f of fs.readdirSync(DIR).filter((f) => f.endsWith('.glb'))) {
+  for (const f of fs.readdirSync(DIR).filter((f: string) => f.endsWith('.glb'))) {
     it(`${f}: a current, valid far model`, () => {
       const bin = path.join(DIR, f.replace(/\.glb$/, '.lod.bin'));
       expect(fs.existsSync(bin)).toBe(true);
