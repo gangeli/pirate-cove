@@ -30,7 +30,7 @@ const LOD_LENGTHS = 2.6;
 /** the direction flags and pennants stream (world, radians about y) */
 const WIND_DIR = 0.6;
 
-interface SailDef { kind: 'sq' | 'fa' | 'jib'; c: number[][] }
+interface SailDef { kind: 'sq' | 'fa' | 'jib' | 'lat'; c: number[][] }
 interface Plan { length: number; height: number; beam: number; deck: number; draft: number; sails: SailDef[]; flags: { p: number[]; kind: string }[] }
 interface ShipModel { near: THREE.Object3D | null; far: THREE.Object3D; plan: Plan }
 
@@ -229,7 +229,7 @@ class Sails {
             tr = v * chord * 2.4;
           } else {
             // laced to mast (luff) and spars or stay: the leech is free
-            f = Math.sin(Math.PI * u * 0.9) ** 0.8 * Math.sin(Math.PI * (s.kind === 'jib' ? 0.2 + 0.6 * v : v)) ** 0.8;
+            f = Math.sin(Math.PI * u * 0.9) ** 0.8 * Math.sin(Math.PI * (s.kind === 'jib' || s.kind === 'lat' ? 0.2 + 0.6 * v : v)) ** 0.8;
             w = u ** 1.3 * (0.4 + 0.6 * Math.sin(Math.PI * Math.min(1, v * 1.1)));
             tr = u * chord * 2.4;
           }
@@ -240,12 +240,18 @@ class Sails {
           uv[k * 2] = u * width * 1.1;
           uv[k * 2 + 1] = v * height * 1.1;
           // furled: rolled up along the pinned edge (the yard, the boom or the foot of the stay), fattest mid-yard
-          const r = 0.08 + 0.075 * Math.sin(Math.PI * u) ** 0.7;
+          const r = 0.05 + 0.06 * Math.sin(Math.PI * u) ** 0.7;
           const a = v * Math.PI * 2.6;
           if (s.kind === 'sq') {
-            q.lerpVectors(A, B, 0.04 + u * 0.92).add(new THREE.Vector3(0.03 + Math.cos(a) * r, -0.08 + Math.sin(a) * r, 0));
+            // on top of the yard (its axis lies 0.07 abaft the sail's head and 0.04 above it), a little forward
+            q.lerpVectors(A, B, 0.04 + u * 0.92).add(new THREE.Vector3(-0.04 + Math.cos(a) * r, 0.04 + r * 0.55 + Math.sin(a) * r, 0));
           } else if (s.kind === 'fa') {
-            q.lerpVectors(D, C, 0.03 + u * 0.94).add(new THREE.Vector3(0, 0.05 + Math.sin(a) * r, Math.cos(a) * r));
+            // lashed on top of the boom
+            q.lerpVectors(D, C, 0.03 + u * 0.94).add(new THREE.Vector3(0, r * 0.6 + Math.sin(a) * r, Math.cos(a) * r));
+          } else if (s.kind === 'lat') {
+            // a lateen: furled along its yard (its luff, head A to tack D, runs down the grid), under it
+            const rl = 0.05 + 0.06 * Math.sin(Math.PI * v) ** 0.7, al = u * Math.PI * 2.6;
+            q.lerpVectors(A, D, 0.03 + v * 0.94).add(new THREE.Vector3(0, -rl * 0.4 + Math.sin(al) * rl, Math.cos(al) * rl));
           } else {
             q.lerpVectors(D, C, u * 0.25).lerp(D, 0.15).add(new THREE.Vector3(0, 0.04 + Math.sin(a) * r, Math.cos(a) * r));
           }
@@ -294,7 +300,7 @@ class Sails {
       as[i + 2] = this.play[i + 2];
     }
     // rolled canvas: the folds shade each other, a little warmer and darker than the cloth spread to the sun
-    const cr = 1 - 0.2 * e, cg = 1 - 0.23 * e, cb = 1 - 0.28 * e;
+    const cr = 1 - 0.26 * e, cg = 1 - 0.3 * e, cb = 1 - 0.36 * e;
     for (let i = 0; i < cs.length; i += 3) (cs[i] = cr), (cs[i + 1] = cg), (cs[i + 2] = cb);
     pos.needsUpdate = true;
     att.needsUpdate = true;

@@ -803,7 +803,7 @@ def galleon(k):
     ya, yb = V(zx + 1.8, sh.deck(zx + 1.8) + 1.3, 0), V(zx - 2.9, z1.y + 0.6, 0)
     k.beam('wood', ya, yb, 0.08, round_=True, seg=8 if not k.lod else 5)
     cl = V(zx - 2.2, sh.deck(zx - 2.2) + 1.0, 0)
-    sh.sails.append({'kind': 'jib', 'c': [list(yb + V(0.1, -0.08, 0)), list(yb + V(0.1, -0.08, 0)), list(cl), list(ya + V(-0.2, -0.05, 0))]})
+    sh.sails.append({'kind': 'lat', 'c': [list(yb + V(0.1, -0.08, 0)), list(yb + V(0.1, -0.08, 0)), list(cl), list(ya + V(-0.2, -0.05, 0))]})
     sh.stay(V(m1.x, m1.y - 0.2, 0), V(fx + 0.1, sh.deck(fx) + 0.6, 0), 0.026)
     sh.stay(V(m2.x, m2.y - 0.25, 0), V(f1.x, f1.y - 0.1, 0), 0.016)
     sh.stay(V(z1.x, z1.y - 0.2, 0), V(mx - 0.1, sh.deck(mx) + 1.4, 0), 0.018)

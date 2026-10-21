@@ -9,6 +9,7 @@ import { fitTree, nearSignature, samplePoints, shapeOf, type TopFn, type TreePos
 
 /** ?nofit=1 places trees as generated, through buildings and all (debugging, before/after comparisons) */
 const NOFIT = typeof location !== 'undefined' && /[?&]nofit=1/.test(location.search);
+const NO_VLOD = typeof location !== 'undefined' && /[?&]novlod=1/.test(location.search);
 
 /** shared wind uniform */
 export const wind = { uTime: { value: 0 }, uWind: { value: 1 } };
@@ -118,7 +119,12 @@ function windify(mat: THREE.Material, stiff = 1): void {
   mat.customProgramCacheKey = () => 'wind' + stiff;
 }
 
-function palmGeometry(): { trunk: THREE.BufferGeometry; fronds: THREE.BufferGeometry } {
+/**
+ * A palm: curved tapering trunk and arched fronds. `far` is the same tree for when it stands a few dozen pixels tall
+ * (screen-size LOD, see Vegetation.FAR_PX): fewer trunk rings and sides, fronds in half the segments, no coconuts
+ * (each well under a pixel by then).
+ */
+function palmGeometry(far = false): { trunk: THREE.BufferGeometry; fronds: THREE.BufferGeometry } {
   // curved trunk
   const pts: THREE.Vector3[] = [];
   const H = 5.2;
@@ -127,7 +133,7 @@ function palmGeometry(): { trunk: THREE.BufferGeometry; fronds: THREE.BufferGeom
     pts.push(new THREE.Vector3(Math.sin(t * 1.4) * 0.9 * t, t * H, 0));
   }
   const curve = new THREE.CatmullRomCurve3(pts);
-  const trunk = new THREE.TubeGeometry(curve, 14, 0.16, 7, false);
+  const trunk = new THREE.TubeGeometry(curve, far ? 7 : 14, 0.16, far ? 5 : 7, false);
   // taper
   const p = trunk.getAttribute('position') as THREE.BufferAttribute;
   for (let i = 0; i < p.count; i++) {
@@ -150,7 +156,7 @@ function palmGeometry(): { trunk: THREE.BufferGeometry; fronds: THREE.BufferGeom
     const ang = (f / N) * Math.PI * 2 + hash(f, 9) * 0.3;
     const len = 2.6 + hash(f, 3) * 0.9;
     const droop = 0.9 + hash(f, 4) * 0.7;
-    const seg = 8;
+    const seg = far ? 4 : 8;
     const pos: number[] = [], uvs: number[] = [], idx: number[] = [];
     for (let i = 0; i <= seg; i++) {
       const t = i / seg;
@@ -175,7 +181,7 @@ function palmGeometry(): { trunk: THREE.BufferGeometry; fronds: THREE.BufferGeom
     frs.push(geo);
   }
   // coconuts
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < (far ? 0 : 4); i++) {
     const s = new THREE.SphereGeometry(0.17, 6, 5);
     const a = i * 1.7;
     s.translate(top.x + Math.cos(a) * 0.22, top.y - 0.15, top.z + Math.sin(a) * 0.22);
@@ -238,7 +244,7 @@ function broadleafGeometry(): { trunk: THREE.BufferGeometry; crown: THREE.Buffer
 
 export class Vegetation {
   readonly group = new THREE.Group();
-  private geo = { palm: palmGeometry(), broad: broadleafGeometry() };
+  private geo = { palm: palmGeometry(), palmFar: palmGeometry(true), broad: broadleafGeometry() };
   private mats: Record<string, THREE.Material> = {};
   /** point clouds of each tree type, for keeping trees out of buildings (treefit.ts) */
   private shapes: { palm: TreeShape; broad: TreeShape; bush: TreeShape };
@@ -276,6 +282,8 @@ export class Vegetation {
 
   /** trees are instanced per CHUNK x CHUNK tile block so off-screen blocks drop out of the main and shadow passes */
   static readonly CHUNK = 40;
+  /** palms whose bounding sphere spans fewer pixels than this on screen draw the far model (?novlod=1: never) */
+  static readonly FAR_PX = NO_VLOD ? 0 : 40;
   private ghost = false;
   /** a chunk's trees in view (or casting into it) are drawn, the rest of the chunk is not (instcull.ts) */
   private cullers: InstanceCuller[] = [];
@@ -373,7 +381,7 @@ export class Vegetation {
       }
     this.fitted.ms = performance.now() - t0;
     const g = gpu();
-    const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, list: THREE.Matrix4[], shadow = true) => {
+    const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, list: THREE.Matrix4[], shadow = true, far?: THREE.BufferGeometry) => {
       if (!list.length) return null;
       const own = !!g && mat !== this.mats.bTrunkMat;
       const im = new THREE.InstancedMesh(own ? (g!.windGeometry(geo as any, list as any) as unknown as THREE.BufferGeometry) : geo, mat, list.length);
@@ -387,12 +395,25 @@ export class Vegetation {
       im.boundingSphere!.radius += 1.5;
       im.frustumCulled = true;
       this.group.add(im);
+      let farIm: THREE.InstancedMesh | undefined;
+      if (far && Vegetation.FAR_PX > 0) {
+        farIm = new THREE.InstancedMesh(own ? (g!.windGeometry(far as any, list as any) as unknown as THREE.BufferGeometry) : far, mat, list.length);
+        farIm.userData.ownGeometry = own;
+        farIm.userData.shadow = shadow;
+        farIm.castShadow = im.castShadow;
+        farIm.receiveShadow = true;
+        farIm.frustumCulled = true;
+        this.group.add(farIm);
+      }
+      pending.push({ im, far: farIm });
       return im;
     };
+    // (the cullers copy the instance data once the colours are in)
+    const pending: { im: THREE.InstancedMesh; far?: THREE.InstancedMesh }[] = [];
     const col = new THREE.Color();
     for (const ch of chunks) {
-      mk(this.geo.palm.trunk, this.mats.trunkMat, ch.palms);
-      const fr = mk(this.geo.palm.fronds, this.mats.frondMat, ch.palms);
+      mk(this.geo.palm.trunk, this.mats.trunkMat, ch.palms, true, this.geo.palmFar.trunk);
+      const fr = mk(this.geo.palm.fronds, this.mats.frondMat, ch.palms, true, this.geo.palmFar.fronds);
       mk(this.geo.broad.trunk, this.mats.bTrunkMat, ch.broads);
       const cr = mk(this.geo.broad.crown, this.mats.leafMat, ch.broads);
       // per-instance colour variety for crowns
@@ -400,6 +421,6 @@ export class Vegetation {
       if (fr) ch.pi.forEach((g, i) => fr.setColorAt(i, col.setHSL(0.2 + hash(g, 4) * 0.06, 0.4 + hash(g, 5) * 0.3, 0.75 + hash(g, 6) * 0.25)));
       mk(this.geo.broad.crown, this.mats.leafMat, ch.bushes, false);
     }
-    for (const c of this.group.children) this.cullers.push(new InstanceCuller(c as THREE.InstancedMesh, 1.5));
+    for (const p of pending) this.cullers.push(new InstanceCuller(p.im, 1.5, p.far ? { far: p.far, px: Vegetation.FAR_PX } : undefined));
   }
 }
