@@ -201,7 +201,7 @@ for (const seed of seeds) {
     a.world.render = () => {};
   });
   // a few frames so every view and batch is up to date
-  for (let i = 0; i < 3; i++) await p.evaluate(() => window.__render());
+  for (let i = 0; i < 3; i++) await p.evaluate(() => window.__render(0.2));
   console.log(`seed ${seed}: loaded in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
   const r = await p.evaluate(`(${analyse.toString()})()`);
   fs.writeFileSync(`${OUT}/overlap_${seed}.json`, JSON.stringify(r, null, 1));
@@ -229,10 +229,11 @@ for (const seed of seeds) {
       w.rig.lookAt(x, z, true);
       w.rig.setDist(9, true);
       for (let k = 0; k < 40; k++) w.rig.update(0.1, innerWidth, innerHeight);
-      window.__render();
-      window.__render();
+      window.__render(0.2);
+      window.__render(0.2);
+      return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
     }, [c.at[0], c.at[2]]);
-    await p.screenshot({ path: `${OUT}/s${seed}_${String(i).padStart(2, '0')}_${c.name}.png` });
+    await p.screenshot({ timeout: 300000, path: `${OUT}/s${seed}_${String(i).padStart(2, '0')}_${c.name}.png` });
   }
   await ctx.close();
 }

@@ -28,7 +28,9 @@ await p.evaluate(() => {
   window.__render = a.world.render.bind(a.world);
   a.world.render = () => {};
   // the HUD would cover the close-ups
-  for (const e of document.querySelectorAll('body > *:not(canvas)')) if (!e.querySelector('canvas')) e.style.visibility = 'hidden';
+  const st = document.createElement('style');
+  st.textContent = 'body * { visibility: hidden !important } canvas { visibility: visible !important }';
+  document.head.append(st);
 });
 for (const [i, [x, z, d]] of at.entries()) {
   await p.evaluate(([x, z, d, yaw]) => {
@@ -37,11 +39,12 @@ for (const [i, [x, z, d]] of at.entries()) {
     w.rig.lookAt(x, z, true);
     w.rig.setDist(d, true);
     for (let k = 0; k < 40; k++) w.rig.update(0.1, innerWidth, innerHeight);
-    window.__render();
-    window.__render();
+    window.__render(0.2);
+    window.__render(0.2);
+    return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   }, [x, z, d ?? dist, i === 0 ? yaw : 0]);
   const f = `${OUT}/${tag}_${String(i).padStart(2, '0')}_${x.toFixed(0)}_${z.toFixed(0)}.png`;
-  await p.screenshot({ path: f });
+  await p.screenshot({ path: f, timeout: 300000 });
   console.log(f);
 }
 await browser.close();
