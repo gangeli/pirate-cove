@@ -769,7 +769,6 @@ export class ShipsView {
       v.visible = true;
       const moving = s.status === 'departing' || s.status === 'returning';
       this.simPose(v, s.vx, s.vy, s.vdir);
-      v.userData.returning = s.status === 'returning';
       this.berthed(s, v, dt);
       const u = v.userData as GlideState;
       this.glide(v, this.pose.x, this.pose.z, this.pose.h, moving, dt);
@@ -1083,15 +1082,10 @@ export class ShipsView {
       v.position.z = z;
       u.speed = Math.hypot(u.velX, u.velZ);
       // near: 1 at the berth, 0 an easing length out. Leaving or coming in she keeps her berth's heading while she
-      // barely has way on, and otherwise points where she is going; she swings alongside only in the last of it
+      // barely has way on, and otherwise points where she is going (her curve to the berth meets it on its line)
       const near = u.near ?? 0, berthing = moving && near > 0 && u.berthHead !== undefined;
-      const arriving = berthing && (u.near ?? 0) > 0 && v.userData.returning === true;
       let want = berthing ? u.berthHead! : restHeading;
-      if (moving && u.speed > 0.2) {
-        want = -Math.atan2(u.velZ, u.velX);
-        const close = smooth(0.6, 0.95, near);
-        if (arriving && close > 0) want += Math.atan2(Math.sin(u.berthHead! - want), Math.cos(u.berthHead! - want)) * close;
-      }
+      if (moving && u.speed > 0.2) want = -Math.atan2(u.velZ, u.velX);
       let d = want - (u.head ?? want);
       d = Math.atan2(Math.sin(d), Math.cos(d)); // shortest way round
       // a ship turns no faster than her way lets her (she pivots slowly when all but stopped)

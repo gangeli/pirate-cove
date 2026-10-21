@@ -67,6 +67,15 @@ section.
 - [x] Ships berth close alongside the rebuilt dock's T-head (fitted berth pulled in toward the pier, hull kept half a tile clear of the lot); WebGPU path run in headless Chromium (wake, cloth, flags draw; no broken shaders) [ship agent]
 
 - [~] Detailed ship check: every class close up, all headings and quality levels, LOD switch, motion, berth (galleon boom over the sand), invaders, shipyard hull [ship check agent]
+  - [x] Sail blotches found (q=high only): the ambient occlusion pass drew the sails flat at rest behind the billowed ones, so yards and rigging shaded them in speckled patches; the cloth now writes its own billowed normal into that pass (no extra pass)
+  - [x] Furled canvas: square sails rolled on top of their yards (hung under and in front of them), slimmer rolls on booms, headsails stowed in slim bundles along their stays (were white balls at the bowsprit end), the galleon's lateen furled along its yard (was a disc floating over the deck)
+  - [x] Under sail, flags and pennants stream with the wind the sails are filling with (were on a fixed world wind, against the canvas on some headings)
+  - [x] Far model keeps the gun carriages (the guns thinned and lightened at the LOD switch)
+  - [x] Berth fitting keeps the bowsprit, booms and lateen yard over water too (galleon's rig over the sand spit), with each hull's real beam (the galleon's stern sat on the pier's T-head)
+  - [x] Coming in and leaving, a curve of her own between the sim's track and the fitted berth: no swing onto the berth at up to twice cruise speed, no crab leaving (the sim turns a departing ship no harder than her way allows, and she lies the way round she came in)
+  - [x] Invaders come about and sail off bow first when they leave (sailed away stern first)
+  - [x] Ship on the slipway scaled to the yard's slip (a galleon ran through the shipyard's mould loft and over the neighbouring pier)
+  - [x] Pause: sails, flags, wake and pose frozen (identical frames)
 
 ## Controls and building
 - [x] Delete (Delete key, Demolish for buildings and roads, road quick action) and undo (button, Ctrl/Cmd+Z)
