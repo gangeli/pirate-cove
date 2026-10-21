@@ -72,8 +72,8 @@ section.
   - [x] Under sail, flags and pennants stream with the wind the sails are filling with (were on a fixed world wind, against the canvas on some headings)
   - [x] Far model keeps the gun carriages (the guns thinned and lightened at the LOD switch)
   - [x] Berth fitting keeps the bowsprit, booms and lateen yard over water too (galleon's rig over the sand spit), with each hull's real beam (the galleon's stern sat on the pier's T-head)
-  - [x] Coming in and leaving, a curve of her own between the sim's track and the fitted berth: no swing onto the berth at up to twice cruise speed, no crab leaving (the sim turns a departing ship no harder than her way allows, and she lies the way round she came in)
-  - [x] Invaders come about and sail off bow first when they leave (sailed away stern first)
+  - [x] Coming in and leaving, a curve of her own between the sim's track and the fitted berth, laid once and run along its length: top speed within 1.1-1.25x cruise (was up to 2x swinging onto the berth), crab under 15 degrees and only below walking pace (was 50-70 degrees leaving); the sim turns a departing ship no harder than her way allows, and she lies the way round she came in
+  - [x] Invaders: national colours fly (checked: Spanish); they come about and sail off bow first when they leave (sailed away stern first), each makes for her own stretch of beach (two lay hull in hull), the view holds them off the sand while the boats go in (bow ran up the beach), sails taken in while hove to
   - [x] Ship on the slipway scaled to the yard's slip (a galleon ran through the shipyard's mould loft and over the neighbouring pier)
   - [x] Pause: sails, flags, wake and pose frozen (identical frames)
 

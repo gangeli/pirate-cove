@@ -149,9 +149,11 @@ export function launchInvasion(g: Game, nat: Nation, strength: number): void {
   const ang = Math.atan2(best[1] - n / 2, best[0] - n / 2);
   for (let i = 0; i < ships; i++) {
     const a = ang + (i - ships / 2) * 0.15;
+    // each makes for her own stretch of the beach, a ship's length apart (they converged on one tile and lay hull in hull)
+    const o = (i - (ships - 1) / 2) * 14;
     g.invaders.push({
       id: g.nextId++, nat, x: n / 2 + Math.cos(a) * n * 0.75, y: n / 2 + Math.sin(a) * n * 0.75, dir: a + Math.PI, hp: 1,
-      soldiers: Math.ceil(strength / ships), tx: best[0], ty: best[1], state: 'approach', timer: 0, fireCd: 3 + i,
+      soldiers: Math.ceil(strength / ships), tx: best[0] - Math.sin(ang) * o, ty: best[1] + Math.cos(ang) * o, state: 'approach', timer: 0, fireCd: 3 + i,
     });
   }
   g.nations[nat].invasion.tally = { ships, soldiers: ships * Math.ceil(strength / ships), sunk: 0, landed: 0, piratesDied0: g.stats.piratesDied };

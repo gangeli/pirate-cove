@@ -789,12 +789,14 @@ export class ShipsView {
         this.group.add(v);
       }
       this.simPose(v, iv.x, iv.y, iv.dir);
+      if (iv.state !== 'sunk') this.holdOff(v, LENGTH[iv.soldiers > 6 ? 'galleon' : 'frigate'], dt);
       this.glide(v, this.pose.x, this.pose.z, this.pose.h, iv.state === 'approach' || iv.state === 'leaving', dt);
       if (iv.state === 'sunk') {
         v.position.y = -iv.timer * 0.4;
         v.rotation.x = Math.min(0.6, iv.timer * 0.08);
       } else this.bob(v, iv.id);
-      this.rig(v, iv.id, iv.state === 'sunk', dt);
+      // hove to off the beach while the boats go in: sails taken in
+      this.rig(v, iv.id, iv.state === 'sunk' || iv.state === 'landing', dt);
     }
     const furlShow = location.search.includes('shipfurl=1'), sailShow = location.search.includes('shipsail=1');
     for (let i = 0; i < this.show.length; i++) {
@@ -995,6 +997,28 @@ export class ShipsView {
   }
 
   /**
+   * An invader stands in until the water ahead of her shoals, her bow already over the sand: the view holds her back
+   * along her heading until the whole hull lies in water (eased, at most two tiles a second)
+   */
+  private holdOff(v: THREE.Object3D, L: number, dt: number): void {
+    const u = v.userData as GlideState, p = this.pose;
+    const c = Math.cos(p.h), sn = Math.sin(p.h);
+    let want = 0;
+    if (this.aground(p.x, p.z, p.h, L, null) > 0) {
+      want = 8;
+      for (let b = 0.5; b < 8; b += 0.5)
+        if (this.aground(p.x - c * b, p.z + sn * b, p.h, L, null) === 0) {
+          want = b;
+          break;
+        }
+    }
+    const cur = u.back ?? 0;
+    u.back = cur + Math.max(-dt * 2, Math.min(dt * 2, want - cur));
+    p.x -= c * u.back;
+    p.z += sn * u.back;
+  }
+
+  /**
    * how far a hull of length L at (x, z, heading) is out of the water (0 = afloat), sampling its outline; with `ext`
    * (the rig's reach fore and aft), also any bowsprit or boom end reaching out over land
    */
@@ -1150,6 +1174,8 @@ interface GlideState {
   /** distance from the berth (Infinity without one) */
   dBerth?: number;
   nudge?: number;
+  /** an invader held back from the beach (tiles astern of the sim's position) */
+  back?: number;
   /** the last two sim samples [t, x, y, dir] x 2, and the frame the newer arrived */
   ip?: Float64Array;
   ipFrame?: number;
