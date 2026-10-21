@@ -16,6 +16,8 @@ section.
 - [ ] Optional quality-for-speed trades on the MacBook, only if the player agrees: depth-normal AO (drops a scene pass), character LODs
 - [~] WebGPU: opt-in only until the palace-goes-dark bug on High is fixed
 
+- [~] Render less: only what's in view in every pass (instance chunks, shadow and AO passes, water grid) and less detail when zoomed out where it doesn't show (characters, trees, buildings, ships) [perf agent]
+
 ## Sound
 - [x] Sound starts muted; the speaker button turns it on (remembered)
 - [x] Music slow to start (moot while muted by default; streams on unmute)
@@ -55,6 +57,8 @@ section.
 - [x] Sails: clean canvas with faint seams; the cloth casts its shadow as it moves (no blotches); furled sails fatter and darker, read as rolled canvas [ship agent]
 - [x] Sailing motion checked on frame sequences and a 60 Hz track (depart, sail, return, dock; high and low): drawn between sim steps (no step stutter, no hitch at waypoints), ease out of and into the berth, bow always where she is going (no crabbing or stern-first), comes alongside on the berth's line, sails taken in on the way in, hull clear of sand and pier; pause freezes sails, flags and wake [ship agent]
 - [x] Ships berth close alongside the rebuilt dock's T-head (fitted berth pulled in toward the pier, hull kept half a tile clear of the lot); WebGPU path run in headless Chromium (wake, cloth, flags draw; no broken shaders) [ship agent]
+
+- [~] Detailed ship check: every class close up, all headings and quality levels, LOD switch, motion, berth (galleon boom over the sand), invaders, shipyard hull [ship check agent]
 
 ## Controls and building
 - [x] Delete (Delete key, Demolish for buildings and roads, road quick action) and undo (button, Ctrl/Cmd+Z)
