@@ -32,6 +32,9 @@ const S = {};
 const bld = (def, pick = 'first') => `(() => { const l = [...g.buildings.values()].filter((b) => b.def === '${def}' && ${pick === 'uc' ? 'b.built < 1' : 'b.built >= 1'}); const b = ${pick === 'owned' ? "l.find((b) => b.owner) ?? l[0]" : 'l[0]'}; if (!b) return 'missing'; a.select({ type: 'building', id: b.id }); h.look(b.x + b.w / 2, b.y + b.h / 2); })()`;
 const per = (cond) => `(() => { const p = [...g.people.values()].find((p) => p.task.kind !== 'dead' && p.task.kind !== 'atsea' && (${cond})); if (!p) return 'missing'; a.select({ type: 'person', id: p.id }); h.look(p.x, p.y); })()`;
 S.hud = `0`;
+// the clock running (not paused) at 4x, and an undo seal beside the bar after laying a road
+S.hud_run = `a.hud.advisorMode = 'off'; g.speed = 4; g.paused = false; a.hud.updateSpeed(); h.after = () => { g.paused = true; g.speed = 1; a.hud.advisorMode = 'full'; a.hud.updateSpeed(); }`;
+S.undo = `(() => { const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); for (let r = 3; r < 20; r++) for (let dx = -r; dx <= r; dx++) for (const dy of [-r, r]) { const x = pal.x + dx, y = pal.y + dy; if (g.cmd({ type: 'road', x, y }).ok) { a.hud.update(); h.look(x, y); h.after = () => { g.cmd({ type: 'undo' }); a.hud.update(); }; return; } } return 'missing'; })()`;
 S.b_palace = bld('palace');
 S.b_dock = bld('dock');
 S.b_farm = bld('corn_farm');
@@ -65,7 +68,9 @@ S.s_raid = `(() => { const s = g.ships.get(h.dockedShip); if (!s) return 'missin
 S.s_kidnap = `(() => { const s = g.ships.get(h.dockedShip); if (!s) return 'missing'; s.mission = 'kidnap'; a.select({ type: 'ship', id: s.id }); })()`;
 S.s_foster = `(() => { const s = g.ships.get(h.dockedShip); if (!s) return 'missing'; s.mission = 'foster_war'; a.select({ type: 'ship', id: s.id }); })()`;
 S.s_atsea = `(() => { const s = [...g.ships.values()].find((s) => s.status === 'atsea'); if (!s) return 'missing'; a.select({ type: 'ship', id: s.id }); })()`;
-S.build = `a.build.show()`;
+S.build = `a.build.show(); h.click('[data-act="cat:infrastructure"]')`;
+S.build_tools = `a.build.show(); h.click('[data-act="cat:tools"]')`;
+S.build_tool_on = `a.setTool({ kind: 'road' }); a.build.show()`;
 S.build_ent = `a.build.show(); h.click('[data-act="cat:entertainment"]')`;
 // a thin treasury (restored before the next state): unaffordable cards and the placement tag that says so
 S.build_poor = `h.poor(); a.build.show(); h.click('[data-act="cat:infrastructure"]')`;
@@ -76,6 +81,7 @@ for (const t of ['overview', 'finances', 'satisfaction', 'pirates', 'captives', 
 S.chart = `a.chart.open(0)`;
 S.chart_ship = `a.chart.open(h.dockedShip)`;
 S.chart_danger = `a.chart.open(h.dockedShip); h.click('[data-act="mode:risk"]')`;
+S.views = `a.overlays.show(false)`;
 S.overlays = `a.overlays.show()`;
 S.overlays_fert = `a.overlays.show(); h.click('[data-act="pick:corn"]')`;
 S.advisor = `await new Promise((r) => setTimeout(r, 600)); a.hud.message({ id: 9e6, kind: 'advisor', title: 'Lumber is running low', text: 'Cap\\'n, our sawmills have barely a plank to their name. Build another timber camp beside thick jungle, or the builders will stand idle.', date: g.date, focus: { x: 60, y: 60 } })`;
@@ -83,7 +89,7 @@ S.toasts = `for (const [k, t, x] of [['ship', 'The Sloop returns', 'She brings 3
 S.toast_read = `${S.toasts}; await new Promise((r) => setTimeout(r, 400)); h.click('.toast .readon')`;
 S.gpu = `try { localStorage.removeItem('bc_gpu_notice'); } catch {} document.querySelector('.gpu-notice')?.remove(); a.hud.gpuNotice('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)'); h.after = () => document.querySelector('.gpu-notice')?.remove()`;
 S.prof_report = `const P = await import('/src/ui/profiler.ts'); P.recordProfile(a, 1); await new Promise((r) => setTimeout(r, 1200)); a.prof?.finish(); await new Promise((r) => setTimeout(r, 300)); h.after = () => document.querySelectorAll('.prof-report,.prof-badge').forEach((e) => e.remove())`;
-S.tooltip = `h.hover('[data-tool="chart"]')`;
+S.tooltip = `h.hover('[data-tool="views"]')`;
 S.menu_game = `a.modal.gameMenu()`;
 S.menu_settings = `a.modal.settings()`;
 S.menu_help = `a.modal.help()`;

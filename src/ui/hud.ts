@@ -1,5 +1,5 @@
 import type { App } from './app';
-import { el, html, setHTML, delegate, fmt, raw, esc, setText, setAttr, setStyle, toggleClass } from './dom';
+import { el, html, setHTML, delegate, fmt, raw, esc, setText, setAttr, setStyle, toggleClass, type Raw } from './dom';
 import { undoLabel } from '../sim/undo';
 import { icon } from './icons';
 import { portraitImg, parrotSvg } from './portraits';
@@ -7,6 +7,13 @@ import type { Message } from '../sim/types';
 import { audio } from '../audio/audio';
 import { Minimap } from './minimap';
 import { ADVISOR_NAME } from '../sim/advisor';
+
+/** the switch at the head of the island's two books: the log and the edicts are one entry on the bar */
+export function bookSwitch(cur: 'log' | 'edicts'): Raw {
+  const b = (id: 'log' | 'edicts', ic: string, label: string, k: string) =>
+    html`<button class="${cur === id ? 'on' : ''}" data-act="book:${id}" role="tab" aria-selected="${cur === id ? 'true' : 'false'}" data-tip="${label} <i>(${k})</i>">${icon(ic, 16)}${label}</button>`;
+  return html`<nav class="seg bookswitch" role="tablist" aria-label="Island books">${b('log', 'book', 'Log', 'L')}${b('edicts', 'scroll', 'Edicts', 'X')}</nav>`;
+}
 
 const PARROT_KEYS = new Set(['sail_ho', 'escape', 'rebellion', 'invasion', 'accessory_parrot']);
 
@@ -93,7 +100,7 @@ export class Hud {
   }
 
   show(on: boolean): void {
-    for (const e of [this.top, this.bar, this.ticker, this.clock]) e.classList.toggle('hidden', !on);
+    for (const e of [this.top, this.bar, this.ticker, this.clock, this.undoBtn]) e.classList.toggle('hidden', !on);
     if (on) setTimeout(() => this.update(), 0);
     this.minimap.show(on);
     if (!on) {
@@ -104,51 +111,48 @@ export class Hud {
     }
     // in play the speaker joins the clock's speed row; on the title screen it goes back to its corner
     const sb = this.app.root.querySelector('.soundbtn');
-    if (sb) (on ? this.clock.querySelector('.speed')! : this.app.root).appendChild(sb);
+    if (sb) (on ? this.clock.querySelector('.speedrow')! : this.app.root).appendChild(sb);
   }
 
   private buildToolbar(): void {
-    // [id, icon, label, key, tooltip]; null is a divider between building tools and the island's books
-    const tools: ([string, string, string, string, string] | null)[] = [
-      ['build', 'hammer', 'Build', 'B', '<b>Construction</b><br>Build structures for your island.'],
-      ['road', 'road', 'Road', '', '<b>Roads</b><br>Drag to lay a road. Most buildings must touch one.'],
-      ['clear', 'axe', 'Clear', '', '<b>Clear Vegetation</b><br>Drag to cut down trees.'],
-      ['demolish', 'bulldoze', 'Demolish', 'Del', '<b>Demolish</b><br>Tear down a building or pull up a road. Undo brings it back.'],
-      ['undo', 'undo', 'Undo', 'Ctrl+Z', '<b>Undo</b><br>Nothing to undo yet.'],
-      null,
-      ['overlays', 'eye', 'Overlays', 'O', '<b>Overlays</b><br>See order, fear, anarchy, fertility and more.'],
-      ['edicts', 'scroll', 'Edicts', 'X', '<b>Edicts</b><br>Issue royal decrees.'],
-      ['chart', 'telescope', 'Chart', 'M', '<b>Sea Chart</b><br>Send your ships out to plunder.'],
-      ['log', 'book', 'Log', 'L', '<b>Island Log</b><br>Finances, people, nations and more.'],
-      ['menu', 'wheel', 'Menu', 'Esc', '<b>Game Menu</b><br>Save, load and settings.'],
+    // four books on the bar, each opening the one place for its kind of work; undo floats beside it
+    const tools: [string, string, string, string, string][] = [
+      ['build', 'hammer', 'Build', 'B', '<b>Build</b><br>Buildings, roads, clearing and demolition.'],
+      ['views', 'eye', 'Views', 'O · M', '<b>Map views</b><br>Tint the ground (order, fear, soil…) or open the sea chart.'],
+      ['island', 'book', 'Island', 'L · X', '<b>Island</b><br>The island log and your royal edicts.'],
+      ['menu', 'wheel', 'Menu', 'Esc', '<b>Game menu</b><br>Save, load and settings.'],
     ];
     setHTML(this.bar, html`
-      ${tools.map((t) => {
-        if (!t) return html`<div class="sep"></div>`;
-        const [id, ic, label, k, tip] = t;
-        return html`<button class="tool" data-act="tool:${id}" data-tool="${id}" data-tip="${tip}${k ? ` <i>(${k})</i>` : ''}" aria-label="${label}">${icon(ic, 24)}<span class="lbl">${label}</span></button>`;
-      })}
+      ${tools.map(([id, ic, label, k, tip]) => html`<button class="tool" data-act="tool:${id}" data-tool="${id}" data-tip="${tip} <i>(${k})</i>" aria-label="${label}">${icon(ic, 26)}<span class="lbl">${label}</span></button>`)}
 `);
+    this.undoBtn = el('button', 'undobtn hidden gone', this.app.root);
+    this.undoBtn.dataset.act = 'undo';
+    setHTML(this.undoBtn, html`<span class="seal">${icon('undo', 22)}</span><span class="cap"><b>Undo</b><span class="what"></span></span>`);
+    delegate(this.undoBtn, { undo: () => this.app.undo() }, () => audio.sfx('ui_click'));
+    this.undoBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+    // the clock: one big face that pauses and resumes (date beneath a "Paused" ribbon), the speeds beside it
     setHTML(this.clock, html`
-      <div class="speed">
-        <div class="sp" data-act="speed:0" data-tip="Pause (Space)">${icon('pause', 16)}</div>
-        <div class="sp" data-act="speed:1" data-tip="Normal speed (1)">${icon('play', 16)}</div>
-        <div class="sp" data-act="speed:2" data-tip="Fast (2)">${icon('fast', 16)}</div>
-        <div class="sp" data-act="speed:4" data-tip="Faster (3)">${icon('faster', 16)}</div>
-        <div class="sp" data-act="speed:8" data-tip="Fastest (4)"><b style="font-family:var(--head)">8×</b></div>
-      </div>
-      <div class="date" data-tip="Game date"><span class="dv"></span><small class="dl"></small></div>`);
+      <button class="clockface" data-act="pause" aria-label="Pause or resume" data-tip="<b>Pause / resume</b> <i>(Space)</i>">
+        <span class="pp">${icon('pause', 20, 'i-pause')}${icon('play', 20, 'i-play')}</span>
+        <span class="date"><span class="dv"></span><small class="dl"></small></span>
+        <span class="ribbon">Paused</span>
+      </button>
+      <div class="speedrow">
+        <div class="seg speed" role="radiogroup" aria-label="Game speed">${[1, 2, 4, 8].map((v, i) => html`<button class="sp" data-act="speed:${v}" role="radio" aria-checked="false" data-tip="${['Normal speed', 'Fast', 'Faster', 'Fastest'][i]} <i>(${i + 1})</i>">${v}×</button>`)}</div>
+      </div>`);
     delegate(this.clock, {
-      speed: (v) => {
+      pause: () => {
         const g = this.app.game;
-        if (v === '0') g.paused = !g.paused;
-        else {
-          g.speed = +v;
-          g.paused = false;
-        }
+        g.paused = !g.paused;
         this.updateSpeed();
       },
-    });
+      speed: (v) => {
+        const g = this.app.game;
+        g.speed = +v;
+        g.paused = false;
+        this.updateSpeed();
+      },
+    }, () => audio.sfx('ui_click'));
     delegate(this.bar, {
       tool: (id) => {
         const a = this.app;
@@ -157,26 +161,27 @@ export class Hud {
           if (a.touchMode) a.select(null);
           return a.build.toggle();
         }
-        if (id === 'road') return a.setTool(a.tool.kind === 'road' ? { kind: 'select' } : { kind: 'road' });
-        if (id === 'clear') return a.setTool(a.tool.kind === 'clear' ? { kind: 'select' } : { kind: 'clear' });
-        if (id === 'demolish') return a.setTool(a.tool.kind === 'demolish' ? { kind: 'select' } : { kind: 'demolish' });
-        if (id === 'overlays') return a.overlays.toggle();
-        if (id === 'edicts') return a.edicts.toggle();
-        if (id === 'chart') return a.chart.toggle();
-        if (id === 'log') return a.log.toggle();
+        if (id === 'views') return a.overlays.visible || a.chart.visible ? a.closeAll() : a.overlays.show(false);
+        if (id === 'island') {
+          if (a.log.visible || a.edicts.visible) return a.closeAll();
+          return this.islandBook === 'edicts' ? a.edicts.show() : a.log.show();
+        }
         if (id === 'menu') return a.modal.gameMenu();
-        if (id === 'undo') return a.undo();
       },
     });
   }
+
+  /** which of the island's two books the Island button opens: the one used last */
+  islandBook: 'log' | 'edicts' = 'log';
+  private undoBtn!: HTMLElement;
 
   updateTool(): void {
     const k = this.app.tool.kind;
     for (const t of this.bar.querySelectorAll<HTMLElement>('.tool')) {
       const id = t.dataset.tool!;
-      const on = (id === 'road' && k === 'road') || (id === 'clear' && k === 'clear') || (id === 'demolish' && k === 'demolish') ||
-        (id === 'build' && (this.app.build?.visible || k === 'build')) || (id === 'overlays' && this.app.overlays?.visible) ||
-        (id === 'edicts' && this.app.edicts?.visible) || (id === 'chart' && this.app.chart?.visible) || (id === 'log' && this.app.log?.visible);
+      const a = this.app;
+      const on = (id === 'build' && (a.build?.visible || k === 'build' || k === 'road' || k === 'clear' || k === 'demolish' || k === 'unroad')) ||
+        (id === 'views' && (a.overlays?.visible || a.chart?.visible)) || (id === 'island' && (a.edicts?.visible || a.log?.visible));
       t.classList.toggle('on', !!on);
     }
     const hints: Record<string, string> = {
@@ -191,6 +196,14 @@ export class Hud {
       demolish: 'Tap a building or a road to tear it down.',
       build: 'Tap the ground to move the building, then confirm.',
     };
+    // the build drawer covers the hint's place: the tool's hint waits until the drawer closes
+    if (this.app.build?.visible) {
+      clearTimeout(this.hintTimer);
+      this.hintTimer = 0;
+      this.touchHintFor = '';
+      this.hint.classList.add('hidden');
+      return;
+    }
     const h = hints[k];
     if (!h) this.touchHintFor = '';
     // on touch the hint is a short reminder, once per tool; the controls beside the ghost do the explaining after that
@@ -203,10 +216,16 @@ export class Hud {
 
   updateSpeed(): void {
     const g = this.app.game;
+    if (!g) return;
+    toggleClass(this.clock, 'paused', g.paused);
     for (const s of this.clock.querySelectorAll<HTMLElement>('.sp')) {
-      const v = +s.dataset.act!.split(':')[1];
-      s.classList.toggle('on', v === 0 ? g.paused : !g.paused && g.speed === v);
+      const on = g.speed === +s.dataset.act!.split(':')[1];
+      toggleClass(s, 'on', on);
+      setAttr(s, 'aria-checked', on ? 'true' : 'false');
     }
+    const face = this.clock.querySelector('.clockface') as HTMLElement;
+    setAttr(face, 'aria-label', g.paused ? 'Resume the game' : 'Pause the game');
+    setAttr(face, 'data-tip', g.paused ? '<b>Paused</b><br>Tap to resume. <i>(Space)</i>' : `<b>Running at ${g.speed}×</b><br>Tap to pause. <i>(Space)</i>`);
   }
 
   /**
@@ -273,7 +292,7 @@ export class Hud {
     const els: Record<string, HTMLElement> = {
       goldRes: q('[data-act="gold"]'), hoardRes: q('[data-act="hoard"]'), piratesRes: q('[data-act="pirates"]'), mood: q('.mood'),
       dv: this.clock.querySelector('.dv') as HTMLElement, dl: this.clock.querySelector('.dl') as HTMLElement,
-      undo: this.bar.querySelector('[data-tool="undo"]') as HTMLElement,
+      undo: this.undoBtn, undoWhat: this.undoBtn.querySelector('.what') as HTMLElement,
     };
     for (const e of this.top.querySelectorAll<HTMLElement>('[data-k]')) els[e.dataset.k!] = e;
     return els;
@@ -316,8 +335,12 @@ export class Hud {
     const left = Math.max(0, g.settings.years - g.yearsElapsed);
     setText(e.dl, g.over ? 'reign over' : `${left.toFixed(1)} years left`);
     const ul = undoLabel(g);
-    toggleClass(e.undo, 'disabled', !ul);
-    setAttr(e.undo, 'data-tip', ul ? `<b>Undo</b><br>Take back: ${esc(ul)} <i>(Ctrl+Z)</i>` : '<b>Undo</b><br>Nothing to undo yet. <i>(Ctrl+Z)</i>');
+    toggleClass(e.undo, 'gone', !ul);
+    if (ul) {
+      setText(e.undoWhat, ul);
+      setAttr(e.undo, 'data-tip', `<b>Undo</b><br>Take back: ${esc(ul)} <i>(${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘Z' : 'Ctrl+Z'})</i>`);
+      setAttr(e.undo, 'aria-label', `Undo: ${ul}`);
+    }
     this.updateSpeed();
     // advisor timeout
     if (this.advUntil && performance.now() > this.advUntil) this.dismissAdvisor();

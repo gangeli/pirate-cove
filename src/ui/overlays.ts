@@ -45,17 +45,19 @@ export class Overlays {
     delegate(this.panel, {
       pick: (k) => (k === 'none' ? this.hide() : this.set(k as Kind)),
       close: () => this.hide(),
+      chart: () => this.app.chart.open(0),
     }, () => audio.sfx('ui_click'));
   }
   toggle(): void {
     if (this.visible) this.hide();
     else this.show();
   }
-  show(): void {
+  /** open the map views; `tint` starts on the last overlay (the O key), otherwise the ground stays plain until one is picked */
+  show(tint = true): void {
     this.app.closeAll();
     this.visible = true;
     this.panel.classList.remove('hidden');
-    if (this.kind === 'none') this.set('order');
+    if (tint && this.kind === 'none') this.set(this.last);
     this.render();
     this.app.hud.updateTool();
   }
@@ -66,8 +68,10 @@ export class Overlays {
     this.set('none');
     this.app.hud.updateTool();
   }
+  private last: Kind = 'order';
   set(k: Kind): void {
     this.kind = k;
+    if (k !== 'none') this.last = k;
     this.t = 99;
     if (k === 'none') this.app.world.setOverlay(null);
     this.render();
@@ -75,7 +79,8 @@ export class Overlays {
   private render(): void {
     const cur = ALL.find((x) => x[0] === this.kind);
     setHTML(this.panel, html`<button class="close" data-act="close" aria-label="Close overlays">${icon('close', 14)}</button>
-      <header class="sheet-head"><h3>Overlays</h3><div class="sub">Tint the ground to see what the island hides.</div></header>
+      <header class="sheet-head"><h3>Map views</h3><div class="sub">Tint the ground to see what the island hides.</div></header>
+      <button class="btn small views-chart" data-act="chart" data-tip="<b>Sea chart</b><br>Send your ships out to plunder. <i>(M)</i>">${icon('telescope', 16)} Sea chart</button>
       <div class="ov-groups"><button class="ov off" data-act="pick:none" aria-label="Turn the overlay off">${icon('close', 14)}<span>Off</span></button>${GROUPS.map(([g, list]) => html`<div class="ov-group"><h4 class="eng">${g}</h4>
         <div class="ov-list" role="radiogroup" aria-label="${g}">${list.map(([k, n, sh, ic]) => html`<button class="ov ${this.kind === k ? 'on' : ''}" data-act="pick:${k}" role="radio" aria-checked="${this.kind === k ? 'true' : 'false'}">
           <i class="sw" style="background:${this.legend(k)}"></i>${icon(ic, 15)}<span class="full">${n}</span><span class="short">${sh}</span></button>`)}</div></div>`)}</div>

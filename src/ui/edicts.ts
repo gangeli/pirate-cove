@@ -6,6 +6,7 @@ import { NATIONS, NATION_NAMES, type Nation } from '../sim/data/kings';
 import { edictCost } from '../sim/edicts';
 import { relationLevel } from '../sim/diplomacy';
 import { audio } from '../audio/audio';
+import { bookSwitch } from './hud';
 
 export class EdictsPanel {
   private panel: HTMLElement;
@@ -21,6 +22,7 @@ export class EdictsPanel {
         this.refresh(true);
       },
       close: () => this.hide(),
+      book: (b) => (b === 'log' ? app.log.show() : undefined),
       issue: (arg) => {
         const [id, nation] = arg.split('|');
         const e = EDICT[id];
@@ -70,6 +72,7 @@ export class EdictsPanel {
     this.app.closeAll();
     this.visible = true;
     this.panel.classList.remove('hidden');
+    this.app.hud.islandBook = 'edicts';
     this.refresh(true);
     this.app.hud.updateTool();
     audio.sfx('ui_open');
@@ -107,7 +110,7 @@ export class EdictsPanel {
         <div class="efoot"><span class="meta">${av.cost ? html`<span class="chip">${icon('coin', 12)} ${av.cost}</span>` : html`<span class="chip">Free</span>`}${e.ongoing ? html`<span class="chip">Ongoing</span>` : ''}${e.target !== 'none' ? html`<span class="chip">Pick a ${e.target}</span>` : ''}</span>
         ${active ? html`<button class="btn ghost danger small" data-act="repeal:${id}">Repeal</button>` : html`<button class="btn small ${av.ok ? 'primary' : 'ghost disabled'}" data-act="issue:${id}">${e.target !== 'none' ? 'Choose…' : 'Issue'}</button>`}</div></article>`;
     };
-    patchHTML(this.panel, html`<button class="close" data-act="close" aria-label="Close">${icon('close', 14)}</button>
+    patchHTML(this.panel, html`<button class="close" data-act="close" aria-label="Close">${icon('close', 14)}</button>${bookSwitch('edicts')}
       <header class="sheet-head"><h2>Royal Edicts</h2><div class="sub">Your word is law. Treasury: <b>${fmt(g.treasury)} gold</b></div></header>
       <nav class="tabs book" role="tablist">${(Object.keys(EDICT_TABS) as EdictTab[]).map((t) => html`<button class="t ${t === this.tab ? 'on' : ''}" data-act="tab:${t}" role="tab" aria-selected="${t === this.tab ? 'true' : 'false'}">${icon(icons[t] ?? 'scroll', 15)}${EDICT_TABS[t].replace('International ', '')}</button>`)}</nav>
       <div class="content scroll"><div class="cards-grid">${list.map((e) => card(e.id))}</div></div>`);

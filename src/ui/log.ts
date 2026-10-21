@@ -8,6 +8,7 @@ import { computeScore, medalThresholds } from '../sim/score';
 import { relationLevel } from '../sim/diplomacy';
 import { activityText, shipStatusName } from './inspector';
 import { audio } from '../audio/audio';
+import { bookSwitch } from './hud';
 import { portraitImg } from './portraits';
 
 type Tab = 'overview' | 'finances' | 'satisfaction' | 'pirates' | 'captives' | 'nations' | 'ships' | 'messages';
@@ -28,6 +29,7 @@ export class IslandLog {
         this.refresh(true);
       },
       close: () => this.hide(),
+      book: (b) => (b === 'edicts' ? app.edicts.show() : undefined),
       sort: (k) => {
         this.sort = { key: k, dir: this.sort.key === k ? -this.sort.dir : 1 };
         this.refresh(true);
@@ -66,6 +68,7 @@ export class IslandLog {
     this.app.closeAll();
     this.visible = true;
     this.panel.classList.remove('hidden');
+    this.app.hud.islandBook = 'log';
     this.refresh(true);
     this.app.hud.updateTool();
     audio.sfx('parchment');
@@ -82,7 +85,7 @@ export class IslandLog {
     if (!force && (performance.now() - this.lastRefresh < 2000 || this.panel.matches(':hover'))) return;
     this.lastRefresh = performance.now();
     const body = this[this.tab]();
-    patchHTML(this.panel, html`<button class="close" data-act="close">${icon('close', 14)}</button>
+    patchHTML(this.panel, html`<button class="close" data-act="close" aria-label="Close">${icon('close', 14)}</button>${bookSwitch('log')}
       <header class="sheet-head"><h2>Island Log</h2><div class="sub">${this.app.game.king.name}'s ledgers, rolls and correspondence.</div></header>
       <nav class="tabs book" role="tablist">${TABS.map(([t, n, ic]) => html`<button class="t ${t === this.tab ? 'on' : ''}" data-act="tab:${t}" role="tab" aria-selected="${t === this.tab ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</nav>
       <div class="content scroll">${body}</div>`);
