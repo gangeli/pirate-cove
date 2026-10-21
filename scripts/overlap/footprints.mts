@@ -64,8 +64,8 @@ for (const name of names) {
       console.warn('failed', file, (e as Error).message);
       continue;
     }
-    let low = 0, high = 0, n = 0, out = 0;
-    const side = { '+x': 0, '-x': 0, '+z': 0, '-z': 0 };
+    let low = -9, high = -9, n = 0, out = 0;
+    const side = { '+x': -9, '-x': -9, '+z': -9, '-z': -9 };
     const byMat = new Map<string, number>();
     const bb = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9];
     for (const m of g.meshes) {
@@ -76,19 +76,22 @@ for (const name of names) {
           bb[3] = Math.max(bb[3], x), bb[4] = Math.max(bb[4], y), bb[5] = Math.max(bb[5], z);
           n++;
           const o = Math.max(x - hw, -hw - x, z - hd, -hd - z);
-          if (o <= 0) continue;
-          out++;
+          // (signed: a model that stays inside reports how far inside its nearest part is)
           if (y < LOW) low = Math.max(low, o);
           else high = Math.max(high, o);
-          side['+x'] = Math.max(side['+x'], x - hw), side['-x'] = Math.max(side['-x'], -hw - x);
-          side['+z'] = Math.max(side['+z'], z - hd), side['-z'] = Math.max(side['-z'], -hd - z);
+          if (y < LOW) {
+            side['+x'] = Math.max(side['+x'], x - hw), side['-x'] = Math.max(side['-x'], -hw - x);
+            side['+z'] = Math.max(side['+z'], z - hd), side['-z'] = Math.max(side['-z'], -hd - z);
+          }
+          if (o <= 0) continue;
+          out++;
           const k = r.mat + (y < LOW ? '' : '^');
           byMat.set(k, Math.max(byMat.get(k) ?? 0, o));
         }
       }
     }
     const parts = [...byMat].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', ');
-    const sides = Object.entries(side).filter(([, v]) => v > OK).map(([k, v]) => `${k}${v.toFixed(2)}`).join(' ');
+    const sides = Object.entries(side).map(([k, v]) => `${k}${v >= 0 ? '+' : ''}${v.toFixed(2)}`).join(' ');
     rows.push({ model: file, def, size: [W, D], low, high, side: sides, outPct: (100 * out) / Math.max(1, n), parts, bbox: bb as Row['bbox'] });
   }
 }
@@ -96,7 +99,7 @@ rows.sort((a, b) => b.low - a.low || b.high - a.high);
 const bad = rows.filter((r) => r.low > OK || r.high > OK * 2);
 const show = all ? rows : bad;
 const pad = (s: string, n: number) => (s.length >= n ? s : s + ' '.repeat(n - s.length));
-console.log(pad('model', 22), pad('size', 6), pad('low', 6), pad('high', 6), pad('out%', 6), pad('sides', 26), 'parts');
-for (const r of show) console.log(pad(r.model, 22), pad(r.size.join('x'), 6), pad(r.low.toFixed(2), 6), pad(r.high.toFixed(2), 6), pad(r.outPct.toFixed(1), 6), pad(r.side, 26), r.parts);
+console.log(pad('model', 22), pad('size', 6), pad('low', 6), pad('high', 6), pad('out%', 6), pad('ground reach by side', 36), 'parts');
+for (const r of show) console.log(pad(r.model, 22), pad(r.size.join('x'), 6), pad(r.low.toFixed(2), 6), pad(r.high.toFixed(2), 6), pad(r.outPct.toFixed(1), 6), pad(r.side, 36), r.parts);
 console.log(`\n${rows.length} models checked; ${rows.filter((r) => r.low > OK).length} reach past their footprint at ground level by more than ${OK}, ${rows.filter((r) => r.high > OK * 2).length} overhang above by more than ${OK * 2}`);
 if (jsonOut) writeFileSync(jsonOut, JSON.stringify(rows, null, 1));
