@@ -892,8 +892,56 @@ export function shipClothMaterial(base: GL.Material, uTime: U<number>): THREE.Ma
     const flutter = sin(t.mul(6.0).sub(a.z).add(ph));
     return positionLocal.add(normalGeometry.mul(a.x.mul(breathe).add(a.y.mul(flutter))));
   })();
-  (m as any).castShadowPositionNode = positionLocal; // shadow of the resting cloth, as on WebGL
+  // the shadow pass takes positionNode too, so the shadow moves with the cloth (as on WebGL, where the cloth has a
+  // depth twin): a resting shadow falls on the billowing sail in blotches
   return m;
+}
+
+/**
+ * A ship's wake (ships.ts has the GLSL twin): a ribbon along the bow's recent track riding the same swell as the
+ * water, drawn as the water's own foam noise. aWake: x across the ribbon (-1..1), y the churn astern, z the arms.
+ */
+export function wakeMaterial(u: Record<string, U<any>>, sink: number): THREE.Material {
+  const uTime = ref(u.uTime, 'float'), uNight = ref(u.uNight, 'float');
+  const swell = (p: any, dir: [number, number], steep: number, wl: number) => {
+    const k = 6.2831 / wl, c = Math.sqrt(9.8 / k);
+    const len = Math.hypot(dir[0], dir[1]);
+    const d = [dir[0] / len, dir[1] / len];
+    const f = p.x.mul(d[0]).add(p.y.mul(d[1])).sub(uTime.mul(c)).mul(k).toVar();
+    const a = steep / k;
+    return vec3(cos(f).mul(d[0] * a), sin(f).mul(a), cos(f).mul(d[1] * a));
+  };
+  // the ribbon is built in world space (model matrix identity), as the water is
+  const displaced = Fn(() => {
+    const wp = positionGeometry.add(vec3(0.0, sink, 0.0)).toVar();
+    const off = swell(wp.xz, [1.0, 0.3], 0.08, 18.0).add(swell(wp.xz, [-0.4, 1.0], 0.06, 11.0)).add(swell(wp.xz, [0.7, -0.8], 0.05, 6.0));
+    return wp.add(off.mul(0.6)).add(vec3(0.0, 0.1, 0.0));
+  })();
+  const vWPos = varying(displaced);
+  const colorNode = Fn(() => {
+    const w = attribute('aWake', 'vec3');
+    const ax = abs(w.x).toVar();
+    const arms = smoothstep(0.5, 0.8, ax).mul(float(1.0).sub(smoothstep(0.82, 1.0, ax)));
+    const churn = float(1.0).sub(smoothstep(0.08, 0.5, ax));
+    const cover = clamp(arms.mul(w.z).add(churn.mul(w.y)), 0.0, 1.0).toVar();
+    let n: any = float(0), a = 0.5;
+    let p: any = vWPos.xz.mul(3.4).add(uTime.mul(0.3));
+    for (let i = 0; i < 4; i++) {
+      n = n.add(vnoise(p).mul(a));
+      p = p.mul(2.03);
+      a *= 0.5;
+    }
+    const lo = float(0.66).sub(cover.mul(0.3));
+    // flecks, over a faint milky streak where the water is stirred up
+    const foam = max(smoothstep(lo, lo.add(0.22), n).mul(min(1.0, cover.mul(2.0))), cover.mul(0.3).mul(smoothstep(0.25, 0.65, n)));
+    const col = vec3(0.95, 0.97, 1.0).mul(mix(1.0, 0.25, uNight));
+    return vec4(col, foam.mul(0.7));
+  })();
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  mat.fog = true;
+  mat.positionNode = displaced;
+  mat.colorNode = colorNode;
+  return mat;
 }
 
 // ================================================================================================= building models

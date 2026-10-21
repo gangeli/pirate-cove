@@ -3,6 +3,7 @@ import type { Game } from '../sim/game';
 import type { ShipType } from '../sim/data/ships';
 import type { Ship } from '../sim/types';
 import { dockBerth } from '../sim/people';
+import { DT } from '../sim/time';
 import type { World } from './world';
 import { assetUrl } from './textures';
 import { markSharedTree, markShared } from './dispose';
@@ -84,8 +85,24 @@ function shipModel(type: ShipType): ShipModel | null {
 /**
  * The cloth shader: every vertex moves along its normal by aSail.x (its belly) x a slow breathing plus aSail.y (its
  * free play) x a wave running along aSail.z (nodes.ts shipClothMaterial is the WebGPU twin). One program for all
- * the sails, flags and pennants of every ship; shadows are cast by the cloth at rest.
+ * the sails, flags and pennants of every ship, and one depth twin that casts their shadows as they move (a shadow of
+ * the cloth at rest would fall on the billowing sail in blotches).
  */
+const CLOTH_GLSL = `#include <begin_vertex>
+  {
+    float ph = modelMatrix[3].x * 0.37 + modelMatrix[3].z * 0.23;
+    float breathe = sin(uTime * 1.3 + ph) * 0.12 + sin(uTime * 2.9 + ph * 1.7) * 0.05;
+    transformed += objectNormal * (aSail.x * breathe + aSail.y * sin(uTime * 6.0 - aSail.z + ph));
+  }`;
+function clothShader(m: THREE.Material, key: string): void {
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = wind.uTime;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute vec3 aSail;')
+      .replace('#include <begin_vertex>', CLOTH_GLSL);
+  };
+  m.customProgramCacheKey = () => key;
+}
 const clothMats = new Map<THREE.Material, THREE.Material>();
 function clothMaterial(base: THREE.Material): THREE.Material {
   let m = clothMats.get(base);
@@ -94,53 +111,70 @@ function clothMaterial(base: THREE.Material): THREE.Material {
   if (g) m = g.shipClothMaterial(base as any, wind.uTime) as unknown as THREE.Material;
   else {
     m = base.clone();
-    m.onBeforeCompile = (sh) => {
-      sh.uniforms.uTime = wind.uTime;
-      sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute vec3 aSail;')
-        .replace(
-          '#include <begin_vertex>',
-          `#include <begin_vertex>
-          {
-            float ph = modelMatrix[3].x * 0.37 + modelMatrix[3].z * 0.23;
-            float breathe = sin(uTime * 1.3 + ph) * 0.12 + sin(uTime * 2.9 + ph * 1.7) * 0.05;
-            transformed += objectNormal * (aSail.x * breathe + aSail.y * sin(uTime * 6.0 - aSail.z + ph));
-          }`,
-        );
-    };
-    m.customProgramCacheKey = () => 'shipcloth';
+    clothShader(m, 'shipcloth');
   }
   (m as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
   markShared(m);
   clothMats.set(base, m);
   return m;
 }
+let clothDepthMat: THREE.MeshDepthMaterial | null = null;
+/** WebGL: the cloth's shadow caster (the node material's shadow pass takes its positionNode by itself) */
+function castCloth(m: THREE.Mesh): void {
+  m.castShadow = true;
+  if (gpu()) return;
+  if (!clothDepthMat) {
+    // objectNormal is only declared where the normal chunks run: the depth program skips them, so build it here
+    clothDepthMat = new THREE.MeshDepthMaterial(); // as the shadow map's own depth material
+    clothDepthMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = wind.uTime;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute vec3 aSail;')
+        .replace('#include <begin_vertex>', CLOTH_GLSL.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vec3 objectNormal = vec3(normal);'));
+    };
+    clothDepthMat.customProgramCacheKey = () => 'shipclothdepth';
+    markShared(clothDepthMat);
+  }
+  m.customDepthMaterial = clothDepthMat;
+}
 
 let sailBase: THREE.Material | null = null;
 
-/** sailcloth: the kit's canvas colour, sewn from narrow vertical cloths, a little weathered toward the foot */
+/**
+ * sailcloth: the kit's canvas colour in clean, faintly painted strokes, sewn from narrow vertical cloths (the
+ * texture tiles across every sail). A vertex colour darkens the canvas as it is rolled up on the yards.
+ */
 function sailMaterial(): THREE.Material {
+  const N = 128;
   const c = document.createElement('canvas');
-  c.width = c.height = 128;
+  c.width = c.height = N;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#ece4d0';
-  g.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 1500; i++) {
-    const l = Math.random() < 0.5 ? 255 : 120;
-    g.fillStyle = `rgba(${l},${l - 10},${l - 30},0.05)`;
-    g.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 3, 1 + Math.random() * 3);
-  }
-  for (let x = 0; x < 128; x += 32) {
-    g.fillStyle = 'rgba(120,100,70,0.35)';
-    g.fillRect(x, 0, 1.5, 128);
-    g.fillStyle = 'rgba(255,255,245,0.35)';
-    g.fillRect(x + 2, 0, 1, 128);
+  g.fillStyle = '#efe7d3';
+  g.fillRect(0, 0, N, N);
+  // a soft brushed tone, tiling: low, broad bands at whole periods across the tile (no speckle to shimmer)
+  const img = g.getImageData(0, 0, N, N), d = img.data;
+  for (let y = 0; y < N; y++)
+    for (let x = 0; x < N; x++) {
+      const u = (x / N) * Math.PI * 2, v = (y / N) * Math.PI * 2;
+      const k = 1 + 0.018 * Math.sin(v * 2 + Math.sin(u) * 0.8) + 0.012 * Math.sin(u * 4 + v) + 0.008 * Math.sin(v * 7 - u * 2);
+      const i = (y * N + x) * 4;
+      d[i] *= k;
+      d[i + 1] *= k;
+      d[i + 2] *= k;
+    }
+  g.putImageData(img, 0, 0);
+  // the seams between the cloths: a fine stitched shadow line and the light catching the overlap beside it
+  for (let x = 0; x < N; x += 32) {
+    g.fillStyle = 'rgba(140,118,84,0.22)';
+    g.fillRect(x, 0, 1, N);
+    g.fillStyle = 'rgba(255,252,240,0.25)';
+    g.fillRect(x + 1, 0, 2, N);
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = 4;
-  return new THREE.MeshStandardMaterial({ map: t, color: new THREE.Color('#ddd2b8').multiplyScalar(1.12), roughness: 0.95, side: THREE.DoubleSide });
+  return new THREE.MeshStandardMaterial({ map: t, color: new THREE.Color('#ddd2b8').multiplyScalar(1.12), roughness: 0.95, side: THREE.DoubleSide, vertexColors: true });
 }
 let pennantBase: THREE.Material | null = null;
 
@@ -205,8 +239,8 @@ class Sails {
           this.play[k * 3 + 2] = tr;
           uv[k * 2] = u * width * 1.1;
           uv[k * 2 + 1] = v * height * 1.1;
-          // furled: rolled up tight along the pinned edge (the yard, the boom or the foot of the stay)
-          const r = 0.06 + 0.05 * Math.sin(Math.PI * u);
+          // furled: rolled up along the pinned edge (the yard, the boom or the foot of the stay), fattest mid-yard
+          const r = 0.08 + 0.075 * Math.sin(Math.PI * u) ** 0.7;
           const a = v * Math.PI * 2.6;
           if (s.kind === 'sq') {
             q.lerpVectors(A, B, 0.04 + u * 0.92).add(new THREE.Vector3(0.03 + Math.cos(a) * r, -0.08 + Math.sin(a) * r, 0));
@@ -233,10 +267,11 @@ class Sails {
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     g.setAttribute('aSail', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
     g.setIndex(idx);
     sailBase ??= sailMaterial();
     this.mesh = new THREE.Mesh(g, clothMaterial(sailBase));
-    this.mesh.castShadow = true;
+    castCloth(this.mesh);
     this.mesh.receiveShadow = true;
     this.mesh.name = 'sails';
     this.setFurl(0);
@@ -249,6 +284,7 @@ class Sails {
     const g = this.mesh.geometry;
     const pos = g.getAttribute('position') as THREE.BufferAttribute, ps = pos.array as Float32Array;
     const att = g.getAttribute('aSail') as THREE.BufferAttribute, as = att.array as Float32Array;
+    const col = g.getAttribute('color') as THREE.BufferAttribute, cs = col.array as Float32Array;
     // furling gathers the foot up first, then rolls it in
     const e = f * f * (3 - 2 * f), keep = 1 - e;
     for (let i = 0; i < ps.length; i++) ps[i] = (this.rest[i] + this.belly[i] * keep) * keep + this.furled[i] * e;
@@ -257,8 +293,12 @@ class Sails {
       as[i + 1] = this.play[i + 1] * keep * keep;
       as[i + 2] = this.play[i + 2];
     }
+    // rolled canvas: the folds shade each other, a little warmer and darker than the cloth spread to the sun
+    const cr = 1 - 0.2 * e, cg = 1 - 0.23 * e, cb = 1 - 0.28 * e;
+    for (let i = 0; i < cs.length; i += 3) (cs[i] = cr), (cs[i + 1] = cg), (cs[i + 2] = cb);
     pos.needsUpdate = true;
     att.needsUpdate = true;
+    col.needsUpdate = true;
     g.computeVertexNormals();
     g.computeBoundingSphere();
   }
@@ -283,7 +323,7 @@ function waveFlag(fl: THREE.Group): void {
     }
     g.setAttribute('aSail', new THREE.BufferAttribute(a, 3));
     m.material = clothMaterial(m.material as THREE.Material);
-    m.castShadow = true;
+    castCloth(m);
   });
 }
 
@@ -303,79 +343,216 @@ function pennant(len: number): THREE.Mesh {
   g.computeVertexNormals();
   pennantBase ??= new THREE.MeshStandardMaterial({ color: 0xa8322a, roughness: 0.9, side: THREE.DoubleSide });
   const m = new THREE.Mesh(g, clothMaterial(pennantBase));
-  m.castShadow = true;
+  castCloth(m);
   return m;
 }
 
 // ------------------------------------------------------------------------------------------- wake
 
-let wakeMat: THREE.MeshBasicMaterial | null = null;
-/** a foam decal on the water: bow wave, the two arms of the Kelvin wake and the churned trail astern (bow at +x) */
-function wakeMaterial(): THREE.MeshBasicMaterial {
+/** trail points per wake (newest first), how long a point's foam lasts (s) and the slowest speed that raises any */
+const WK = 28, WAKE_LIFE = 6, WAKE_MIN = 0.3;
+/**
+ * The ribbon's vertices lie this far below sea level and its shader lifts them back onto the swell: the ambient
+ * occlusion's normal pass draws the scene without the shaders, and a ribbon level with (or just above) the flat
+ * water there shows as dark blotches (z-fighting) and a dark line along its edge. Sunk, the water hides it.
+ */
+const WAKE_SINK = 1;
+
+let wakeMat: THREE.Material | null = null;
+/**
+ * The wake's foam (nodes.ts wakeMaterial is the WebGPU twin): the water's own foam noise, thresholded by how much
+ * churn and Kelvin arms each point of the ribbon carries, on the same swell as the water so it rides the waves. Not
+ * an opaque decal: nothing but scattered foam shows, thinning to nothing at the edges and along the trail.
+ */
+function wakeMaterial(u: Record<string, THREE.IUniform>): THREE.Material {
   if (wakeMat) return wakeMat;
-  const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 192;
-  const g = c.getContext('2d')!;
-  const bowX = 512 * 0.78, sternX = 512 * 0.5, cy = 96;
-  g.lineCap = 'round';
-  // the arms: two lines spreading from the bow, broken into flecks, fading aft
-  for (let i = 0; i < 900; i++) {
-    const t = Math.random();
-    const side = Math.random() < 0.5 ? -1 : 1;
-    const x = bowX - t * bowX;
-    const y = cy + side * (8 + t * 80) + (Math.random() - 0.5) * (4 + t * 14);
-    g.fillStyle = `rgba(255,255,255,${(0.75 * (1 - t) ** 1.3).toFixed(3)})`;
-    g.beginPath();
-    g.arc(x, y, 1.5 + Math.random() * 2.5 * (1 - t * 0.5), 0, 7);
-    g.fill();
+  const g = gpu();
+  wakeMat = g
+    ? (g.wakeMaterial(u as any, WAKE_SINK) as unknown as THREE.Material)
+    : new THREE.ShaderMaterial({
+        uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {}]),
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        fog: true,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+        defines: { WAKE_SINK: WAKE_SINK.toFixed(1) },
+        vertexShader: /* glsl */ `
+uniform float uTime;
+attribute vec3 aWake;
+varying vec3 vW; varying vec2 vXZ;
+#include <fog_pars_vertex>
+vec3 gerstner(vec2 p, vec2 dir, float steep, float wl, float t){
+  float k = 6.2831/wl; float c = sqrt(9.8/k); vec2 d = normalize(dir);
+  float f = k*(dot(d,p) - c*t); float a = steep/k;
+  return vec3(d.x*a*cos(f), a*sin(f), d.y*a*cos(f));
+}
+void main(){
+  vec3 wp = position + vec3(0.0, WAKE_SINK, 0.0); // built in world space, sunk (see Wake)
+  vec3 off = gerstner(wp.xz, vec2(1.0,0.3), 0.08, 18.0, uTime) + gerstner(wp.xz, vec2(-0.4,1.0), 0.06, 11.0, uTime) + gerstner(wp.xz, vec2(0.7,-0.8), 0.05, 6.0, uTime);
+  wp += off * 0.6 + vec3(0.0, 0.1, 0.0);
+  vW = aWake; vXZ = wp.xz;
+  vec4 mvPosition = viewMatrix * vec4(wp, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+  #include <fog_vertex>
+}`,
+        fragmentShader: /* glsl */ `
+uniform float uTime; uniform float uNight;
+varying vec3 vW; varying vec2 vXZ;
+#include <fog_pars_fragment>
+float hash12(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(hash12(i),hash12(i+vec2(1,0)),f.x), mix(hash12(i+vec2(0,1)),hash12(i+vec2(1,1)),f.x), f.y); }
+void main(){
+  float ax = abs(vW.x);
+  float arms = smoothstep(0.5, 0.8, ax) * (1.0 - smoothstep(0.82, 1.0, ax));
+  float churn = 1.0 - smoothstep(0.08, 0.5, ax);
+  float cover = clamp(arms * vW.z + churn * vW.y, 0.0, 1.0);
+  // the shore foam's noise and drift, a little finer
+  vec2 p = vXZ * 3.4 + uTime * 0.3;
+  float n = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { n += a * vnoise(p); p *= 2.03; a *= 0.5; }
+  float lo = 0.66 - cover * 0.3;
+  // flecks, over a faint milky streak where the water is stirred up
+  float foam = max(smoothstep(lo, lo + 0.22, n) * min(1.0, cover * 2.0), cover * 0.3 * smoothstep(0.25, 0.65, n));
+  gl_FragColor = vec4(vec3(0.95, 0.97, 1.0) * mix(1.0, 0.25, uNight), foam * 0.7);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}`,
+      });
+  if (!g) {
+    const m = wakeMat as THREE.ShaderMaterial;
+    m.uniforms.uTime = u.uTime;
+    m.uniforms.uNight = u.uNight;
   }
-  // the trail astern: a churned band, widening and fading
-  for (let i = 0; i < 1400; i++) {
-    const t = Math.random() ** 0.8;
-    const x = sternX - t * sternX;
-    const y = cy + (Math.random() - 0.5) * (14 + t * 40);
-    g.fillStyle = `rgba(255,255,255,${(0.55 * (1 - t) ** 1.5).toFixed(3)})`;
-    g.beginPath();
-    g.arc(x, y, 1 + Math.random() * 3, 0, 7);
-    g.fill();
-  }
-  // bow wave: foam pushed up either side of the stem
-  for (let i = 0; i < 500; i++) {
-    const a = (Math.random() - 0.5) * 2.4;
-    const r = 6 + Math.random() * 16;
-    g.fillStyle = `rgba(255,255,255,${(0.5 + Math.random() * 0.4).toFixed(3)})`;
-    g.beginPath();
-    g.arc(bowX + 6 - Math.abs(Math.sin(a)) * 30 + Math.cos(a) * 6, cy + Math.sin(a) * r * 1.4, 1.5 + Math.random() * 2, 0, 7);
-    g.fill();
-  }
-  // as an alpha map (white foam on clear): bake the flecks' coverage into the green channel, fading every edge
-  // so the decal never shows its rectangle
-  const img = g.getImageData(0, 0, 512, 192), d = img.data;
-  for (let y = 0; y < 192; y++)
-    for (let x = 0; x < 512; x++) {
-      const i = (y * 512 + x) * 4, u = x / 512, v = y / 192;
-      const fade = Math.min(1, u / 0.35, (1 - u) / 0.08) * Math.min(1, v / 0.2, (1 - v) / 0.2);
-      const a = (d[i + 3] / 255) * Math.max(0, fade) * 255;
-      d[i] = d[i + 1] = d[i + 2] = a;
-      d[i + 3] = 255;
-    }
-  g.putImageData(img, 0, 0);
-  const t = new THREE.CanvasTexture(c);
-  wakeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, alphaMap: t, transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -2 });
   markShared(wakeMat);
   return wakeMat;
 }
 
-function wake(L: number): THREE.Mesh {
-  const w = new THREE.Mesh(new THREE.PlaneGeometry(1.8 * L, 0.7 * L).rotateX(-Math.PI / 2), wakeMaterial().clone());
-  // the texture's bow sits 78% along it: put that at the stem
-  w.position.set(0.46 * L - (0.78 - 0.5) * 1.8 * L, 0.06, 0);
-  w.renderOrder = 2;
-  w.name = 'wake';
-  w.raycast = () => {};
-  w.visible = false;
-  return w;
+/**
+ * A ship's wake: a ribbon laid along the bow's recent track, so it bends through the ship's turns. Each point keeps
+ * the time and speed it was laid at: the foam spreads into the two arms of a Kelvin wake as it ages, the churn
+ * starts at the stern, and everything fades with age, with distance astern and with the speed she was making.
+ * Three vertices across (the edges and the keel line) so the ribbon follows the swell; rebuilt only while it shows.
+ */
+class Wake {
+  readonly mesh: THREE.Mesh;
+  private px = new Float32Array(WK);
+  private pz = new Float32Array(WK);
+  private pt = new Float32Array(WK);
+  private ps = new Float32Array(WK);
+  private n = 0;
+  private live = false;
+  private lastT = -1;
+  private lastX = 0;
+  private lastZ = 0;
+
+  constructor(private L: number, private halfBeam: number, u: Record<string, THREE.IUniform>) {
+    const nv = (WK + 1) * 3; // bow, stern and WK - 1 laid points, three across
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(nv * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute('aWake', new THREE.BufferAttribute(new Float32Array(nv * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    const idx: number[] = [];
+    for (let j = 0; j < WK; j++)
+      for (let k = 0; k < 2; k++) {
+        const a = j * 3 + k, b = a + 1, c = a + 4, d = a + 3;
+        idx.push(a, d, b, b, d, c);
+      }
+    g.setIndex(idx);
+    g.setDrawRange(0, 0);
+    this.mesh = new THREE.Mesh(g, wakeMaterial(u));
+    this.mesh.name = 'wake';
+    this.mesh.renderOrder = 3; // after the water
+    this.mesh.frustumCulled = false; // a handful of vertices, rebuilt as she moves
+    this.mesh.raycast = () => {};
+    this.mesh.visible = false;
+  }
+
+  /**
+   * Lay the trail of a ship whose bow is at (x, z) and stern at (sx, sz), making `speed`; t is the world clock (still
+   * while paused). The ribbon runs along the keel from the bow to the stern, then along the stern's track.
+   */
+  update(x: number, z: number, sx: number, sz: number, speed: number, t: number): void {
+    // paused (the clock and the ship stand still): the ribbon too
+    if (t === this.lastT && x === this.lastX && z === this.lastZ) return;
+    this.lastT = t;
+    this.lastX = x;
+    this.lastZ = z;
+    const L = this.L, seg = L * 0.08;
+    const px = this.px, pz = this.pz;
+    // a new point every `seg` along the track; points whose foam has gone are dropped off the end
+    if ((this.n === 0 && speed > WAKE_MIN) || (this.n > 0 && Math.hypot(sx - px[0], sz - pz[0]) >= seg)) {
+      px.copyWithin(1, 0, WK - 1);
+      pz.copyWithin(1, 0, WK - 1);
+      this.pt.copyWithin(1, 0, WK - 1);
+      this.ps.copyWithin(1, 0, WK - 1);
+      px[0] = sx;
+      pz[0] = sz;
+      this.pt[0] = t;
+      this.ps[0] = speed;
+      this.n = Math.min(WK - 1, this.n + 1);
+    }
+    while (this.n > 0 && t - this.pt[this.n - 1] > WAKE_LIFE) this.n--;
+    if (this.n === 0) {
+      if (this.live) (this.mesh.visible = false), (this.live = false);
+      return;
+    }
+    const g = this.mesh.geometry;
+    const pos = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
+    const wk = (g.getAttribute('aWake') as THREE.BufferAttribute).array as Float32Array;
+    const m = this.n + 2; // the live bow and stern, then the laid points
+    let along = 0, any = false, ox = x, oz = z;
+    for (let j = 0; j < m; j++) {
+      // point j: the bow, the stern, then the laid points astern
+      const cx = j === 0 ? x : j === 1 ? sx : px[j - 2], cz = j === 0 ? z : j === 1 ? sz : pz[j - 2];
+      along += Math.hypot(cx - ox, cz - oz);
+      ox = cx;
+      oz = cz;
+      // the track's direction here: from the point astern to the point ahead
+      const ja = Math.max(0, j - 1), jb = Math.min(m - 1, j + 1);
+      let tx = (ja === 0 ? x : ja === 1 ? sx : px[ja - 2]) - (jb === 1 ? sx : px[jb - 2]);
+      let tz = (ja === 0 ? z : ja === 1 ? sz : pz[ja - 2]) - (jb === 1 ? sz : pz[jb - 2]);
+      const tl = Math.hypot(tx, tz);
+      if (tl < 1e-5) (tx = 1), (tz = 0);
+      else (tx /= tl), (tz /= tl);
+      const age = j < 2 ? 0 : t - this.pt[j - 2], sp = j < 2 ? speed : this.ps[j - 2];
+      const life = Math.max(0, 1 - age / WAKE_LIFE) ** 1.5 * Math.min(1, Math.max(0, (sp - WAKE_MIN) / 1.6)) * (1 - smooth(1.2 * L, 2.2 * L, along)) * Math.min(1, (m - 1 - j) / 3);
+      // the bow wave: kept low, the arms grow along the hull; the churn starts at the stern
+      const arms = life * (0.35 + 0.65 * smooth(0, 0.4 * L, along));
+      const churn = life * smooth(0.8 * L, 1.1 * L, along) * 0.9;
+      if (arms > 0.01 || churn > 0.01) any = true;
+      // the arms spread out at a narrower angle than a real Kelvin wake
+      const hw = this.halfBeam * 1.15 + along * 0.2;
+      for (let k = 0; k < 3; k++) {
+        const s = k - 1, i = (j * 3 + k) * 3;
+        pos[i] = cx - tz * hw * s;
+        pos[i + 1] = -WAKE_SINK;
+        pos[i + 2] = cz + tx * hw * s;
+        wk[i] = s;
+        wk[i + 1] = churn;
+        wk[i + 2] = arms;
+      }
+    }
+    g.getAttribute('position').needsUpdate = true;
+    g.getAttribute('aWake').needsUpdate = true;
+    g.setDrawRange(0, (m - 1) * 12);
+    this.live = any;
+    this.mesh.visible = any;
+  }
+
+  /** forget the trail (she is gone from sight, or put somewhere else) */
+  reset(): void {
+    this.n = 0;
+    this.lastT = -1;
+    this.live = this.mesh.visible = false;
+  }
+
+  dispose(): void {
+    this.mesh.geometry.dispose();
+  }
 }
 
 // ------------------------------------------------------------------------------------------- the view
@@ -459,9 +636,10 @@ export class ShipsView {
       flags.push(o);
     }
     g.userData.flags = flags;
-    const wk = wake(L);
-    g.add(wk);
+    const wk = new Wake(L, src.plan.beam * s * 0.5, this.world.water.uniforms);
+    this.group.add(wk.mesh);
     g.userData.wake = wk;
+    g.userData.L = L;
     return g;
   }
 
@@ -510,8 +688,8 @@ export class ShipsView {
   private drop(v: THREE.Object3D): void {
     this.group.remove(v);
     (v.userData.sails as Sails | undefined)?.dispose();
-    const wk = v.userData.wake as THREE.Mesh | undefined;
-    if (wk) (wk.geometry.dispose(), (wk.material as THREE.Material).dispose());
+    const wk = v.userData.wake as Wake | undefined;
+    if (wk) (this.group.remove(wk.mesh), wk.dispose());
   }
 
   pickShip(ray: THREE.Raycaster): number {
@@ -529,8 +707,13 @@ export class ShipsView {
     return v && v.visible ? v.position.clone() : null;
   }
 
+  /** scratch: a ship's pose this frame (x, z, heading about y) */
+  private pose = { x: 0, z: 0, h: 0 };
+  private frame = 0;
+
   update(dt: number): void {
     this.t += dt;
+    this.frame++;
     const g = this.game;
     for (const s of g.ships.values()) {
       let v = this.views.get(s.id);
@@ -544,13 +727,19 @@ export class ShipsView {
         this.views.set(s.id, v);
         this.group.add(v);
       }
-      v.visible = s.status !== 'atsea' && s.status !== 'lost';
-      if (!v.visible) continue;
+      if (s.status === 'atsea' || s.status === 'lost') {
+        if (v.visible) this.hide(v);
+        continue;
+      }
+      v.visible = true;
       const moving = s.status === 'departing' || s.status === 'returning';
-      const [tx, tz, th] = this.berthed(s, v, dt);
-      this.glide(v, tx, tz, th, moving, dt);
+      this.simPose(v, s.vx, s.vy, s.vdir);
+      this.berthed(s, v, dt);
+      const u = v.userData as GlideState;
+      this.glide(v, this.pose.x, this.pose.z, this.pose.h, moving, dt);
       this.bob(v, s.id);
-      this.rig(v, s.id, furledFor(s.status), dt);
+      // coming in, she takes in sail over the last stretch to her berth
+      this.rig(v, s.id, furledFor(s.status) || (s.status === 'returning' && (u.dBerth ?? Infinity) < berthEase(LENGTH[s.type]) * 1.4), dt);
     }
     // invaders
     const inv = g.invaders ?? [];
@@ -564,15 +753,17 @@ export class ShipsView {
         this.invaderViews.set(iv.id, v);
         this.group.add(v);
       }
-      this.glide(v, iv.x, iv.y, -iv.dir, iv.state === 'approach', dt);
+      this.simPose(v, iv.x, iv.y, iv.dir);
+      this.glide(v, this.pose.x, this.pose.z, this.pose.h, iv.state === 'approach', dt);
       if (iv.state === 'sunk') {
         v.position.y = -iv.timer * 0.4;
         v.rotation.x = Math.min(0.6, iv.timer * 0.08);
       } else this.bob(v, iv.id);
       this.rig(v, iv.id, iv.state === 'sunk', dt);
     }
-    const furlShow = location.search.includes('shipfurl=1');
-    for (const sh of this.show) {
+    const furlShow = location.search.includes('shipfurl=1'), sailShow = location.search.includes('shipsail=1');
+    for (let i = 0; i < this.show.length; i++) {
+      const sh = this.show[i];
       if (!sh.v) {
         sh.v = this.instance(sh.type) ?? undefined;
         if (!sh.v) continue;
@@ -580,8 +771,11 @@ export class ShipsView {
         this.group.add(sh.v);
       }
       const v = sh.v;
-      this.glide(v, sh.x, sh.z, sh.head, false, dt);
-      (v.userData as GlideState).speed = furlShow ? 0 : 2;
+      if (sailShow) {
+        // ?shipsail=1: each sails a slow circle about her spot (wake, heel and turn under way)
+        const a = this.t * 0.12 + i * 2;
+        this.glide(v, sh.x + Math.cos(a) * 18, sh.z + Math.sin(a) * 18, sh.head, true, dt);
+      } else this.glide(v, sh.x, sh.z, sh.head, false, dt);
       this.bob(v, sh.id);
       this.rig(v, sh.id, furlShow, dt);
     }
@@ -591,15 +785,71 @@ export class ShipsView {
     }
   }
 
-  /**
-   * Where the view puts a ship: the sim's position, moved so the hull lies in water. At (and near) its berth that is a
-   * fitted berth, searched once per dock; underway, a small sideways nudge away from any shore the hull would cross.
-   */
-  private berthed(s: Ship, v: THREE.Object3D, dt: number): [number, number, number] {
+  /** a ship gone out of sight (out to sea): her wake goes with her, and she glides from wherever she reappears */
+  private hide(v: THREE.Object3D): void {
+    v.visible = false;
+    (v.userData.wake as Wake | undefined)?.reset();
     const u = v.userData as GlideState;
+    u.glided = false;
+    u.ip = undefined;
+  }
+
+  /**
+   * The sim moves ships in fixed 0.1 s steps (several a frame at 8x). The view draws each where the sim had her one
+   * step ago plus the time since, between the last two sim positions it saw, so she moves evenly from frame to frame
+   * (easing toward the sim's position instead gives a speed that jumps at every step). Stands still while paused.
+   */
+  private simPose(v: THREE.Object3D, x: number, y: number, dir: number): void {
+    const u = v.userData as GlideState, g = this.game, now = g.time;
+    let ip = u.ip;
+    if (!ip) {
+      ip = u.ip = new Float64Array(8);
+      ip[0] = now - DT;
+      ip[4] = now;
+      ip[1] = ip[5] = x;
+      ip[2] = ip[6] = y;
+      ip[3] = ip[7] = dir;
+    } else if (x !== ip[5] || y !== ip[6] || dir !== ip[7]) {
+      if (Math.hypot(x - ip[5], y - ip[6]) > 8) {
+        // put somewhere else (back from the sea): no sliding across
+        ip[1] = x;
+        ip[2] = y;
+        ip[3] = dir;
+        ip[0] = now - DT;
+      } else if (now - ip[4] > DT * 1.5 && (u.ipFrame ?? 0) < this.frame - 1) {
+        // under way again after lying still: she was where she lay until a step ago
+        ip[1] = ip[5];
+        ip[2] = ip[6];
+        ip[3] = ip[7];
+        ip[0] = now - DT;
+      } else ip.copyWithin(0, 4, 8);
+      ip[4] = now;
+      ip[5] = x;
+      ip[6] = y;
+      ip[7] = dir;
+      u.ipFrame = this.frame;
+    }
+    const a = Math.max(0, Math.min(1, (now - DT + g.pending - ip[0]) / Math.max(1e-6, ip[4] - ip[0])));
+    const dd = Math.atan2(Math.sin(ip[7] - ip[3]), Math.cos(ip[7] - ip[3]));
+    this.pose.x = ip[1] + (ip[5] - ip[1]) * a;
+    this.pose.z = ip[2] + (ip[6] - ip[2]) * a;
+    this.pose.h = -(ip[3] + dd * a);
+  }
+
+  /**
+   * Where the view puts a ship (this.pose, from simPose): moved so the hull lies in water. At (and near) its berth
+   * that is a fitted berth, searched once per dock, eased so she gathers way leaving it and loses it coming in (the
+   * sim's ship keeps a steady speed to the very end); underway, a small sideways nudge away from any shore the hull
+   * would cross.
+   */
+  private berthed(s: Ship, v: THREE.Object3D, dt: number): void {
+    const u = v.userData as GlideState, p = this.pose;
     const L = LENGTH[s.type];
-    const dock = s.dock ? this.game.buildings.get(s.dock) : undefined;
-    let x = s.vx, z = s.vy, head = -s.vdir;
+    const moving = s.status === 'departing' || s.status === 'returning';
+    const dockId = s.status === 'returning' ? s.returnDock ?? s.dock : s.dock;
+    const dock = dockId ? this.game.buildings.get(dockId) : undefined;
+    u.near = 0;
+    u.dBerth = Infinity;
     if (dock) {
       const [bx, by, bdir] = dockBerth(dock);
       const key = `${dock.id}:${bx},${by}:${s.type}`;
@@ -608,22 +858,35 @@ export class ShipsView {
         u.berth = this.fitBerth(bx, by, -bdir, L, dock);
       }
       const b = u.berth!;
-      const w = 1 - smooth(1, 7, Math.hypot(s.vx - bx, s.vy - by));
-      x += (b[0] - bx) * w;
-      z += (b[1] - by) * w;
-      if (!(s.status === 'departing' || s.status === 'returning')) head = b[2];
-      if (w > 0.99) return [x, z, head];
+      let d = Math.hypot(p.x - bx, p.z - by);
+      // f(d) = 2d²/E - d³/E²: meets the sim's track at E at the sim's speed, and comes to rest at the berth
+      const E = berthEase(L);
+      if (d < E && d > 1e-6) {
+        const f = (2 * d) / E - (d * d) / (E * E);
+        p.x = bx + (p.x - bx) * f;
+        p.z = by + (p.z - by) * f;
+        d *= f;
+      }
+      u.dBerth = d;
+      u.near = 1 - smooth(0, E * 0.8, d);
+      u.berthHead = b[2];
+      const w = 1 - smooth(1, 7, d);
+      p.x += (b[0] - bx) * w;
+      p.z += (b[1] - by) * w;
+      if (!moving) p.h = b[2];
+      if (w > 0.99) return;
     }
     // underway: lean off the shore if the hull would cross it
-    const hd = u.head ?? head;
+    const hd = u.head ?? p.h;
     const nx = Math.sin(hd), nz = Math.cos(hd); // abeam (local +z)
-    let best = 0, bestV = this.aground(x + nx * (u.nudge ?? 0), z + nz * (u.nudge ?? 0), hd, L, null);
-    if (bestV > 0) for (const o of [-3, -2, -1.2, -0.6, 0, 0.6, 1.2, 2, 3]) {
-      const vio = this.aground(x + nx * o, z + nz * o, hd, L, null) + Math.abs(o) * 0.02;
+    let best = 0, bestV = this.aground(p.x + nx * (u.nudge ?? 0), p.z + nz * (u.nudge ?? 0), hd, L, null);
+    if (bestV > 0) for (const o of NUDGES) {
+      const vio = this.aground(p.x + nx * o, p.z + nz * o, hd, L, null) + Math.abs(o) * 0.02;
       if (vio < bestV) (bestV = vio), (best = o);
     } else best = u.nudge ?? 0;
     u.nudge = (u.nudge ?? 0) + (best - (u.nudge ?? 0)) * (1 - Math.exp(-dt * 1.5));
-    return [x + nx * u.nudge, z + nz * u.nudge, head];
+    p.x += nx * u.nudge;
+    p.z += nz * u.nudge;
   }
 
   /** how far a hull of length L at (x, z, heading) is out of the water (0 = afloat), sampling its outline */
@@ -635,7 +898,8 @@ export class ShipsView {
     for (let i = 0; i <= 6; i++) {
       const lx = -hl + (2 * hl * i) / 6;
       const taper = 1 - (Math.abs(lx) / hl) ** 3 * 0.6;
-      for (const lz of [-hb * taper, 0, hb * taper]) {
+      for (let k = -1; k <= 1; k++) {
+        const lz = k * hb * taper;
         const wx = x + lx * c + lz * sn, wz = z - lx * sn + lz * c;
         const h = m.heightAt(wx, wz);
         if (h > need) v += h - need + 0.05;
@@ -666,18 +930,18 @@ export class ShipsView {
     return best;
   }
 
-  /** sails toward their state for this status (furling takes a few seconds), flags streaming down the wind */
+  /** sails toward their state (furling takes a few seconds), the wake laid behind the bow, flags streaming down the wind */
   private rig(v: THREE.Object3D, id: number, furled: boolean, dt: number): void {
     const sails = v.userData.sails as Sails | undefined;
     if (sails) {
       const goal = furled ? 1 : 0;
       if (sails.furl !== goal) sails.setFurl(sails.furl + Math.sign(goal - sails.furl) * Math.min(Math.abs(goal - sails.furl), dt * 0.4));
     }
-    const wk = v.userData.wake as THREE.Mesh | undefined;
+    const u = v.userData as GlideState;
+    const wk = v.userData.wake as Wake | undefined;
     if (wk) {
-      const op = Math.min(0.6, Math.max(0, ((v.userData as GlideState).speed ?? 0) - 0.15) * 0.4);
-      (wk.material as THREE.MeshBasicMaterial).opacity = op;
-      wk.visible = op > 0.01;
+      const h = u.head ?? v.rotation.y, c = Math.cos(h), sn = Math.sin(h), L = v.userData.L as number;
+      wk.update(v.position.x + c * L * 0.47, v.position.z - sn * L * 0.47, v.position.x - c * L * 0.4, v.position.z + sn * L * 0.4, u.speed ?? 0, this.t);
     }
     const flags = v.userData.flags as THREE.Object3D[] | undefined;
     const head = v.rotation.y;
@@ -685,9 +949,9 @@ export class ShipsView {
   }
 
   /**
-   * The sim moves ships in 0.1 s steps (further per step at 8x): ease the view toward the sim's position each frame so
-   * they glide, and turn the bow smoothly toward the way the ship is actually moving (or the sim's heading at rest).
-   * Keeps the ship's speed and rate of turn for the heel, pitch and wake.
+   * Put the view at its pose for this frame and turn the bow the way she is actually moving (toward her berth's
+   * heading as she comes alongside, the rest heading when still), so she never slides sideways or sails stern first.
+   * Keeps her speed and rate of turn for the heel, pitch and wake.
    */
   private glide(v: THREE.Object3D, x: number, z: number, restHeading: number, moving: boolean, dt: number): void {
     const u = v.userData as GlideState;
@@ -696,18 +960,25 @@ export class ShipsView {
       v.position.set(x, 0, z);
       u.head = restHeading;
       u.glided = true;
-      u.speed = u.turn = 0;
+      u.speed = u.turn = u.velX = u.velZ = 0;
+      (v.userData.wake as Wake | undefined)?.reset();
     } else if (dt > 0) {
-      const px = v.position.x, pz = v.position.z, k = 1 - Math.exp(-dt * 5);
-      v.position.x += (x - px) * k;
-      v.position.z += (z - pz) * k;
-      const sp = Math.hypot(v.position.x - px, v.position.z - pz) / dt;
-      u.speed = (u.speed ?? 0) + (sp - (u.speed ?? 0)) * (1 - Math.exp(-dt * 2));
-      const mx = x - v.position.x, mz = z - v.position.z;
-      const want = moving && Math.hypot(mx, mz) > 0.02 ? -Math.atan2(mz, mx) : restHeading;
+      const k = 1 - Math.exp(-dt * 6);
+      u.velX = (u.velX ?? 0) + ((x - v.position.x) / dt - (u.velX ?? 0)) * k;
+      u.velZ = (u.velZ ?? 0) + ((z - v.position.z) / dt - (u.velZ ?? 0)) * k;
+      v.position.x = x;
+      v.position.z = z;
+      u.speed = Math.hypot(u.velX, u.velZ);
+      let want = restHeading;
+      if (moving && u.speed > 0.2) {
+        want = -Math.atan2(u.velZ, u.velX);
+        // alongside her berth she swings to its heading (near: 1 at the berth, 0 an easing length out)
+        const near = u.near ?? 0;
+        if (near > 0 && u.berthHead !== undefined) want += Math.atan2(Math.sin(u.berthHead - want), Math.cos(u.berthHead - want)) * near;
+      }
       let d = want - (u.head ?? want);
       d = Math.atan2(Math.sin(d), Math.cos(d)); // shortest way round
-      const step = d * (1 - Math.exp(-dt * 2.5));
+      const step = d * (1 - Math.exp(-dt * (moving ? 4 : 1.5)));
       u.head = (u.head ?? want) + step;
       u.turn = (u.turn ?? 0) + (step / dt - (u.turn ?? 0)) * (1 - Math.exp(-dt * 3));
     }
@@ -726,7 +997,33 @@ export class ShipsView {
   }
 }
 
-interface GlideState { glided?: boolean; head?: number; speed?: number; turn?: number; berthKey?: string; berth?: [number, number, number]; nudge?: number }
+interface GlideState {
+  glided?: boolean;
+  head?: number;
+  speed?: number;
+  turn?: number;
+  velX?: number;
+  velZ?: number;
+  berthKey?: string;
+  berth?: [number, number, number];
+  berthHead?: number;
+  /** 1 at the berth, 0 an easing length or more out */
+  near?: number;
+  /** distance from the berth (Infinity without one) */
+  dBerth?: number;
+  nudge?: number;
+  /** the last two sim samples [t, x, y, dir] x 2, and the frame the newer arrived */
+  ip?: Float64Array;
+  ipFrame?: number;
+}
+
+/** sideways offsets tried to keep a hull off the shore */
+const NUDGES = [-3, -2, -1.2, -0.6, 0, 0.6, 1.2, 2, 3];
+
+/** how far out from the berth a ship gathers or loses way */
+function berthEase(L: number): number {
+  return Math.max(4, Math.min(7, L * 0.6));
+}
 
 function smooth(e0: number, e1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
