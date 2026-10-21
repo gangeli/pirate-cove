@@ -237,6 +237,21 @@ export async function closeup(app: App, params: URLSearchParams) {
           break search;
         }
       }
+    // staff it from the busiest building with the same job (there may be no one free to hire)
+    const nb = added ? g.buildings.get(added) : undefined;
+    const job = bd?.workers?.[0]?.job;
+    if (nb && job) {
+      nb.priority = 5;
+      const src = [...g.buildings.values()].filter((o) => o !== nb && o.workers.some((id) => g.people.get(id)?.jobRole === job)).sort((p, q) => q.workers.length - p.workers.length)[0];
+      for (const id of src ? src.workers.filter((w) => g.people.get(w)?.jobRole === job).slice(0, bd.workers![0].count) : []) {
+        const p = g.people.get(id)!;
+        src!.workers = src!.workers.filter((w) => w !== id);
+        p.job = nb.id;
+        nb.workers.push(id);
+        p.task = { kind: 'idle' };
+        p.path = null;
+      }
+    }
   }
   const bs = [...g.buildings.values()].filter((b) => b.def === def).sort((a, b) => b.workers.length + b.haulers.length - (a.workers.length + a.haulers.length));
   const b = (added && g.buildings.get(added)) || bs[+(params.get('nth') ?? 0)] || bs[0];
