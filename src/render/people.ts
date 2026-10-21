@@ -74,13 +74,6 @@ const LANE = 0.15;
 const PERSONAL = 0.3;
 /** standing spots on a tile: a sunflower spiral, r = STAND_SPACING * sqrt(k + 0.6), neighbours ~0.3 apart */
 const STAND_SPACING = 0.17;
-/**
- * the far character model only for figures shorter than this on screen (px). The bake's own bound (rest-pose error
- * under half a pixel: 50-107 px) is not the whole story: measured A/B, the far figures differ in ~20% of their
- * pixels at any size (shading and texture inside the figure, the silhouette holds), i.e. ~23 px per figure at the
- * default zoom (19 px tall) but ~4 px per figure at 7.5 px. So: zoomed out only.
- */
-const FAR_PX_MAX = 10;
 /** the nudge rate (tiles per sim second) for someone standing (slow enough to read as shifting weight) and walking */
 const NUDGE_STAND = 0.12, NUDGE_WALK = 0.9, NUDGE_MAX = 0.32;
 const TAU = Math.PI * 2;
@@ -105,8 +98,8 @@ interface Mover {
   anchor: boolean;
   /** snapped this frame (a jump no walk explains): no ground covered, no speed */
   jumped: boolean;
-  /** drawn with the model's far LOD */
-  far: boolean;
+  /** drawn with the model's far LOD level (0: the full model) */
+  lod: number;
   nx: number; ny: number;
   /** drawn ground position, facing (radians about +y, 0 = +z), gait phase (cycles, R heel strike at 0) */
   rx: number; ry: number;
@@ -165,8 +158,8 @@ export class PeopleView {
   legacy = false;
   /** far character models for small figures (debug A/B: off draws everyone with the full model) */
   charLod = true;
-  /** debug: everyone on the far model (true) or the full one (false) whatever their size; null routes by size */
-  forceFar: boolean | null = null;
+  /** debug: everyone on this LOD level (0: the full model, 1..: far levels) whatever their size; null routes by size */
+  forceLevel: number | null = null;
   /** debug: record the drawn foot contact points of these people every frame */
   footLog: Map<number, { t: number; body: [number, number]; pts: [number, number, number][]; ground: number; clip: string }[]> | null = null;
   private movers = new Map<number, Mover>();
@@ -391,7 +384,7 @@ export class PeopleView {
     let m = this.movers.get(per.id);
     if (!m) {
       m = {
-        id: per.id, frame: -9, t0: 0, x0: 0, y0: 0, t1: 0, x1: 0, y1: 0, ox: 0, oy: 0, fx: per.x, fy: per.y, anchor: false, jumped: false, far: false, nx: 0, ny: 0, rx: 0, ry: 0, yaw: 0, phase: hash(per.id, 30),
+        id: per.id, frame: -9, t0: 0, x0: 0, y0: 0, t1: 0, x1: 0, y1: 0, ox: 0, oy: 0, fx: per.x, fy: per.y, anchor: false, jumped: false, lod: 0, nx: 0, ny: 0, rx: 0, ry: 0, yaw: 0, phase: hash(per.id, 30),
         spd: 0, moveW: 0, runW: 0, bx: 0, by: 0, hx: 0, hy: 0, face: NaN, fresh: true, per, y: 0, sc: 1,
       };
       this.movers.set(per.id, m);
@@ -649,7 +642,7 @@ export class PeopleView {
         q.setFromAxisAngle(UP, d.dir);
         const y = g.map.heightAt(d.x, d.z);
         mtx.compose(p3.set(d.x, y, d.z), q, s.set(this.scale, this.scale, this.scale));
-        m.add(mtx, d.clip, d.t ?? this.t, d.look, !!this.forceFar && this.charLod);
+        m.add(mtx, d.clip, d.t ?? this.t, d.look, this.charLod ? this.forceLevel ?? 0 : 0);
       }
     }
     // 1. where everyone is: sim positions interpolated between steps, plus their placement offset
@@ -790,14 +783,17 @@ export class PeopleView {
       q.setFromAxisAngle(UP, m.yaw);
       if (roll) q.multiply(this.q2.setFromAxisAngle(FWD, roll));
       mtx.compose(p3.set(px + Math.sin(m.yaw) * lurch, y, py + Math.cos(m.yaw) * lurch), q, s.set(sc, sc, sc));
-      // near or far model by the height the figure stands on screen (with a little hysteresis, so nobody flickers
-      // between the two at the threshold); the far model passes for the full one below model.farBelowPx
-      if (this.forceFar !== null) m.far = this.forceFar && this.charLod;
-      else if (model.hasFar && this.charLod && cullDebug.lod) {
+      // full model or a far level by the height the figure stands on screen: the coarsest level that passes for the
+      // full one at that height (model.levelPx, from the bake's A/B measurements), with a little hysteresis so nobody
+      // flickers between two at a threshold
+      if (this.forceLevel !== null) m.lod = this.charLod ? this.forceLevel : 0;
+      else if (model.levels && this.charLod && cullDebug.lod) {
         const pix = this.world.volumes.pixels(px, y + 0.5 * model.height * sc, py, model.height * sc);
-        m.far = pix < Math.min(model.farBelowPx, FAR_PX_MAX) * (m.far ? 1.1 : 0.9);
-      } else m.far = false;
-      model.addPose(mtx, clipA, ua, clipB, ub, w, this.lookOf(per), m.far);
+        let k = 0;
+        while (k < model.levels && pix < model.levelPx[k] * (m.lod > k ? 1.1 : 0.9)) k++;
+        m.lod = k;
+      } else m.lod = 0;
+      model.addPose(mtx, clipA, ua, clipB, ub, w, this.lookOf(per), m.lod);
       if (this.footLog?.has(per.id)) {
         model.instanceFeet(mtx, this.feet);
         this.footLog.get(per.id)!.push({ t: now, body: [px, py], pts: this.feet.map((f) => [f.x, f.y, f.z] as [number, number, number]), ground: y, clip: `${clipA}${clipB ? '/' + clipB + ':' + w.toFixed(2) : ''}` });

@@ -4,7 +4,7 @@ import { assetUrl, withKTX2 } from './textures';
 import { gpu } from './backend';
 import { analyzeGait, type FootTrack, type Gait } from './gait';
 import { prepareClips } from './clipfix';
-import { loadCharLod, maxPixels } from './charlod';
+import { loadCharLod, levelPixels } from './charlod';
 
 /**
  * Instanced, GPU-skinned crowds. Each character model's animation clips are baked into a float texture
@@ -102,13 +102,14 @@ export class CrowdModel {
   private readonly dataW = dataWidth();
   clips = new Map<string, ClipInfo>();
   private boneTex!: THREE.DataTexture;
-  /** the full model, and its far LOD (chars/<name>.lod.bin; null when there is none) */
+  /** the full model, and its far LODs, finest first (chars/<name>.lod.bin; none when there is no bake) */
   private near!: Bank;
-  private far: Bank | null = null;
+  private fars: Bank[] = [];
   /** every mesh to add to the scene */
   meshes: THREE.Mesh[] = [];
-  /** a figure of the model's own height drawn shorter than this many pixels may use the far model (charlod.ts maxPixels) */
-  farBelowPx = 0;
+  /** per far level: a figure of the model's own height drawn shorter than this many pixels may use it (charlod.ts
+   *  levelPixels); finest level first */
+  levelPx: number[] = [];
   /** height of the model in its own units (rest pose) */
   height = 1.8;
   /** the bank and slot of the last instance added (instanceFeet) */
@@ -199,12 +200,11 @@ export class CrowdModel {
     if (!geo.boundingBox) geo.computeBoundingBox();
     this.height = Math.max(0.5, geo.boundingBox!.max.y - geo.boundingBox!.min.y);
     this.near = this.makeBank(geo, map ?? null);
-    // the far model: the same vertices with a simplified index (charlod.ts), drawn while it passes for the full one
-    const lod = await loadCharLod(url.replace(/\.glb$/, '.lod.bin'), geo);
-    if (lod) {
+    // the far models: the same vertices with simplified indices (charlod.ts), each drawn while it passes for the full one
+    for (const lod of await loadCharLod(url.replace(/\.glb$/, '.lod.bin'), geo)) {
       regionProvoking(lod.geometry);
-      this.far = this.makeBank(lod.geometry, map ?? null);
-      this.farBelowPx = maxPixels(lod.lod, this.height);
+      this.fars.push(this.makeBank(lod.geometry, map ?? null));
+      this.levelPx.push(levelPixels(lod.lod, this.height));
     }
   }
 
@@ -236,9 +236,9 @@ export class CrowdModel {
     return bank;
   }
 
-  /** has a far model */
-  get hasFar(): boolean {
-    return !!this.far;
+  /** far levels (0: none) */
+  get levels(): number {
+    return this.fars.length;
   }
 
   private inject(mat: THREE.Material, depthOnly: boolean, uData: { value: THREE.DataTexture | null }): void {
@@ -312,19 +312,24 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
   /** begin a frame */
   reset(): void {
     this.near.count = 0;
-    if (this.far) this.far.count = 0;
+    for (const f of this.fars) f.count = 0;
     this.last = null;
   }
 
   /** instances added this frame (near + far) */
   get count(): number {
-    return this.near.count + (this.far?.count ?? 0);
+    return this.fars.reduce((a, f) => a + f.count, this.near.count);
+  }
+
+  /** instances added this frame per level: [near, far 1, far 2, ...] (debug) */
+  get counts(): number[] {
+    return [this.near.count, ...this.fars.map((f) => f.count)];
   }
 
   /** add an instance; t = seconds into the clip */
-  add(matrix: THREE.Matrix4, clip: string, t: number, look: Look, far = false): void {
+  add(matrix: THREE.Matrix4, clip: string, t: number, look: Look, level = 0): void {
     const c = this.clips.get(clip) ?? this.clips.get('idle')!;
-    this.addPose(matrix, clip, t / c.duration, null, 0, 0, look, far);
+    this.addPose(matrix, clip, t / c.duration, null, 0, 0, look, level);
   }
 
   /** a clip's info (frames, duration, measured gait), falling back to idle */
@@ -343,11 +348,11 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
 
   /**
    * add an instance posed by clip `a` at cycle phase `ua`, cross-faded with weight `w` toward clip `b` at phase `ub`
-   * (b = null or w = 0: clip a alone). The hand prop is the one of whichever clip dominates. `far`: draw it with the
-   * far model (when the model has one).
+   * (b = null or w = 0: clip a alone). The hand prop is the one of whichever clip dominates. `level`: 0 draws it with
+   * the full model, k with far level k (the coarsest the model has, if fewer).
    */
-  addPose(matrix: THREE.Matrix4, a: string, ua: number, b: string | null, ub: number, w: number, look: Look, far = false): void {
-    const bank = far && this.far ? this.far : this.near;
+  addPose(matrix: THREE.Matrix4, a: string, ua: number, b: string | null, ub: number, w: number, look: Look, level = 0): void {
+    const bank = level > 0 && this.fars.length ? this.fars[Math.min(level, this.fars.length) - 1] : this.near;
     if (bank.count >= this.cap) return;
     const i = bank.count++;
     if (i >= bank.rows) bank.resize(Math.min(this.cap, bank.rows * 2));
@@ -408,7 +413,7 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
 
   commit(): void {
     this.near.commit();
-    this.far?.commit();
+    for (const f of this.fars) f.commit();
   }
 }
 

@@ -2,43 +2,90 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as THREE from 'three';
-import { parseCharLod, lodGeometry, maxPixels } from '../src/render/charlod';
+import { parseCharLods, encodeCharLods, lodGeometry, maxPixels, levelPixels } from '../src/render/charlod';
 import { InstanceCuller, SHADOW_LAYER, ViewVolumes } from '../src/render/instcull';
 
 const DIR = path.resolve(__dirname, '../public/assets/chars');
 
-/** vertex count of the skinned mesh's first primitive in a GLB */
-function glbVertices(file: string): number {
+/** the skinned mesh's first primitive in a GLB: vertex count and triangle list */
+function glbMesh(file: string): { vertices: number; index: Uint32Array } {
   const b = fs.readFileSync(file);
   const jl = b.readUInt32LE(12), j = JSON.parse(b.subarray(20, 20 + jl).toString());
   const node = j.nodes.find((n: any) => n.skin !== undefined && n.mesh !== undefined);
-  return j.accessors[j.meshes[node.mesh].primitives[0].attributes.POSITION].count;
+  const prim = j.meshes[node.mesh].primitives[0];
+  const a = j.accessors[prim.indices], v = j.bufferViews[a.bufferView];
+  const off = 20 + jl + 8 + (v.byteOffset ?? 0) + (a.byteOffset ?? 0);
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const index = new Uint32Array(a.count);
+  for (let i = 0; i < a.count; i++) index[i] = a.componentType === 5125 ? dv.getUint32(off + i * 4, true) : a.componentType === 5123 ? dv.getUint16(off + i * 2, true) : dv.getUint8(off + i);
+  return { vertices: j.accessors[prim.attributes.POSITION].count, index };
 }
 
 describe('character LOD bakes', () => {
   for (const f of fs.readdirSync(DIR).filter((f: string) => f.endsWith('.glb'))) {
-    it(`${f}: a current, valid far model`, () => {
+    it(`${f}: current, valid far levels`, () => {
       const bin = path.join(DIR, f.replace(/\.glb$/, '.lod.bin'));
       expect(fs.existsSync(bin)).toBe(true);
       const raw = fs.readFileSync(bin);
-      const lod = parseCharLod(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer)!;
-      expect(lod).not.toBeNull();
-      // baked against this very GLB (rerun scripts/assetopt/charlod.mjs if not)
-      expect(lod.vertices).toBe(glbVertices(path.join(DIR, f)));
-      expect(lod.index.length / 3).toBeLessThan(3000);
-      expect(Math.max(...lod.index)).toBeLessThan(lod.vertices);
-      // invisible below some 60 px of figure height
-      expect(maxPixels(lod, 1.7)).toBeGreaterThan(50);
+      const lods = parseCharLods(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer)!;
+      expect(lods).not.toBeNull();
+      const full = glbMesh(path.join(DIR, f));
+      // uv charts of the full mesh (index-connected pieces; atlas seams are split vertices)
+      const par = new Int32Array(full.vertices).map((_, i) => i);
+      const find = (x: number): number => {
+        while (par[x] !== x) x = par[x] = par[par[x]];
+        return x;
+      };
+      for (let t = 0; t < full.index.length; t += 3) {
+        const a = find(full.index[t]);
+        par[find(full.index[t + 1])] = a;
+        par[find(full.index[t + 2])] = find(a);
+      }
+      let prevTris = full.index.length / 3, prevPx = Infinity;
+      for (const lod of lods) {
+        // baked against this very GLB (rerun scripts/assetopt/charlod.mjs if not)
+        expect(lod.vertices).toBe(full.vertices);
+        expect(Math.max(...lod.index)).toBeLessThan(lod.vertices);
+        // each level coarser than the one before, drawn only smaller
+        expect(lod.index.length / 3).toBeLessThan(prevTris);
+        expect(lod.px).toBeGreaterThan(0);
+        expect(lod.px).toBeLessThan(prevPx);
+        // never past its geometric bound (half a pixel of deviation)
+        expect(levelPixels(lod, 1.7)).toBe(lod.px);
+        expect(maxPixels(lod, 1.7)).toBeGreaterThanOrEqual(lod.px);
+        // no triangle joins two uv charts (a collapse across a seam)
+        let crossing = 0;
+        for (let t = 0; t < lod.index.length; t += 3) {
+          const r = find(lod.index[t]);
+          if (find(lod.index[t + 1]) !== r || find(lod.index[t + 2]) !== r) crossing++;
+        }
+        expect(crossing).toBe(0);
+        prevTris = lod.index.length / 3;
+        prevPx = lod.px;
+      }
     });
   }
+
+  it('reads back what it writes', () => {
+    const a = { index: new Uint16Array([0, 1, 2]), vertices: 3, err: 0.002, px: 80 };
+    const b = { index: new Uint16Array([0, 2, 1, 2, 1, 0]), vertices: 3, err: 0.01, px: 10 };
+    const bytes = encodeCharLods([a, b]);
+    const back = parseCharLods(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer)!;
+    expect(back.length).toBe(2);
+    expect([...back[0].index]).toEqual([0, 1, 2]);
+    expect([...back[1].index]).toEqual([0, 2, 1, 2, 1, 0]);
+    expect(back[1].px).toBe(10);
+    expect(back[0].err).toBeCloseTo(0.002);
+    expect(parseCharLods(new ArrayBuffer(8))).toBeNull();
+  });
 
   it('the far geometry shares the full one\'s attributes', () => {
     const full = new THREE.BufferGeometry();
     full.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(9), 3));
     full.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(new Uint16Array(12), 4));
-    const g = lodGeometry(full, { index: new Uint16Array([0, 1, 2]), vertices: 3, err: 0.01 })!;
+    const g = lodGeometry(full, { index: new Uint16Array([0, 1, 2]), vertices: 3, err: 0.01, px: 10 })!;
     expect(g.getAttribute('skinIndex')).toBe(full.getAttribute('skinIndex'));
-    expect(lodGeometry(full, { index: new Uint16Array([0, 1, 2]), vertices: 4, err: 0.01 })).toBeNull();
+    expect(lodGeometry(full, { index: new Uint16Array([0, 1, 2]), vertices: 4, err: 0.01, px: 10 })).toBeNull();
   });
 });
 
