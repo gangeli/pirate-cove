@@ -516,6 +516,8 @@ export class PeopleView {
       return [0, 0];
     }
     if (t.kind === 'fight' || t.kind === 'chase' || t.kind === 'sleep') return [0, 0];
+    // builders face the work going up
+    if (t.kind === 'build' && b) m.face = Math.atan2(b.x + b.w / 2 - ix, b.y + b.h / 2 - iy);
     // standing about (hauling at a door, guarding, partying, idling): a spot of their own on the tile
     const ang = hash(per.id, 40) * TAU, r = 0.1 + hash(per.id, 41) * 0.22;
     const sx = Math.cos(ang) * r, sy = Math.sin(ang) * r;
