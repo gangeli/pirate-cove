@@ -70,3 +70,21 @@ describe('clip repairs', () => {
     expect(v[n - 1]).toBeCloseTo(orig[0], 6);
   });
 });
+
+describe('far model region colours', () => {
+  it('rotates triangles so the two vertices of the majority region are first and last', async () => {
+    const { regionProvoking } = await import('../src/render/crowd');
+    const g = new THREE.BufferGeometry();
+    // regions 1, 1, 2 / 2, 1, 1 / 3, 4, 3 / 5, 6, 7
+    const r = [1, 1, 2, 2, 1, 1, 3, 4, 3, 5, 6, 7];
+    g.setAttribute('color', new THREE.Float32BufferAttribute(r.flatMap((x) => [x / 20, 0, 0]), 3));
+    g.setIndex([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    regionProvoking(g);
+    const I = Array.from(g.getIndex()!.array);
+    const reg = (v: number) => r[v];
+    for (let t = 0; t < 9; t += 3) expect(reg(I[t])).toBe(reg(I[t + 2]));
+    // winding kept: each triangle is a rotation of the original
+    const rot = (a: number[], b: number[]) => [0, 1, 2].some((k) => a.every((v, i) => v === b[(i + k) % 3]));
+    for (let t = 0; t < 12; t += 3) expect(rot(I.slice(t, t + 3), [t, t + 1, t + 2])).toBe(true);
+  });
+});

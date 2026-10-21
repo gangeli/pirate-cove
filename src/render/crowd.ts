@@ -202,6 +202,7 @@ export class CrowdModel {
     // the far model: the same vertices with a simplified index (charlod.ts), drawn while it passes for the full one
     const lod = await loadCharLod(url.replace(/\.glb$/, '.lod.bin'), geo);
     if (lod) {
+      regionProvoking(lod.geometry);
       this.far = this.makeBank(lod.geometry, map ?? null);
       this.farBelowPx = maxPixels(lod.lod, this.height);
     }
@@ -409,6 +410,28 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
     this.near.commit();
     this.far?.commit();
   }
+}
+
+/**
+ * The region colour reaches the fragment as a flat varying: one vertex decides the whole triangle (the last on WebGL,
+ * the first on WebGPU, which nodes.ts asks for). The full model's triangles never straddle two regions, but the far
+ * model's simplified ones can (shirt to trousers), and took whichever region that vertex had: blotches. Rotating each
+ * triangle (winding kept) so that the two vertices sharing a region sit first and last gives it the majority region
+ * on both backends.
+ */
+export function regionProvoking(geo: THREE.BufferGeometry): void {
+  const idx = geo.getIndex(), col = geo.getAttribute('color');
+  if (!idx || !col) return;
+  const I = idx.array as Uint16Array | Uint32Array;
+  const reg = (v: number) => Math.floor(col.getX(v) * 20 + 0.5);
+  for (let t = 0; t + 2 < I.length; t += 3) {
+    const a = I[t], b = I[t + 1], c = I[t + 2];
+    const ra = reg(a), rb = reg(b), rc = reg(c);
+    if (ra === rc) continue; // already first and last (or all three alike)
+    if (ra === rb) (I[t] = b), (I[t + 1] = c), (I[t + 2] = a); // (b, c, a): a and b at the ends
+    else if (rb === rc) (I[t] = c), (I[t + 1] = a), (I[t + 2] = b); // (c, a, b): b and c at the ends
+  }
+  idx.needsUpdate = true;
 }
 
 function put(d: Float32Array, o: number, col: THREE.Color, a: number): void {
