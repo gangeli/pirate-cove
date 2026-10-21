@@ -690,6 +690,7 @@ export class App {
     }
     if (k === 'b') this.build.toggle();
     if (k === 'o') this.overlays.toggle();
+    if ((k === '[' || k === ']') && this.overlays.visible) this.overlays.step(k === ']' ? 1 : -1);
     if (k === 'x') this.edicts.toggle();
     if (k === 'm' || k === 'Tab') {
       ev.preventDefault();

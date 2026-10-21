@@ -232,7 +232,7 @@ export class Modal {
 
 <b>Your hoard</b> is your score. Build a Pirate Cave and a share of all income is skimmed into it.
 
-<b>Controls:</b> WASD or arrow keys pan, mouse wheel zooms, Q/E rotate, right-drag pans. B build, R rotate a building, O overlays, X edicts, M sea chart, L island log, F follow the selection, Space pause, 1-4 speed, Backspace cycles through disgruntled pirates, F5 quicksave.</div>
+<b>Controls:</b> WASD or arrow keys pan, mouse wheel zooms, Q/E rotate, right-drag pans. B build, R rotate a building, O map views ([ and ] step through the tints), X edicts, M sea chart, L island log, F follow the selection, Space pause, 1-4 speed, Backspace cycles through disgruntled pirates, F5 quicksave.</div>
 <div class="row"><button class="btn primary" data-act="do:ok">Got it</button></div>`, { ok: () => this.close() });
   }
 

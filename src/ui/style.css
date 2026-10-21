@@ -586,28 +586,38 @@ table.ledger tr[data-act] { cursor: pointer; }
 .power .sub { font-size: 13px; }
 
 /* ---------- overlays chooser ---------- */
-.legend { position: absolute; right: 14px; top: 124px; padding: 12px 14px 12px; width: 300px; z-index: 6; display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - var(--tb-h) - 110px); }
+/* map views: one row of big tint chips (Off first), a crop picker under Soil, then a one-line key with prev / next */
+.legend { position: absolute; right: 14px; top: 124px; padding: 10px 12px 10px; width: 470px; z-index: 6; display: flex; flex-direction: column; gap: 8px; max-height: calc(100% - var(--tb-h) - 140px); }
+.legend .sheet-head { padding-right: 150px; min-height: 30px; display: flex; align-items: center; }
 .legend .sheet-head h3 { margin: 0; padding: 0; border: 0; font-size: 21px; }
-.legend .sheet-head .sub { font-size: 13px; }
-.ov-groups { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
-.ov-group .eng { font-size: 13.5px; margin-bottom: 4px; }
-.ov-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.ov { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 3px 8px 3px 5px; font: 14.5px/1.1 var(--body); color: var(--ink); text-align: left; cursor: pointer;
-  border: 1px solid color-mix(in srgb, var(--ink2) 40%, transparent); border-radius: 3px; background: rgba(250, 242, 220, 0.35); }
-.ov .sw { display: block; width: 6px; align-self: stretch; border-radius: 1px; box-shadow: inset 0 0 0 1px rgba(40, 20, 5, 0.35); flex: none; }
+.ov-chips { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.ov { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 58px; padding: 6px 2px 9px; font: 13.5px/1 var(--body); color: var(--ink); cursor: pointer;
+  background: rgba(250, 242, 220, 0.45); border: 1px solid color-mix(in srgb, var(--ink2) 55%, transparent); border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(255, 248, 228, 0.5); overflow: hidden; }
 .ov .ic { color: var(--ink2); }
-.ov .full { display: none; }
-.ov.off { display: none; }
-.ov:hover { background: rgba(255, 248, 228, 0.75); }
-.ov.on { color: #f8e8c6; background: linear-gradient(#8a2418, #5e140c); border-color: #3a0806; box-shadow: inset 0 1px 0 rgba(255, 190, 150, 0.25); }
+.ov .nm { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+/* the colour the tint paints, as a stripe along the foot of the chip */
+.ov .sw { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; box-shadow: inset 0 1px 0 rgba(40, 20, 5, 0.35); }
+.ov:hover { background: rgba(255, 248, 228, 0.8); }
+.ov.on { color: #f8e8c6; background: linear-gradient(#8a2418, #5e140c); border-color: #3a0806; box-shadow: inset 0 1px 0 rgba(255, 190, 150, 0.25), 0 0 0 2px color-mix(in srgb, var(--blood) 35%, transparent); }
 .ov.on .ic { color: #f2d8a8; }
+.ov.on .sw { height: 7px; }
 .ov:focus-visible { outline: 2px solid var(--blood-hi); outline-offset: 1px; }
-.ov-key { border-top: 1px solid color-mix(in srgb, var(--ink2) 30%, transparent); padding-top: 8px; }
-.ov-now { font-size: 13.5px; line-height: 1.3; color: var(--ink2); }
-.ov-now b { font-family: var(--head); font-weight: normal; font-size: 15px; color: var(--ink); letter-spacing: 0.03em; margin-right: 4px; }
-.legend .grad { height: 10px; margin: 6px 0 2px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35); border-radius: 1px; }
-.legend .ends { display: flex; justify-content: space-between; font-size: 12.5px; font-style: italic; color: var(--ink3); }
-.legend .actions { margin-top: 0; justify-content: flex-end; }
+/* Off: an inked cross, dashed edge; when on it reads as plain parchment pressed in, not as a tint */
+.ov.off { border-style: dashed; color: var(--ink2); }
+.ov.off .sw { display: none; }
+.ov.off.on { color: var(--ink); background: rgba(90, 60, 30, 0.14); border-style: solid; border-color: var(--ink2); box-shadow: inset 0 2px 5px rgba(60, 30, 10, 0.3); }
+.ov.off.on .ic { color: var(--blood); }
+.ov-crops > button { font-size: 14.5px; }
+.ov-key { display: flex; align-items: center; gap: 8px; border-top: 1px solid color-mix(in srgb, var(--ink2) 30%, transparent); padding-top: 8px; }
+.ov-step { flex: none; width: 36px; height: 36px; padding: 0; display: grid; place-items: center; cursor: pointer; color: var(--ink2); border-radius: 50%;
+  background: rgba(250, 242, 220, 0.45); border: 1px solid color-mix(in srgb, var(--ink2) 60%, transparent); }
+.ov-step:hover { color: var(--blood); border-color: var(--blood); }
+body.touch .ov-step { width: 40px; height: 40px; }
+.ov-scale { flex: 1; min-width: 0; }
+.legend .grad { height: 12px; margin: 0 0 3px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35); border-radius: 1px; }
+.legend .ends { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 12.5px; font-style: italic; color: var(--ink3); }
+.legend .ends b { font: 15px/1.1 var(--head); font-style: normal; font-weight: normal; color: var(--ink); letter-spacing: 0.03em; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-now { margin: 0; font-size: 13.5px; line-height: 1.3; color: var(--ink2); font-style: italic; }
 
 /* ---------- placement hint ---------- */
 .hint { position: absolute; left: 50%; bottom: calc(var(--tb-h) + 10px); transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); box-sizing: border-box; text-align: center; z-index: 8; background: rgba(20, 13, 8, 0.92); color: #e4d6b4; border: 1px solid #000; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 50%, transparent); padding: 5px 14px; font-size: 15px; font-style: italic; pointer-events: none; }
@@ -877,7 +887,7 @@ body.touch .cursor-tip { display: none; }
   /* the four setup tabs fit a phone without scrolling: words only */
   .setup .tabs .t { padding: 5px 7px 4px; }
   .setup .tabs .t .ic { display: none; }
-  .legend { top: 120px; right: 6px; width: 280px; padding: 8px 10px; gap: 6px; }
+  .legend { top: 120px; right: 6px; width: min(440px, calc(100% - 12px)); padding: 8px 10px; gap: 6px; }
   .hint { bottom: calc(var(--tb-h) + 6px); font-size: 13px; }
   .touchbar { bottom: calc(var(--tb-h) + 6px); }
   .menu { padding-left: 6vw; }
@@ -946,15 +956,10 @@ body.touch .cursor-tip { display: none; }
   .ins-foot .btn.primary { padding: 6px 12px; font-size: 16px; }
   /* overlays: a low sheet over the toolbar, so the tinted ground stays in view above it */
   .legend { top: auto; left: 6px; right: 6px; width: auto; bottom: calc(var(--tb-h) + 2px); max-height: none; padding: 8px 10px 8px; gap: 6px; }
-  .legend .sheet-head .sub { display: none; }
   .legend .sheet-head h3 { font-size: 18px; }
-  .ov-groups { flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 4px; padding-bottom: 2px; scrollbar-width: none; }
-  .ov-group { display: contents; }
-  .ov-group .eng { display: none; }
-  .ov-list { display: contents; }
-  .ov { flex: none; min-height: 40px; padding: 3px 10px 3px 5px; }
-  .legend .actions { display: none; }
-  .ov.off { display: flex; color: var(--blood); }
+  .ov-chips { gap: 3px; }
+  .ov { min-height: 54px; font-size: 12.5px; }
+  .ov-now { font-size: 12.5px; }
   /* the log / edicts switch takes its own row above the title, full width beside the close button */
   .bookswitch, body.touch .bookswitch { position: static; display: flex; margin: 0 40px 6px 0; flex: none; }
   .bookswitch > button { flex: 1 1 0; }
@@ -1015,14 +1020,10 @@ body.touch .cursor-tip { display: none; }
   .ins-body { margin-top: 6px; }
   .ins-foot { margin-top: 6px; padding-top: 6px; gap: 5px; }
   .legend { top: auto; left: 6px; right: auto; width: min(560px, calc(100% - 12px)); bottom: calc(var(--tb-h) + 2px); max-height: none; padding: 8px 10px; gap: 6px; }
-  .legend .sheet-head .sub, .legend .actions { display: none; }
   .legend .sheet-head h3 { font-size: 18px; }
-  .ov-groups { flex-direction: row; overflow-x: auto; overflow-y: hidden; gap: 4px; padding-bottom: 2px; scrollbar-width: none; }
-  .ov-group { display: contents; }
-  .ov-group .eng { display: none; }
-  .ov-list { display: contents; }
-  .ov { flex: none; }
-  .ov.off { display: flex; color: var(--blood); }
+  .legend .sheet-head { min-height: 26px; }
+  .ov { min-height: 46px; padding: 4px 2px 8px; gap: 2px; }
+  .ov-key { padding-top: 5px; }
   .ticker { display: flex; top: auto; bottom: calc(var(--tb-h) + 8px); left: auto; right: 8px; width: 260px; }
   .ticker .toast:nth-last-child(n+3) { display: none; }
   .ticker .toast .tx { -webkit-line-clamp: 2; }

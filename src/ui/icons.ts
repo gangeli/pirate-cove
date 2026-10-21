@@ -36,6 +36,8 @@ const P: Record<string, string> = {
   pick: `<g ${S}><path d="M5 20.5l8.5-8.5"/><path d="M7.5 5.5c4.5-2.5 10-1.5 12 3-3.5-1.2-6.5-.8-8.5 1z"/></g><g ${T}><path d="M10 6.5l3.5 3.5"/></g>`,
   quill: `<g ${S}><path d="M20.5 3.5C13 4.5 8.5 9.5 6.5 16.5l-1 3 3-1.5c6.5-2.5 11.5-7 12-14.5z"/><path d="M4 21l9.5-10.5"/></g><g ${T}><path d="M10 13.5l3 .5M12 11l3 .3"/></g>`,
   undo: `<g ${S} stroke-width="1.9"><path d="M8.5 5.5L4 10l4.5 4.5"/><path d="M4.5 10h10a5.5 5.5 0 0 1 0 11H11"/></g>`,
+  chevl: `<path d="M14.5 5.5L8 12l6.5 6.5" ${S} stroke-width="2.4"/>`,
+  chevr: `<path d="M9.5 5.5L16 12l-6.5 6.5" ${S} stroke-width="2.4"/>`,
   check: `<path d="M5 12.5l4.5 4.5L19 7" ${S} stroke-width="2.4"/>`,
   plus: `<path d="M12 5v14M5 12h14" ${S} stroke-width="2.2"/>`,
   minus: `<path d="M5 12h14" ${S} stroke-width="2.2"/>`,
