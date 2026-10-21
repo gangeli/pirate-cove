@@ -33,7 +33,7 @@ const ASPECT = 4 / 3;
 const PAPER_W = 1600;
 const INK = '#3a1a08', BLOOD = '#8a1a10', REACH = '#2c6a36';
 /** the title cartouche, on the southern mainland clear of the seas (centre, map units) */
-const CARTOUCHE: [number, number] = [0.83, 0.935];
+const CARTOUCHE: [number, number] = [0.82, 0.905];
 const LEVELS = ['Uncharted', 'Surveyed', 'Charted', 'Familiar seas', 'Like the back of our hand', 'Our own waters'];
 
 type Mode = 'reach' | 'risk' | 'reward';
@@ -393,7 +393,7 @@ export class SeaChart {
     g.lineWidth = 1.5;
     for (let i = 0; i < 70; i++) {
       const x = rnd() * W, y = H * (0.82 + rnd() * 0.17);
-      if (Math.abs(x / W - CARTOUCHE[0]) < 0.15 && y > H * 0.88) continue;
+      if (Math.abs(x / W - CARTOUCHE[0]) < 0.15 && y > H * 0.85) continue;
       g.beginPath();
       g.moveTo(x - 9, y);
       g.lineTo(x, y - 10);

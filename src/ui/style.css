@@ -1219,7 +1219,7 @@ body.touch .toggle { min-height: 40px; }
 .sea-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; }
 .sea-meter { display: inline-flex; align-items: center; gap: 4px; color: var(--ink2); }
 .sea-meter .pips { display: inline-flex; gap: 2px; }
-.sea-meter .pips i { width: 8px; height: 8px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--ink2) 55%, transparent); }
+.sea-meter .pips i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--ink2) 55%, transparent); }
 .sea-meter.risk .pips i.on { background: var(--blood); border-color: #3a0806; }
 .sea-meter.reward .pips i { border-radius: 1px; transform: rotate(45deg) scale(0.85); }
 .sea-meter.reward .pips i.on { background: #b8901e; border-color: #5a3a08; }

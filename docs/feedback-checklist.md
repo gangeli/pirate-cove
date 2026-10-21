@@ -54,7 +54,7 @@ section.
 - [~] Ship panel: Set sail always in the panel (done in 7a9d2aa), quieter orders, spoils bar, rename [UI agent]
 - [~] "Treat crew" was unclear: now "Bonus −500" with a tooltip; restyle as a transactional button [UI agent]
 - [~] Remove "Hide details" (× folds the inspector) [UI agent: done in 7a9d2aa]
-- [~] Sea chart side sheet: too much text; remove the Set sail and Ship details buttons and the orders block; sea, danger, plunder and sail time as icons; nations as a flag row [UI agent]
+- [x] Sea chart side sheet: too much text; remove the Set sail and Ship details buttons and the orders block; sea, danger, plunder and sail time as icons; nations as a flag row [UI agent]
 - [~] Map views and overlays easy to navigate on desktop and phone (Soil with a crop picker, chips, prev/next) [done; polish ongoing]
 - [x] Bolder × close buttons on menus and overlays [UI agent]
 - [x] Filled worker slots show the person's portrait, empty ones a placeholder [UI agent]
