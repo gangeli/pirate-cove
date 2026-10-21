@@ -1013,7 +1013,9 @@ function unload(g: Game, s: Ship, dock: Building | undefined): void {
   if (l.wealthy) parts.push(`${l.wealthy} wealthy hostage${l.wealthy > 1 ? 's' : ''}`);
   if (l.recruits) parts.push(`${l.recruits} new recruits`);
   const summary = parts.length ? parts.join(', ') : 'nothing but sunburn';
-  g.msg('ship', `${s.name} Returns`, `The ${s.name} is back from her ${missionName(s)}, bringing ${summary}.\n\n${s.log.map((e) => `${e.date}: ${e.text}`).join('\n')}`, l.gold > 500 ? 'big_plunder' : l.gold > 0 || l.captives ? 'ship_returns' : 'ship_returns_empty', dock ? { x: dock.x, y: dock.y } : undefined, true);
+  const m = g.msg('ship', `${s.name} Returns`, `The ${s.name} is back from her ${missionName(s)}, bringing ${summary}.\n\n${s.log.map((e) => `${e.date}: ${e.text}`).join('\n')}`, l.gold > 500 ? 'big_plunder' : l.gold > 0 || l.captives ? 'ship_returns' : 'ship_returns_empty', dock ? { x: dock.x, y: dock.y } : undefined, true);
+  // the same news as data, for the letter's icons (display only: nothing in the sim reads it)
+  m.data = { kind: 'voyage', ship: s.name, mission: missionName(s), gold: l.gold, treasury: treasuryShare, captives: l.captives, skilled: [...l.skilled], wealthy: l.wealthy, recruits: l.recruits, cannons: l.cannons, hull: s.hull, log: s.log.map((e) => ({ date: e.date, text: e.text })) };
   g.events.push({ type: 'plunder', ship: s.id, gold: l.gold });
   s.voyage = undefined;
   s.enemyNat = undefined;

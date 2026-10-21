@@ -214,7 +214,7 @@ export async function walktest(app: App, params: URLSearchParams) {
 
 /**
  * Debug: a close look at a working building, e.g. ?play=1&bot=1&closeup=corn_farm&dist=5&yaw=0.6: the one of that type
- * with the most workers (the game runs; ?sel=1 selects it, showing its people's role rings).
+ * with the most workers (the game runs; ?pick=1 selects it, showing its people's role rings).
  */
 export async function closeup(app: App, params: URLSearchParams) {
   const g = app.game;
@@ -229,7 +229,7 @@ export async function closeup(app: App, params: URLSearchParams) {
   app.world.rig.lookAt(b.x + b.w / 2, b.y + b.h / 2, true);
   app.world.rig.setDist(+(params.get('dist') ?? 6), true);
   for (let i = 0; i < 30; i++) app.world.rig.update(0.2, innerWidth, innerHeight);
-  if (params.get('sel')) app.select({ type: 'building', id: b.id });
+  if (params.get('pick')) app.select({ type: 'building', id: b.id });
   if (params.get('speed')) g.speed = +params.get('speed')!;
   (window as any).__closeup = { id: b.id, workers: b.workers.length, haulers: b.haulers.length };
 }

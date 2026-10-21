@@ -6,6 +6,7 @@ import type { Message } from '../sim/types';
 import { audio } from '../audio/audio';
 import { listSaves } from './saves';
 import { portraitImg } from './portraits';
+import { voyageStrip } from './tally';
 import { setBackendPreference } from '../render/backend';
 
 export class Modal {
@@ -51,7 +52,9 @@ export class Modal {
     const lines = m.text.split('\n\n');
     this.show(html`<div class="seal">${icon(m.kind === 'ship' ? 'ship' : m.kind === 'bad' || m.kind === 'alert' ? 'skull' : 'coin', 30)}</div>
       <h2>${m.title}</h2><div class="sub">${m.date}</div>
-      <div class="body">${lines[0]}${lines.length > 1 ? html`<hr class="rule"><div style="font-size:14px;color:#4a3018">${lines.slice(1).join('\n\n')}</div>` : ''}</div>
+      ${m.data?.kind === 'voyage'
+        ? html`<div class="body letter-v"><div class="lede">Back from her ${m.data.mission}.</div>${voyageStrip(m.data)}</div>`
+        : html`<div class="body">${lines[0]}${lines.length > 1 ? html`<hr class="rule"><div style="font-size:14px;color:#4a3018">${lines.slice(1).join('\n\n')}</div>` : ''}</div>`}
       <div class="row">${focus ? html`<button class="btn ghost" data-act="do:go">${icon('eye', 15)} Show me</button>` : ''}<button class="btn primary" data-act="do:ok">Aye!</button></div>`, {
       ok: () => this.close(),
       go: () => {

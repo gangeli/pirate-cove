@@ -249,7 +249,25 @@ export interface Message {
   focus?: { x: number; y: number };
   modal?: boolean;
   read?: boolean;
+  /** what the letter reports, for the UI to draw (never read by the sim) */
+  data?: MessageData;
 }
+
+/** structured contents of a letter: a ship's homecoming */
+export type MessageData = {
+  kind: 'voyage';
+  ship: string;
+  mission: string;
+  gold: number;
+  treasury: number;
+  captives: number;
+  skilled: string[];
+  wealthy: number;
+  recruits: number;
+  cannons: number;
+  hull: number;
+  log: { date: string; text: string }[];
+};
 
 export interface KingState {
   name: string;

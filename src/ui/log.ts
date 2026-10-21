@@ -4,6 +4,7 @@ import { icon } from './icons';
 import { RANKS, JOB_NAMES, BUILDING } from '../sim/data/buildings';
 import { NATIONS, NATION_NAMES, NATION_ADJ, BACKGROUNDS, QUALITIES, FLAWS } from '../sim/data/kings';
 import { SHIPS, MISSION_NAMES } from '../sim/data/ships';
+import { voyageStrip } from './tally';
 import { computeScore, medalThresholds } from '../sim/score';
 import { relationLevel } from '../sim/diplomacy';
 import { activityText, shipStatusName } from './inspector';
@@ -203,13 +204,13 @@ export class IslandLog {
     const g = this.app.game;
     const list = [...g.ships.values()];
     return html`<div class="table-wrap"><table class="ledger"><tr><th>Ship</th><th>Type</th><th>Captain</th><th>Crew</th><th>Status</th><th>Mission</th><th>Hull</th><th>Cannons</th></tr>
-      ${list.map((s) => html`<tr data-act="ship:${s.id}" style="cursor:pointer"><td>${s.name}</td><td>${SHIPS[s.type].name}</td><td>${g.people.get(s.captain)?.name ?? '-'}</td><td>${s.crew.length}/${SHIPS[s.type].men + SHIPS[s.type].officers}</td><td>${shipStatusName(s.status)}</td><td>${MISSION_NAMES[s.mission]} (${g.regions[s.region].name})</td><td>${pct(s.hull)}</td><td>${s.cannons}</td></tr>`)}</table></div>
+      ${list.map((s) => html`<tr data-act="ship:${s.id}" style="cursor:pointer"><td>${s.name}</td><td>${SHIPS[s.type].name}</td><td>${g.people.get(s.captain)?.name ?? '-'}</td><td data-tip="${s.crew.length} of ${SHIPS[s.type].men + SHIPS[s.type].officers} hands">${icon('pirate', 14)} ${s.crew.length}<span class="dim">/${SHIPS[s.type].men + SHIPS[s.type].officers}</span></td><td><span class="chip ${s.status === 'docked' ? 'ok' : ''}">${shipStatusName(s.status)}</span></td><td>${MISSION_NAMES[s.mission]} <span class="dim">· ${g.regions[s.region].name}</span></td><td data-tip="Hull ${pct(s.hull)}" style="min-width:60px">${bar(s.hull)}</td><td data-tip="${s.cannons} cannons">${icon('g_cannon', 14)} ${s.cannons}</td></tr>`)}</table></div>
       ${!list.length ? html`<div class="sub">No ships. Build a Boatyard (needs a skilled shipwright) and a Dock.</div>` : ''}`;
   }
 
   private messages() {
     const g = this.app.game;
-    return html`<table class="ledger"><tr><th>Date</th><th>Event</th><th></th></tr>${[...g.messages].reverse().slice(0, 120).map((m) => html`<tr data-act="msg:${m.id}" style="cursor:pointer"><td style="white-space:nowrap">${m.date}</td><td><b style="font-family:var(--head);font-weight:normal">${m.title}</b>: ${m.text.split('\n')[0].slice(0, 140)}</td><td><span class="chip ${m.kind === 'bad' || m.kind === 'alert' ? 'bad' : m.kind === 'good' ? 'ok' : ''}">${m.kind === 'bad' ? 'trouble' : m.kind === 'alert' ? 'alarm' : m.kind}</span></td></tr>`)}</table>`;
+    return html`<table class="ledger"><tr><th>Date</th><th>Event</th><th></th></tr>${[...g.messages].reverse().slice(0, 120).map((m) => html`<tr data-act="msg:${m.id}" style="cursor:pointer"><td style="white-space:nowrap">${m.date}</td><td><b style="font-family:var(--head);font-weight:normal">${m.title}</b>${m.data?.kind === 'voyage' ? html`<div class="vcompact">${voyageStrip(m.data, false)}</div>` : html`: ${m.text.split('\n')[0].slice(0, 140)}`}</td><td><span class="chip ${m.kind === 'bad' || m.kind === 'alert' ? 'bad' : m.kind === 'good' ? 'ok' : ''}">${m.kind === 'bad' ? 'trouble' : m.kind === 'alert' ? 'alarm' : m.kind}</span></td></tr>`)}</table>`;
   }
 
   private graph(c: HTMLCanvasElement, kind: string): void {

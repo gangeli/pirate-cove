@@ -1276,3 +1276,38 @@ body.touch .power-chip { min-height: 42px; }
 .cards > button:focus-visible { outline: 2px solid var(--blood-hi); outline-offset: 2px; }
 .cards.tactics > button { flex-direction: row; gap: 5px; padding: 6px 4px; min-height: 36px; }
 body.touch .cards > button { min-height: 44px; }
+
+/* ---------- letters: a voyage's results as a strip of tallies ---------- */
+.modal .body.letter-v { white-space: normal; }
+.letter-v .lede { text-align: center; font-style: italic; color: var(--ink2); margin-bottom: 10px; }
+.tallies { display: flex; flex-wrap: wrap; gap: 10px 18px; justify-content: center; align-items: flex-end; }
+.tally { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 56px; }
+.tally > small { font-size: 12.5px; color: var(--ink2); letter-spacing: 0.04em; text-transform: uppercase; font-family: var(--head); }
+.tally.gold { flex-direction: row; gap: 8px; align-items: center; }
+.tally.gold > div { display: flex; flex-direction: column; }
+.tally .big { font: 28px/1 var(--head); color: #6a4a08; font-weight: normal; font-variant-numeric: tabular-nums; }
+.tally.gold small { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.figs { display: inline-flex; flex-wrap: wrap; max-width: 190px; justify-content: center; gap: 0 1px; color: var(--ink); }
+.figs b { font-weight: normal; font-size: 14px; align-self: center; margin-left: 3px; }
+.figs.ok { color: var(--bottle); }
+.figs.brass { color: #8a6410; }
+.figs.dead { color: var(--blood); }
+.figs.dead .ic { position: relative; opacity: 0.85; background: linear-gradient(45deg, transparent 46%, var(--blood) 46% 54%, transparent 54%); }
+.tally .skills { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; max-width: 220px; }
+.tally .hull { position: relative; display: block; width: 64px; height: 12px; border: 1px solid #4a2e14; border-radius: 2px; background: repeating-linear-gradient(90deg, #8a6038 0 15px, #6a4424 15px 16px); overflow: hidden; }
+.tally .hull i { position: absolute; left: 0; top: 0; bottom: 0; background: repeating-linear-gradient(90deg, #c89a62 0 15px, #8a6038 15px 16px); }
+.tally .hull.bad i { background: repeating-linear-gradient(90deg, #b07a4a 0 6px, #3a1a0a 6px 7px, #b07a4a 7px 15px, #6a4424 15px 16px); }
+.tally.empty .figs { color: var(--ink3); }
+.vlog { margin-top: 12px; font-size: 14px; color: #4a3018; }
+.vlog summary { cursor: pointer; display: inline-flex; align-items: center; gap: 5px; color: var(--ink2); font-family: var(--head); letter-spacing: 0.04em; }
+.vlog summary i { font-family: var(--body); font-size: 13px; }
+.vlog .log li .ic { vertical-align: -2px; color: var(--ink2); }
+.vcompact .tallies { justify-content: flex-start; gap: 2px 14px; margin-top: 3px; }
+.vcompact .tally { flex-direction: row; gap: 4px; min-width: 0; }
+.vcompact .tally > small { display: none; }
+.vcompact .tally.gold small { display: none; }
+.vcompact .pile { width: 32px; height: 24px; }
+.vcompact .big { font-size: 17px; }
+.vcompact .figs { max-width: 140px; }
+.vcompact .figs .ic { width: 14px; height: 14px; }
+.vcompact .hull { width: 40px; height: 9px; }

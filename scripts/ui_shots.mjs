@@ -102,6 +102,7 @@ S.menu_game = `a.modal.gameMenu()`;
 S.menu_settings = `a.modal.settings()`;
 S.menu_help = `a.modal.help()`;
 S.menu_confirm = `(() => { const b = [...g.buildings.values()].find((b) => b.def === 'dive'); a.demolishAsk ? a.demolishAsk(b.id) : a.modal.confirm('Demolish the Dive?', 'Nothing will be refunded.', () => {}); })()`;
+S.menu_voyage = `a.modal.message({ id: 9e6 + 2, kind: 'ship', title: 'Night Heron Returns', text: 'The Night Heron is back.', date: g.date, focus: { x: 60, y: 60 }, data: { kind: 'voyage', ship: 'Night Heron', mission: 'cruise in the Windward Passage', gold: 821, treasury: 328, captives: 6, skilled: ['gunsmith'], wealthy: 1, recruits: 3, cannons: 0, hull: 0.54, log: [{ date: 'May 1681', text: 'Grappling hooks away! Boarders!' }, { date: 'May 1681', text: 'Took a Spanish Merchant Brig! Plunder: 821 gold, skilled Gunsmith, 3 recruits. Lost 2 men.' }] } })`;
 S.menu_message = `a.modal.message({ id: 9e6 + 1, kind: 'ship', title: 'The Snow Returns', text: 'Captain Flint brings the Revenge home from the Windward Passage with 820 gold, 14 captives and 3 recruits.\\n\\nThe crew took 410 gold as their share. 6 hands were lost.', date: g.date, focus: { x: 60, y: 60 } })`;
 S.menu_gameover = `(() => { g.over = { win: true, reason: 'Your 20-year reign is complete. The Brethren toast your name.', score: { hoard: 18200, happiness: 3400, fleet: 2400, captains: 900, pirates: 1300, bonusKey: 'captains', difficulty: 1, total: 31200, medal: 'silver' } }; a.modal.gameOver(); })()`;
 S.place_build = `(() => { a.setTool({ kind: 'build', def: 'tavern', rot: 0 }); const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); h.hoverTile(pal.x + pal.w + 3, pal.y + 1); })()`;
@@ -141,7 +142,7 @@ const CHECK = () => {
   }
   // overlaps between HUD pieces and floating panels (full-screen sheets and modals sit on top on purpose)
   const ov = (a, b) => { const A = box(a), B = box(b); const x = Math.min(A.r, B.r) - Math.max(A.l, B.l), y = Math.min(A.b, B.b) - Math.max(A.t, B.t); return x > 1 && y > 1 ? [x | 0, y | 0] : null; };
-  const keys = Object.keys(els).filter((k) => k !== 'advface' && !(k === 'minimap'));
+  const keys = Object.keys(els).filter((k) => k !== 'advface' && !(k === 'minimap' && !els.toast));
   if (!modalOpen && !bigOpen) for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) {
     const A = els[keys[i]], B = els[keys[j]];
     if (A.contains(B) || B.contains(A)) continue;
