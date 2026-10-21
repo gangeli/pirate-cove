@@ -96,6 +96,10 @@ export class Game {
   /** listeners for renderer/audio */
   events: { type: string; [k: string]: any }[] = [];
   private acc = 0;
+  /** sim seconds accumulated but not yet stepped (0..DT): the renderer interpolates people between steps with it */
+  get pending(): number {
+    return this.acc;
+  }
   advisorState: Record<string, number> = {};
   cheats = { freebuild: false };
   /** the player's recent construction commands, newest last (session only, not saved; see undo.ts) */
