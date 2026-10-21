@@ -65,11 +65,31 @@ async function loadShipModelNow(k: string): Promise<THREE.Object3D> {
   root.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y - size.y * 0.13, -(bb.min.z + bb.max.z) / 2);
   if (size.z > size.x) root.rotation.y = Math.PI / 2;
   wrap.add(root);
+  wrap.userData.bow = bowSign(root);
   wrap.add(bilgeFloor(root, len));
   wrap.scale.setScalar(1 / len);
   wrap.userData.height = size.y / len;
   markSharedTree(wrap); // cached for the whole session: never freed with a game's views
   return wrap;
+}
+
+/**
+ * Which way along the model's long (x) axis the bow points: the bowsprit pokes out past the hull there, so the whole
+ * model's extent is lopsided toward the bow compared with the hull's. Falls back to -x (the old assumption).
+ */
+function bowSign(root: THREE.Object3D): number {
+  root.updateMatrixWorld(true);
+  const all = new THREE.Box3().setFromObject(root);
+  let hull: THREE.Box3 | null = null;
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && /hull/i.test(m.name)) (hull ??= new THREE.Box3()).union(new THREE.Box3().setFromObject(m));
+  });
+  if (!hull) return BOW;
+  const h = hull as THREE.Box3;
+  // how far the model reaches past the hull at each end (the bowsprit end reaches much further)
+  const front = all.max.x - h.max.x, back = h.min.x - all.min.x;
+  return Math.abs(front - back) < 0.02 * (all.max.x - all.min.x) ? BOW : front > back ? 1 : -1;
 }
 
 /**
@@ -134,7 +154,7 @@ export class ShipsView {
     const L = LENGTH[type];
     inst.scale.multiplyScalar(L);
     // bow toward local +x
-    inst.rotation.y = BOW < 0 ? Math.PI : 0;
+    inst.rotation.y = ((src.userData.bow as number | undefined) ?? BOW) < 0 ? Math.PI : 0;
     g.add(inst);
     // pirate or national flag atop the mast
     const h = (src.userData.height as number) * L;
@@ -208,8 +228,7 @@ export class ShipsView {
       v.visible = s.status !== 'atsea' && s.status !== 'lost';
       if (!v.visible) continue;
       const moving = s.status === 'departing' || s.status === 'returning';
-      v.position.set(s.vx, 0, s.vy);
-      v.rotation.set(0, -s.vdir, 0);
+      this.glide(v, s.vx, s.vy, -s.vdir, moving, dt);
       this.bob(v, s.id, moving);
       const fl = v.userData.flag as THREE.Object3D;
       if (fl) fl.rotation.y = Math.sin(this.t * 0.7 + s.id) * 0.3;
@@ -226,8 +245,7 @@ export class ShipsView {
         this.invaderViews.set(iv.id, v);
         this.group.add(v);
       }
-      v.position.set(iv.x, 0, iv.y);
-      v.rotation.set(0, -iv.dir, 0);
+      this.glide(v, iv.x, iv.y, -iv.dir, iv.state === 'approach', dt);
       if (iv.state === 'sunk') {
         v.position.y = -iv.timer * 0.4;
         v.rotation.z = Math.min(0.6, iv.timer * 0.08);
@@ -237,6 +255,29 @@ export class ShipsView {
       this.group.remove(v);
       this.invaderViews.delete(id);
     }
+  }
+
+  /**
+   * The sim moves ships in 0.1 s steps (further per step at 8x): ease the view toward the sim's position each frame so
+   * they glide, and turn the bow smoothly toward the way the ship is actually moving (or the sim's heading at rest).
+   */
+  private glide(v: THREE.Object3D, x: number, z: number, restHeading: number, moving: boolean, dt: number): void {
+    const u = v.userData as { glided?: boolean; head?: number };
+    if (!u.glided || Math.hypot(x - v.position.x, z - v.position.z) > 8) {
+      v.position.set(x, 0, z);
+      u.head = restHeading;
+      u.glided = true;
+    } else if (dt > 0) {
+      const px = v.position.x, pz = v.position.z, k = 1 - Math.exp(-dt * 5);
+      v.position.x += (x - px) * k;
+      v.position.z += (z - pz) * k;
+      const mx = x - v.position.x, mz = z - v.position.z;
+      const want = moving && Math.hypot(mx, mz) > 0.02 ? -Math.atan2(mz, mx) : restHeading;
+      let d = want - (u.head ?? want);
+      d = Math.atan2(Math.sin(d), Math.cos(d)); // shortest way round
+      u.head = (u.head ?? want) + d * (1 - Math.exp(-dt * 2.5));
+    }
+    v.rotation.set(0, u.head ?? restHeading, 0);
   }
 
   private bob(v: THREE.Object3D, id: number, moving: boolean): void {
