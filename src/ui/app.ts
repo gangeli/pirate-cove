@@ -324,6 +324,9 @@ export class App {
     this.world.rig.touchPan = !(t.kind === 'road' || t.kind === 'clear' || t.kind === 'unroad');
     // see-through trees while laying roads, so the ground (and existing paths) under the canopy stay visible
     this.world.veg?.setGhost(t.kind === 'road' || t.kind === 'unroad');
+    // a farm or a mine shows where it would do best while it is being placed
+    const gather = t.kind === 'build' ? BUILDING[t.def]?.gather : undefined;
+    this.overlays?.placementTint(gather?.from === 'fertility' ? 'soil' : gather?.from === 'ore' ? 'ore' : null, gather?.crop);
     this.roadPending = null;
     this.roadPick = null;
     // on touch there is no pointer to follow: a new building starts in the middle of the view, controls beside it
@@ -514,6 +517,14 @@ export class App {
     this.placeCtl = new PlaceControls(this.root, (a) => this.placeAction(a));
     this.ring = new QuickRing(this.root, this.inspector.acts, () => audio.sfx('ui_click'));
     let touches = 0;
+    // Shift+wheel turns the building being placed (the plain wheel still zooms)
+    window.addEventListener('wheel', (ev) => {
+      if (ev.shiftKey && this.state === 'game' && this.tool.kind === 'build' && ev.target === c) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        this.rotateGhost((ev.deltaY || ev.deltaX) > 0 ? 1 : -1);
+      }
+    }, { capture: true, passive: false });
     c.addEventListener('pointerdown', (ev) => {
       if (ev.pointerType === 'touch') {
         touches++;
@@ -682,12 +693,7 @@ export class App {
       ev.preventDefault();
       this.hud.updateSpeed();
     }
-    if (k === 'r' || k === 'R') {
-      if (this.tool.kind === 'build') {
-        this.tool.rot = (this.tool.rot + (ev.shiftKey ? 3 : 1)) % 4;
-        this.ghostKey = '';
-      }
-    }
+    if (k === 'r' || k === 'R' || k === 'q' || k === 'Q' || k === 'e' || k === 'E') this.rotateGhost(k === 'q' || k === 'Q' || ((k === 'r' || k === 'R') && ev.shiftKey) ? -1 : 1);
     if (k === 'b') this.build.toggle();
     if (k === 'o') this.overlays.toggle();
     if ((k === '[' || k === ']') && this.overlays.visible) this.overlays.step(k === ']' ? 1 : -1);
@@ -795,6 +801,16 @@ export class App {
       prof.lap('ui');
       prof.end();
     }
+  }
+
+  /** turn the building being placed a quarter (R / E, or Shift+R / Q the other way, or Shift+wheel) */
+  rotateGhost(d: number): boolean {
+    if (this.tool.kind !== 'build') return false;
+    this.tool.rot = (this.tool.rot + (d > 0 ? 1 : 3)) % 4;
+    this.ghostKey = '';
+    this.ghostCheck.key = '';
+    audio.sfx('ui_click');
+    return true;
   }
 
   /** take back the last construction command (Ctrl/Cmd+Z, or the Undo button) */
@@ -973,7 +989,7 @@ export class App {
         gc.poor = !miss.length && ((cost.gold > 0 && this.game.treasury < cost.gold) || this.game.lumber() < cost.lumber);
         if (gc.poor) reason = `${def.name}: ${short(cost.gold, this.game.treasury, cost.lumber, this.game.lumber()).toLowerCase()}`;
         gc.reason = reason;
-        gc.text = reason || `${def.name}  ·  ${cost.gold ? cost.gold + ' gold  ' : ''}${cost.lumber ? cost.lumber + ' lumber' : ''}`;
+        gc.text = (reason || `${def.name}  ·  ${cost.gold ? cost.gold + ' gold  ' : ''}${cost.lumber ? cost.lumber + ' lumber' : ''}`) + (this.touchMode || def.size[0] === def.size[1] && !def.water ? '' : '  ·  R to rotate');
       }
       const pl = gc.pl!;
       const key = `${def.id}:${pl.rot}`;

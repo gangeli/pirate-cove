@@ -57,6 +57,7 @@ export class Overlays {
     const crop = this.farmCrop();
     if (crop) this.crop = crop;
     this.app.closeAll();
+    this.tintFor = null;
     // on a phone the sheet takes the inspector's place
     if (this.app.touchMode) this.app.select(null);
     this.visible = true;
@@ -64,6 +65,22 @@ export class Overlays {
     if (tint && this.kind === 'none') this.set(crop ? 'soil' : this.last);
     this.render();
     this.app.hud.updateTool();
+  }
+  /** while a building that draws on the land is placed, its overlay tints the ground without opening the panel
+   *  (farms: soil for their crop; mines: iron); null puts the ground back */
+  private tintFor: Kind | null = null;
+  placementTint(k: 'soil' | 'ore' | null, crop?: string): void {
+    if (this.visible) return; // the player has the views panel open: leave their choice alone
+    if (k) {
+      if (crop && CROPS.some((x) => x[0] === crop)) this.crop = crop as Crop;
+      this.tintFor = k;
+      this.kind = k;
+      this.t = 99;
+    } else if (this.tintFor) {
+      this.tintFor = null;
+      this.kind = 'none';
+      this.app.world.setOverlay(null);
+    }
   }
   hide(): void {
     if (!this.visible) return;
@@ -122,7 +139,7 @@ export class Overlays {
   }
 
   update(): void {
-    if (!this.visible || this.kind === 'none') return;
+    if ((!this.visible && !this.tintFor) || this.kind === 'none') return;
     this.t += 1 / 60;
     if (this.t < 1) return;
     this.t = 0;

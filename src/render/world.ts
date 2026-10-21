@@ -445,6 +445,7 @@ export class World {
   }
 
   resize(w: number, h: number): void {
+    this.dirty = true;
     const prChanged = this.renderer.getPixelRatio() !== this.pr;
     if (prChanged) this.renderer.setPixelRatio(this.pr);
     this.renderer.setSize(w, h, false);
@@ -581,6 +582,7 @@ export class World {
   }
 
   updateRoadTex(): void {
+    this.dirty = true;
     const m = this.game.map, n = m.size;
     if (!RB.nodes) {
       // columns 0..n-1: the road mask (red); column n repeats the last one so filtering never reaches the overlay
@@ -606,6 +608,7 @@ export class World {
   private overlayTex?: THREE.DataTexture;
   /** tile-resolution RGBA overlay tint on the terrain (null to clear) */
   setOverlay(data: Uint8Array | null): void {
+    this.dirty = true;
     const n = this.game.map.size;
     if (!RB.nodes) {
       // columns n+2..2n+1: the overlay (sRGB bytes, decoded in the shader); column n+1 repeats its first column
@@ -634,6 +637,7 @@ export class World {
 
   /** process sim events relevant to visuals */
   private consumeEvents(): void {
+    if (this.game.events.length) this.dirty = true;
     const ev = this.game.events;
     let roads = false, trees = false;
     for (const e of ev) {
@@ -658,6 +662,13 @@ export class World {
   private pendingDt = 0;
   private lastCam = new THREE.Matrix4();
 
+  private frozenDrawn = false;
+  private dirty = false;
+  /** something on screen changed without the camera moving or the player acting (an overlay, roads, a new view) */
+  redraw(): void {
+    this.dirty = true;
+  }
+
   render(dt: number): void {
     this.adaptResolution(dt);
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
@@ -665,13 +676,16 @@ export class World {
     this.rig.update(dt, w, h);
     this.consumeEvents();
     this.pendingDt += dt;
-    // nothing advancing and nobody touching anything: redraw at ~15 fps (water and flags keep moving, the GPU rests)
+    // paused (or a pausing dialog): the world holds still (trees, people, flags, ships, water) and, once that still
+    // frame is on screen, nothing is redrawn until the view moves, the player acts or something changes (redraw())
     const cam = this.rig.camera;
     cam.updateMatrixWorld();
     const still = this.lastCam.equals(cam.matrixWorld);
-    if (this.idle && still && performance.now() - this.lastInput > 500 && this.pendingDt < 1 / 15) return;
+    if (this.idle && still && performance.now() - this.lastInput > 500 && this.frozenDrawn && !this.dirty) return;
+    this.frozenDrawn = this.idle;
+    this.dirty = false;
     this.lastCam.copy(cam.matrixWorld);
-    dt = Math.min(0.1, this.pendingDt);
+    dt = this.idle ? 0 : Math.min(0.1, this.pendingDt);
     this.pendingDt = 0;
     this.time += dt;
     const t = this.time;

@@ -265,11 +265,11 @@ export class Vegetation {
     this.ghost = on;
     for (const m of Object.values(this.mats)) {
       m.transparent = on;
-      m.opacity = on ? 0.3 : 1;
+      m.opacity = on ? 0.15 : 1;
       m.depthWrite = !on;
       // the alpha cut-out runs on opacity x texture alpha: scale it too or the faded leaves would all be cut away
       m.userData.alphaTest ??= m.alphaTest;
-      m.alphaTest = on ? m.userData.alphaTest * 0.3 : m.userData.alphaTest;
+      m.alphaTest = on ? m.userData.alphaTest * 0.15 : m.userData.alphaTest;
       m.needsUpdate = true;
     }
     for (const c of this.group.children) c.castShadow = !on && c.userData.shadow !== false;
