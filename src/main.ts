@@ -63,6 +63,7 @@ async function boot() {
   if (params.get('lineup')) await (await import('./debug')).lineup(app, params);
   if (params.get('gallery')) await (await import('./debug')).gallery(app, params);
   if (params.get('walktest')) await (await import('./debug')).walktest(app, params);
+  if (params.get('closeup')) await (await import('./debug')).closeup(app, params);
   if (params.get('nohud')) ui.style.display = 'none';
   if (params.get('profile')) (await import('./ui/profiler')).recordProfile(app, +params.get('profile')! || 60);
   setTimeout(() => loading.remove(), 200);

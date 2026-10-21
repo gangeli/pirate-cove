@@ -35,6 +35,8 @@ S.hud = `0`;
 // the clock running (not paused) at 4x, and an undo seal beside the bar after laying a road
 S.hud_run = `a.hud.advisorMode = 'off'; g.speed = 4; g.paused = false; a.hud.updateSpeed(); h.after = () => { g.paused = true; g.speed = 1; a.hud.advisorMode = 'full'; a.hud.updateSpeed(); }`;
 S.undo = `(() => { const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); for (let r = 3; r < 20; r++) for (let dx = -r; dx <= r; dx++) for (const dy of [-r, r]) { const x = pal.x + dx, y = pal.y + dy; if (g.cmd({ type: 'road', x, y }).ok) { a.hud.update(); h.look(x, y); h.after = () => { g.cmd({ type: 'undo' }); a.hud.update(); }; return; } } return 'missing'; })()`;
+// the "Update ready" toast together with the floating undo seal (they used to sit on top of each other)
+S.toast_undo = `await (async () => { const pal = [...g.buildings.values()].find((b) => b.def === 'palace'); let ok = false; for (let r = 3; r < 20 && !ok; r++) for (let dx = -r; dx <= r && !ok; dx++) for (const dy of [-r, r]) { const x = pal.x + dx, y = pal.y + dy; if (g.cmd({ type: 'road', x, y }).ok) { a.hud.update(); h.look(x, y); ok = true; break; } } (await import('/src/ui/install.ts')).debugShowUpdate(); await new Promise((r) => setTimeout(r, 400)); h.after = () => { g.cmd({ type: 'undo' }); a.hud.update(); document.querySelector('.pwa-toast [data-x]')?.click(); }; })()`;
 S.b_palace = bld('palace');
 S.b_dock = bld('dock');
 S.b_farm = bld('corn_farm');
@@ -127,7 +129,7 @@ const CHECK = () => {
   const els = {};
   const pick = (k, sel) => { const e = [...document.querySelectorAll(sel)].find(vis); if (e) els[k] = e; };
   pick('topbar', '.topbar'); pick('clock', '.clock'); pick('toolbar', '.toolbar'); pick('minimap', '.minimap'); pick('advisor', '.advisor .bubble');
-  pick('advface', '.advisor .face'); pick('sound', '.soundbtn'); pick('touchbar', '.touchbar'); pick('hint', '.hint'); pick('undo', '.undobtn');
+  pick('advface', '.advisor .face'); pick('sound', '.soundbtn'); pick('touchbar', '.touchbar'); pick('hint', '.hint'); pick('undo', '.undobtn'); pick('toast', '.pwa-toast'); pick('ticker', '.ticker .toast');
   const panels = [...document.querySelectorAll('#ui .panel')].filter(vis).filter((p) => !p.classList.contains('bubble'));
   panels.forEach((p, i) => (els[`panel${i}${name(p)}`] = p));
   const modalOpen = panels.some((p) => p.classList.contains('modal') || p.classList.contains('gpu-notice') || p.classList.contains('prof-report'));

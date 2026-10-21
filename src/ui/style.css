@@ -1244,3 +1244,35 @@ body.touch .toggle { min-height: 40px; }
 body.touch .power-chip { min-height: 42px; }
 .power-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 6px; padding: 6px 8px; font-size: 14px; border-left: 3px solid var(--brass-lo); background: color-mix(in srgb, var(--brass) 10%, transparent); }
 .power-detail .stat .flag { margin-left: 2px; }
+
+/* ---------- the action vocabulary: each kind of button has its own look ----------
+   nav (look/go: Follow, Chart, Details) · primary (green: Set sail, Build) · coin (spends or earns gold, with the
+   amount as a coin badge) · tag (social or moral choices: Press-gang, Set free) · destroy (Kill, Scuttle, Demolish:
+   blood-red with a skull, set apart, always confirmed) · toggle (pressed or not) */
+.btn.nav { background: none; border: 1px solid transparent; box-shadow: none; color: var(--ink2); text-shadow: none; padding-left: 7px; padding-right: 7px; }
+.btn.nav:hover { background: rgba(255, 248, 228, 0.6); border-color: color-mix(in srgb, var(--ink2) 40%, transparent); color: var(--ink); filter: none; }
+.btn.nav.toggle-on, .btn.nav[aria-pressed="true"] { color: #f0e6c4; background: linear-gradient(#2e5436, var(--bottle)); border-color: #14261a; box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35); }
+.btn.coin { color: var(--ink); text-shadow: none; background: linear-gradient(rgba(255, 246, 220, 0.85), rgba(236, 218, 170, 0.85)); border: 1px solid #8a6a2a; box-shadow: inset 0 0 0 1px rgba(255, 240, 200, 0.8), inset 0 0 0 3px color-mix(in srgb, var(--brass) 35%, transparent), 0 1px 1px rgba(60, 30, 10, 0.2); }
+.btn.coin:hover { filter: brightness(1.05); color: #000; }
+.btn .cbadge { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; padding: 0 6px 0 3px; border-radius: 10px; font-size: 13px; line-height: 18px; font-variant-numeric: tabular-nums; color: #3a2404; background: radial-gradient(circle at 35% 35%, #f6dc8a, #c8982e); border: 1px solid #6a4a10; }
+.btn .cbadge .ic { width: 13px; height: 13px; }
+.btn .cbadge.gain { color: #0e2a14; background: radial-gradient(circle at 35% 35%, #d8f0b0, #7aa852); border-color: #2a4a1a; }
+.btn.coin.primary { background: linear-gradient(rgba(180, 255, 180, 0.06), rgba(0, 0, 0, 0.3)), linear-gradient(#2e5436, var(--bottle)); color: #f0e6c4; border-color: #14261a; }
+.btn.tag { position: relative; color: var(--ink); text-shadow: none; padding-left: 16px; border-radius: 2px 4px 4px 2px; background: linear-gradient(#efe0b8, #dcc796); border: 1px solid #7a6038; box-shadow: 0 1px 1px rgba(60, 30, 10, 0.2); clip-path: polygon(9px 0, 100% 0, 100% 100%, 9px 100%, 0 50%); }
+.btn.tag::before { content: ''; position: absolute; left: 7px; top: 50%; width: 4px; height: 4px; margin-top: -2px; border-radius: 50%; background: #5a4020; }
+.btn.tag:hover { filter: brightness(1.06); color: #000; }
+.btn.destroy { color: #f6e4d0; text-shadow: 0 1px 0 #000; background: linear-gradient(rgba(255, 120, 90, 0.12), rgba(0, 0, 0, 0.35)), linear-gradient(#9a2216, #4a0c06); border: 1px solid #2a0402; box-shadow: inset 0 0 0 1px rgba(255, 150, 120, 0.25), 0 1px 2px rgba(0, 0, 0, 0.35); position: relative; overflow: hidden; }
+.btn.destroy:hover { filter: brightness(1.15); color: #fff; }
+.ins-foot .btn.destroy { margin-left: auto; }
+
+/* icon cards: a choice of what to do (missions, tactics), each a small parchment card with a big engraving */
+.cards { display: flex; gap: 5px; flex: 1; min-width: 0; }
+.cards > button { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 7px 2px 5px; cursor: pointer; font: 13.5px/1.05 var(--body); color: var(--ink2); text-align: center; border-radius: 4px; border: 1px solid color-mix(in srgb, var(--ink2) 40%, transparent); background: linear-gradient(rgba(255, 250, 234, 0.6), rgba(236, 222, 186, 0.45)); box-shadow: 0 1px 1px rgba(60, 30, 10, 0.15); }
+.cards > button > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.cards > button .ic { color: var(--ink2); }
+.cards > button:hover { border-color: var(--ink2); color: var(--ink); }
+.cards > button.on { color: #f8e8c6; border-color: #3a0806; background: linear-gradient(#8a2418, #5e140c); box-shadow: inset 0 1px 0 rgba(255, 190, 150, 0.25), 0 2px 3px rgba(60, 20, 5, 0.3); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5); }
+.cards > button.on .ic { color: #f2d690; }
+.cards > button:focus-visible { outline: 2px solid var(--blood-hi); outline-offset: 2px; }
+.cards.tactics > button { flex-direction: row; gap: 5px; padding: 6px 4px; min-height: 36px; }
+body.touch .cards > button { min-height: 44px; }

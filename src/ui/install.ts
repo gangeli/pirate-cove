@@ -38,6 +38,11 @@ let offline: OfflineStatus | null = null;
 let dl: { done: number; total: number; state: 'busy' | 'done' | 'error' } | null = null;
 
 /** call once at startup, before assets start loading */
+/** ?toast=1 (screenshot harness): show the update toast without a waiting worker */
+export function debugShowUpdate(): void {
+  showUpdate();
+}
+
 export function initPwa(a: App): void {
   app = a;
   // the first visit loads everything before the worker controls the page; remember what it was
@@ -267,15 +272,39 @@ function warm(): void {
 }
 
 let toast: HTMLElement | null = null;
+let toastTimer: ReturnType<typeof setInterval> | null = null;
+/** what sits along the bottom of the screen, which the toast must clear (the bar, the undo seal, touch buttons, hints) */
+const BOTTOM_HUD = '#ui > .toolbar, #ui > .undobtn, #ui > .touchbar, #ui > .hint, #ui > .placectl';
+/** lift the toast above any visible bottom-anchored HUD piece it would otherwise cover */
+function placeToast(): void {
+  if (!toast) return;
+  toast.style.top = '';
+  const t = toast.getBoundingClientRect();
+  let bottom = t.bottom;
+  for (const e of document.querySelectorAll<HTMLElement>(BOTTOM_HUD)) {
+    const r = e.getBoundingClientRect();
+    if (!r.width || !r.height || getComputedStyle(e).visibility === 'hidden') continue;
+    // only pieces it overlaps side to side, and only those in the bottom third
+    if (r.right <= t.left || r.left >= t.right || r.top < innerHeight * 0.6) continue;
+    bottom = Math.min(bottom, r.top - 8);
+  }
+  if (bottom < t.bottom) toast.style.top = `${Math.round(bottom)}px`;
+}
 function showUpdate(): void {
   if (toast) return;
   toast = document.createElement('div');
   toast.className = 'pwa-toast';
   toast.innerHTML = '<div><b>Update ready</b>A new version of Buccaneer Cove has made port.</div><button class="btn small" data-r>Restart</button><button class="x" data-x title="Later">&times;</button>';
   document.body.appendChild(toast);
+  placeToast();
+  // the undo seal and hints come and go: keep clear of them while the toast is up
+  toastTimer = setInterval(placeToast, 500);
+  addEventListener('resize', placeToast);
   toast.querySelector<HTMLElement>('[data-x]')!.onclick = () => {
     toast?.remove();
     toast = null;
+    if (toastTimer) clearInterval(toastTimer);
+    removeEventListener('resize', placeToast);
   };
   toast.querySelector<HTMLElement>('[data-r]')!.onclick = async (e) => {
     (e.currentTarget as HTMLButtonElement).disabled = true;

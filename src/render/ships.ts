@@ -178,8 +178,8 @@ class Sails {
           this.play[k * 3] = f * depth;
           this.play[k * 3 + 1] = w * (0.012 + 0.008 * Math.min(width, height));
           this.play[k * 3 + 2] = tr;
-          uv[k * 2] = u * width * 0.5;
-          uv[k * 2 + 1] = v * height * 0.5;
+          uv[k * 2] = u * width * 1.1;
+          uv[k * 2 + 1] = v * height * 1.1;
           // furled: rolled up tight along the pinned edge (the yard, the boom or the foot of the stay)
           const r = 0.045 + 0.035 * Math.sin(Math.PI * u);
           const a = v * Math.PI * 2.6;
@@ -603,7 +603,7 @@ export class ShipsView {
         const wx = x + lx * c + lz * sn, wz = z - lx * sn + lz * c;
         const h = m.heightAt(wx, wz);
         if (h > need) v += h - need + 0.05;
-        if (avoid && wx > avoid.x - 0.3 && wx < avoid.x + avoid.w + 0.3 && wz > avoid.y - 0.3 && wz < avoid.y + avoid.h + 0.3) v += 1;
+        if (avoid && wx > avoid.x - 0.55 && wx < avoid.x + avoid.w + 0.55 && wz > avoid.y - 0.55 && wz < avoid.y + avoid.h + 0.55) v += 1;
       }
     }
     return v;
