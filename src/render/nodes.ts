@@ -652,7 +652,9 @@ export function waterMaterial(u: Record<string, U<any>>, heightTex: THREE.Textur
     // terrain height under the water (the sea floor beyond the map is at -14)
     const huv = wpos.xz.add(0.5).div(uMapSize.add(1.0)).toVar();
     const inside = huv.x.greaterThanEqual(0.0).and(huv.y.greaterThanEqual(0.0)).and(huv.x.lessThanEqual(1.0)).and(huv.y.lessThanEqual(1.0));
-    const th = select(inside, height.sample(huv).level(0).r, float(-14.0));
+    // and the seabed eases down to it over the map's last tiles, so the edge leaves no seam
+    const edge = min(wpos.xz.add(0.5), uMapSize.add(0.5).sub(wpos.xz));
+    const th = select(inside, mix(float(-14.0), height.sample(huv).level(0).r, smoothstep(0.0, 20.0, min(edge.x, edge.y))), float(-14.0));
     const depth = max(0.0, wpos.y.sub(th)).toVar();
     // wave normal: directional ripples with analytic derivatives, plus fine noise
     let g: any = vec2(0.0);

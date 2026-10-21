@@ -103,7 +103,9 @@ float openSea(vec2 p){
 float terrainH(vec2 p){
   vec2 uv = (p + 0.5) / (uMapSize + 1.0);
   if (uv.x<0.0||uv.y<0.0||uv.x>1.0||uv.y>1.0) return -14.0;
-  return texture2D(uHeight, uv).r;
+  // the seabed eases down to the open-ocean depth beyond the map over its last tiles, so the edge leaves no seam
+  vec2 e = min(p + 0.5, uMapSize + 0.5 - p);
+  return mix(-14.0, texture2D(uHeight, uv).r, smoothstep(0.0, 20.0, min(e.x, e.y)));
 }
 vec3 waveNormal(vec2 p){
   // sum of directional ripples, analytic derivative
