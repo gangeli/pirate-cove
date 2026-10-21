@@ -23,7 +23,7 @@ section.
 ## Map, terrain, water
 - [x] Roads easier to see (packed earth)
 - [x] Trees fade while the road tool is out (now 15%; the player said "not opaque enough", taken as "fade more": confirm)
-- [x] Calm inland lakes: no swell, whitecaps or surf (deploy pending verification)
+- [x] Calm inland lakes: no swell, whitecaps or surf (deployed db846dc; open sea checked unchanged, a lake itself not yet seen on screen)
 - [~] Everything overlapping with everything (buildings vs footprints and each other, trees through buildings, props, terrain, UI) [overlap agent]
 
 ## People
