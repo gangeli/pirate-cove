@@ -790,7 +790,8 @@ export class ShipsView {
       }
       this.simPose(v, iv.x, iv.y, iv.dir);
       if (iv.state !== 'sunk') this.holdOff(v, LENGTH[iv.soldiers > 6 ? 'galleon' : 'frigate'], dt);
-      this.glide(v, this.pose.x, this.pose.z, this.pose.h, iv.state === 'approach' || iv.state === 'leaving', dt);
+      // (on the sim's heading: held off the sand, her drift is no course of hers)
+      this.glide(v, this.pose.x, this.pose.z, this.pose.h, iv.state === 'approach' || iv.state === 'leaving', dt, true);
       if (iv.state === 'sunk') {
         v.position.y = -iv.timer * 0.4;
         v.rotation.x = Math.min(0.6, iv.timer * 0.08);
@@ -997,25 +998,31 @@ export class ShipsView {
   }
 
   /**
-   * An invader stands in until the water ahead of her shoals, her bow already over the sand: the view holds her back
-   * along her heading until the whole hull lies in water (eased, at most two tiles a second)
+   * An invader stands in until the water ahead of her shoals, her bow already over the sand, and comes about there to
+   * leave: the view holds her off, astern or abeam, by the least that puts the whole hull in water (eased, at most two
+   * tiles a second)
    */
   private holdOff(v: THREE.Object3D, L: number, dt: number): void {
     const u = v.userData as GlideState, p = this.pose;
     const c = Math.cos(p.h), sn = Math.sin(p.h);
-    let want = 0;
+    let wx = 0, wz = 0;
     if (this.aground(p.x, p.z, p.h, L, null) > 0) {
-      want = 8;
-      for (let b = 0.5; b < 8; b += 0.5)
-        if (this.aground(p.x - c * b, p.z + sn * b, p.h, L, null) === 0) {
-          want = b;
-          break;
+      search: for (let r = 0.5; r <= 8; r += 0.5)
+        for (const [fa, fb] of HOLD_DIRS) {
+          // fa astern, fb abeam (bow at (c, -sn), starboard at (sn, c))
+          const ox = -c * fa * r + sn * fb * r, oz = sn * fa * r + c * fb * r;
+          if (this.aground(p.x + ox, p.z + oz, p.h, L, null) === 0) {
+            wx = ox;
+            wz = oz;
+            break search;
+          }
         }
     }
-    const cur = u.back ?? 0;
-    u.back = cur + Math.max(-dt * 2, Math.min(dt * 2, want - cur));
-    p.x -= c * u.back;
-    p.z += sn * u.back;
+    const hx = u.holdX ?? 0, hz = u.holdZ ?? 0, dx = wx - hx, dz = wz - hz, dl = Math.hypot(dx, dz), mv = Math.min(1, (dt * 2) / Math.max(1e-6, dl));
+    u.holdX = hx + dx * mv;
+    u.holdZ = hz + dz * mv;
+    p.x += u.holdX;
+    p.z += u.holdZ;
   }
 
   /**
@@ -1104,9 +1111,10 @@ export class ShipsView {
   /**
    * Put the view at its pose for this frame and turn the bow the way she is actually moving (toward her berth's
    * heading as she comes alongside, the rest heading when still), so she never slides sideways or sails stern first.
-   * Keeps her speed and rate of turn for the heel, pitch and wake.
+   * Keeps her speed and rate of turn for the heel, pitch and wake. `steer`: under way she points along restHeading
+   * instead (the sim's own heading) with the same easing.
    */
-  private glide(v: THREE.Object3D, x: number, z: number, restHeading: number, moving: boolean, dt: number): void {
+  private glide(v: THREE.Object3D, x: number, z: number, restHeading: number, moving: boolean, dt: number, steer = false): void {
     const u = v.userData as GlideState;
     v.rotation.order = 'YXZ'; // yaw, then heel about the keel (local x), then pitch (local z)
     if (!u.glided || Math.hypot(x - v.position.x, z - v.position.z) > 8) {
@@ -1126,7 +1134,7 @@ export class ShipsView {
       // barely has way on, and otherwise points where she is going (her curve to the berth meets it on its line)
       const near = u.near ?? 0, berthing = moving && near > 0 && u.berthHead !== undefined;
       let want = berthing ? u.berthHead! : restHeading;
-      if (moving && u.speed > 0.2) want = -Math.atan2(u.velZ, u.velX);
+      if (moving && u.speed > 0.2) want = steer ? restHeading : -Math.atan2(u.velZ, u.velX);
       let d = want - (u.head ?? want);
       d = Math.atan2(Math.sin(d), Math.cos(d)); // shortest way round
       // a ship turns no faster than her way lets her (she pivots slowly when all but stopped)
@@ -1174,8 +1182,9 @@ interface GlideState {
   /** distance from the berth (Infinity without one) */
   dBerth?: number;
   nudge?: number;
-  /** an invader held back from the beach (tiles astern of the sim's position) */
-  back?: number;
+  /** an invader held off the beach: the offset from the sim's position */
+  holdX?: number;
+  holdZ?: number;
   /** the last two sim samples [t, x, y, dir] x 2, and the frame the newer arrived */
   ip?: Float64Array;
   ipFrame?: number;
@@ -1183,6 +1192,9 @@ interface GlideState {
 
 /** a hull's half breadth by its length (the classes' lengths differ), for the outline kept in the water */
 const halfBeam = new Map<number, number>();
+
+/** directions an invader is held off the beach in, nearest first: astern, abeam either side, the quarters */
+const HOLD_DIRS: [number, number][] = [[1, 0], [0, 1], [0, -1], [0.7, 0.7], [0.7, -0.7]];
 
 /** sideways offsets tried to keep a hull off the shore */
 const NUDGES = [-3, -2, -1.2, -0.6, 0, 0.6, 1.2, 2, 3];

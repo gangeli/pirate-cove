@@ -66,16 +66,18 @@ section.
 - [x] Sailing motion checked on frame sequences and a 60 Hz track (depart, sail, return, dock; high and low): drawn between sim steps (no step stutter, no hitch at waypoints), ease out of and into the berth, bow always where she is going (no crabbing or stern-first), comes alongside on the berth's line, sails taken in on the way in, hull clear of sand and pier; pause freezes sails, flags and wake [ship agent]
 - [x] Ships berth close alongside the rebuilt dock's T-head (fitted berth pulled in toward the pier, hull kept half a tile clear of the lot); WebGPU path run in headless Chromium (wake, cloth, flags draw; no broken shaders) [ship agent]
 
-- [~] Detailed ship check: every class close up, all headings and quality levels, LOD switch, motion, berth (galleon boom over the sand), invaders, shipyard hull [ship check agent]
+- [x] Detailed ship check: every class close up (4 headings, 2 elevations, set and furled, q=high/medium/low), LOD switch, motion at the real dock (sloop, galleon), berth (galleon rig over the sand), invaders, boatyard and shipyard hulls, pause [ship check agent]
   - [x] Sail blotches found (q=high only): the ambient occlusion pass drew the sails flat at rest behind the billowed ones, so yards and rigging shaded them in speckled patches; the cloth now writes its own billowed normal into that pass (no extra pass)
   - [x] Furled canvas: square sails rolled on top of their yards (hung under and in front of them), slimmer rolls on booms, headsails stowed in slim bundles along their stays (were white balls at the bowsprit end), the galleon's lateen furled along its yard (was a disc floating over the deck)
   - [x] Under sail, flags and pennants stream with the wind the sails are filling with (were on a fixed world wind, against the canvas on some headings)
   - [x] Far model keeps the gun carriages (the guns thinned and lightened at the LOD switch)
   - [x] Berth fitting keeps the bowsprit, booms and lateen yard over water too (galleon's rig over the sand spit), with each hull's real beam (the galleon's stern sat on the pier's T-head)
   - [x] Coming in and leaving, a curve of her own between the sim's track and the fitted berth, laid once and run along its length: top speed within 1.1-1.25x cruise (was up to 2x swinging onto the berth), crab under 15 degrees and only below walking pace (was 50-70 degrees leaving); the sim turns a departing ship no harder than her way allows, and she lies the way round she came in
-  - [x] Invaders: national colours fly (checked: Spanish); they come about and sail off bow first when they leave (sailed away stern first), each makes for her own stretch of beach (two lay hull in hull), the view holds them off the sand while the boats go in (bow ran up the beach), sails taken in while hove to
+  - [x] Invaders: national colours fly (checked: Spanish); they come about and sail off bow first when they leave (sailed away stern first), each makes for her own stretch of beach (two lay hull in hull), the view holds them off the sand while the boats go in and as they come about (bow ran up the beach, hull swung over it), steered on the sim's heading, sails taken in while hove to
   - [x] Ship on the slipway scaled to the yard's slip (a galleon ran through the shipyard's mould loft and over the neighbouring pier)
   - [x] Pause: sails, flags, wake and pose frozen (identical frames)
+  - [x] LOD switch at 2.6 lengths checked near vs far from the same camera: silhouette, sails, flags and colours match; left as is
+  - [ ] Left: thin rigging (shrouds, ratlines) breaks into dashes at game zoom (sub-pixel ropes); galleon full model 28.2k triangles, far 5.3k (at the top of the budget); a sinking invader can lie against our pier or docked ship (invaders don't avoid them)
 
 ## Controls and building
 - [x] Delete (Delete key, Demolish for buildings and roads, road quick action) and undo (button, Ctrl/Cmd+Z)
