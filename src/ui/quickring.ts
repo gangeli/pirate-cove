@@ -87,6 +87,9 @@ export class QuickRing {
     }
     // the free area: below the top bar, above the toolbar, and off whichever side the inspector takes
     let fl = 6, fr = uw - 6, ft = (top ? top.b : 0) + 6, fb = (tb ? tb.t : uh) - 6;
+    // on portrait phones the clock is a full-width bar under the top bar: keep below it too
+    const clock = rect('.clock');
+    if (clock && clock.r - clock.l > uw * 0.5) ft = Math.max(ft, clock.b + 6);
     if (ins) {
       const sideways = ins.l > uw * 0.35 && ins.t < uh * 0.45; // a side sheet (desktop, landscape) rather than a bottom sheet
       if (sideways) fr = Math.min(fr, ins.l - 6);
