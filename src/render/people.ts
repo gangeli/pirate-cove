@@ -74,6 +74,13 @@ const LANE = 0.15;
 const PERSONAL = 0.3;
 /** standing spots on a tile: a sunflower spiral, r = STAND_SPACING * sqrt(k + 0.6), neighbours ~0.3 apart */
 const STAND_SPACING = 0.17;
+/**
+ * the far character model only for figures shorter than this on screen (px). The bake's own bound (rest-pose error
+ * under half a pixel: 50-107 px) is not the whole story: measured A/B, the far figures differ in ~20% of their
+ * pixels at any size (shading and texture inside the figure, the silhouette holds), i.e. ~23 px per figure at the
+ * default zoom (19 px tall) but ~4 px per figure at 7.5 px. So: zoomed out only.
+ */
+const FAR_PX_MAX = 10;
 /** the nudge rate (tiles per sim second) for someone standing (slow enough to read as shifting weight) and walking */
 const NUDGE_STAND = 0.12, NUDGE_WALK = 0.9, NUDGE_MAX = 0.32;
 const TAU = Math.PI * 2;
@@ -785,7 +792,7 @@ export class PeopleView {
       // between the two at the threshold); the far model passes for the full one below model.farBelowPx
       if (model.hasFar && this.charLod && cullDebug.lod) {
         const pix = this.world.volumes.pixels(px, y + 0.5 * model.height * sc, py, model.height * sc);
-        m.far = pix < model.farBelowPx * (m.far ? 1.1 : 0.9);
+        m.far = pix < Math.min(model.farBelowPx, FAR_PX_MAX) * (m.far ? 1.1 : 0.9);
       } else m.far = false;
       model.addPose(mtx, clipA, ua, clipB, ub, w, this.lookOf(per), m.far);
       if (this.footLog?.has(per.id)) {
