@@ -618,6 +618,10 @@ body.touch .ov-step { width: 40px; height: 40px; }
 .legend .ends { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; font-size: 12.5px; font-style: italic; color: var(--ink3); }
 .legend .ends b { font: 15px/1.1 var(--head); font-style: normal; font-weight: normal; color: var(--ink); letter-spacing: 0.03em; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ov-now { margin: 0; font-size: 13.5px; line-height: 1.3; color: var(--ink2); font-style: italic; }
+/* wide screens: the sheet sits at the top right, so an inspector under it gives up the height it covers */
+@media (min-width: 601px) and (min-height: 501px) {
+  #ui:has(> .legend:not(.hidden)) > .inspector { max-height: calc(100% - var(--tb-h) - var(--legend-b, 0px) - 16px); }
+}
 
 /* ---------- placement hint ---------- */
 .hint { position: absolute; left: 50%; bottom: calc(var(--tb-h) + 10px); transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); box-sizing: border-box; text-align: center; z-index: 8; background: rgba(20, 13, 8, 0.92); color: #e4d6b4; border: 1px solid #000; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 50%, transparent); padding: 5px 14px; font-size: 15px; font-style: italic; pointer-events: none; }

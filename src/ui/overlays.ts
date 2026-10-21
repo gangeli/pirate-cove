@@ -110,6 +110,8 @@ export class Overlays {
           <button class="ov-step" data-act="step:1" aria-label="Next overlay" data-tip="Next overlay <i>(])</i>">${icon('chevr', 18)}</button>
         </div>
         <p class="ov-now">${cur[4]}</p>` : html`<p class="ov-now hint0">Pick a tint to colour the ground: who rules where, what grows, what lies beneath.</p>`}`);
+    // where the sheet ends: on wide screens an open inspector below it shortens to fit (see .legend in style.css)
+    this.app.root.style.setProperty('--legend-b', `${this.panel.offsetTop + this.panel.offsetHeight}px`);
   }
 
   /** legend gradient matching the colours drawn on the ground */
