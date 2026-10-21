@@ -734,6 +734,7 @@ export class ShipsView {
       v.visible = true;
       const moving = s.status === 'departing' || s.status === 'returning';
       this.simPose(v, s.vx, s.vy, s.vdir);
+      v.userData.returning = s.status === 'returning';
       this.berthed(s, v, dt);
       const u = v.userData as GlideState;
       this.glide(v, this.pose.x, this.pose.z, this.pose.h, moving, dt);
@@ -856,6 +857,10 @@ export class ShipsView {
       if (u.berthKey !== key) {
         u.berthKey = key;
         u.berth = this.fitBerth(bx, by, -bdir, L, dock);
+        // she lies either way round (the fitted hull outline is the same both ways): as the sim has her lie, since she
+        // leaves the berth on that heading (sailing off bow first) and the sim brings her in to it
+        const fh = u.berth[2];
+        u.berthHead = Math.cos(fh + bdir) >= 0 ? fh : fh + Math.PI;
       }
       const b = u.berth!;
       let d = Math.hypot(p.x - bx, p.z - by);
@@ -869,11 +874,10 @@ export class ShipsView {
       }
       u.dBerth = d;
       u.near = 1 - smooth(0, E * 0.8, d);
-      u.berthHead = b[2];
       const w = 1 - smooth(1, 7, d);
       p.x += (b[0] - bx) * w;
       p.z += (b[1] - by) * w;
-      if (!moving) p.h = b[2];
+      if (!moving) p.h = u.berthHead!;
       if (w > 0.99) return;
     }
     // underway: lean off the shore if the hull would cross it
@@ -972,17 +976,18 @@ export class ShipsView {
       // near: 1 at the berth, 0 an easing length out. Leaving or coming in she keeps her berth's heading while she
       // barely has way on, and otherwise points where she is going; she swings alongside only in the last of it
       const near = u.near ?? 0, berthing = moving && near > 0 && u.berthHead !== undefined;
+      const arriving = berthing && (u.near ?? 0) > 0 && v.userData.returning === true;
       let want = berthing ? u.berthHead! : restHeading;
       if (moving && u.speed > 0.2) {
         want = -Math.atan2(u.velZ, u.velX);
         const close = smooth(0.6, 0.95, near);
-        if (berthing && close > 0) want += Math.atan2(Math.sin(u.berthHead! - want), Math.cos(u.berthHead! - want)) * close;
+        if (arriving && close > 0) want += Math.atan2(Math.sin(u.berthHead! - want), Math.cos(u.berthHead! - want)) * close;
       }
       let d = want - (u.head ?? want);
       d = Math.atan2(Math.sin(d), Math.cos(d)); // shortest way round
       // a ship turns no faster than her way lets her (she pivots slowly when all but stopped)
-      const rate = moving ? 0.35 + 0.8 * u.speed : 0.6;
-      const step = Math.max(-rate * dt, Math.min(rate * dt, d * (1 - Math.exp(-dt * (moving ? 4 : 1.5)))));
+      const rate = moving ? 0.4 + 1.2 * u.speed : 0.6;
+      const step = Math.max(-rate * dt, Math.min(rate * dt, d * (1 - Math.exp(-dt * (moving ? 8 : 1.5)))));
       u.head = (u.head ?? want) + step;
       u.turn = (u.turn ?? 0) + (step / dt - (u.turn ?? 0)) * (1 - Math.exp(-dt * 3));
     }
