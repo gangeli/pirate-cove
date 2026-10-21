@@ -100,13 +100,15 @@ function fact(f: Fact): Raw {
         : html`<div class="tally gold spent" data-tip="${fmt(-f.n)} gold paid from the treasury">${coinPile(-f.n)}<div><b class="amt">−${fmt(-f.n)}</b></div></div>`;
     case 'folk': {
       const [ic, one, many] = FOLK[f.who];
-      const [cls, cap] = f.fate ? FATE[f.fate] : ['', f.n === 1 ? one : many];
       const who = f.n === 1 ? one : many;
+      // the caption names who and what befell them ("Soldiers dead"); the figures' style shows it too
+      const [cls, fate] = f.fate ? FATE[f.fate] : ['', ''];
+      const cap = f.fate === 'new' && f.who === 'pirate' ? (f.n === 1 ? 'Recruit' : 'Recruits') : f.fate ? `${who} ${fate.toLowerCase()}` : who;
       if (f.skill && f.n === 1 && !f.name) {
         const job = JOB_NAMES[f.skill as keyof typeof JOB_NAMES] ?? f.skill;
         return html`<div class="tally" data-tip="A skilled ${job.toLowerCase()}"><span class="skills"><span class="chip ok">${icon('book', 12)} ${job}</span></span><small>Skilled</small></div>`;
       }
-      const tip = `${f.n} ${who.toLowerCase()}${f.fate ? `: ${cap.toLowerCase()}` : ''}${f.name ? `<br><b>${f.name}</b>` : ''}`;
+      const tip = `${f.n} ${who.toLowerCase()}${f.fate ? `: ${fate.toLowerCase()}` : ''}${f.name ? `<br><b>${f.name}</b>` : ''}`;
       return html`<div class="tally" data-tip="${tip}">${f.fate === 'freed' ? html`<span class="figs ok">${icon('unchain', 18)}${figures(ic, f.n, cls)}</span>` : figures(ic, f.n, cls)}<small>${f.n === 1 && f.name ? html`<span class="nm">${f.name}</span>` : cap}</small></div>`;
     }
     case 'nation': {

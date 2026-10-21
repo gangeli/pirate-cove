@@ -349,25 +349,20 @@ function wakeMaterial(): THREE.MeshBasicMaterial {
     g.arc(bowX + 6 - Math.abs(Math.sin(a)) * 30 + Math.cos(a) * 6, cy + Math.sin(a) * r * 1.4, 1.5 + Math.random() * 2, 0, 7);
     g.fill();
   }
-  // soften every edge so the decal never shows its rectangle
-  g.globalCompositeOperation = 'destination-in';
-  const fx = g.createLinearGradient(0, 0, 512, 0);
-  fx.addColorStop(0, 'rgba(0,0,0,0)');
-  fx.addColorStop(0.35, 'rgba(0,0,0,1)');
-  fx.addColorStop(0.92, 'rgba(0,0,0,1)');
-  fx.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = fx;
-  g.fillRect(0, 0, 512, 192);
-  const fy = g.createLinearGradient(0, 0, 0, 192);
-  fy.addColorStop(0, 'rgba(0,0,0,0)');
-  fy.addColorStop(0.2, 'rgba(0,0,0,1)');
-  fy.addColorStop(0.8, 'rgba(0,0,0,1)');
-  fy.addColorStop(1, 'rgba(0,0,0,0)');
-  g.fillStyle = fy;
-  g.fillRect(0, 0, 512, 192);
+  // as an alpha map (white foam on clear): bake the flecks' coverage into the green channel, fading every edge
+  // so the decal never shows its rectangle
+  const img = g.getImageData(0, 0, 512, 192), d = img.data;
+  for (let y = 0; y < 192; y++)
+    for (let x = 0; x < 512; x++) {
+      const i = (y * 512 + x) * 4, u = x / 512, v = y / 192;
+      const fade = Math.min(1, u / 0.35, (1 - u) / 0.08) * Math.min(1, v / 0.2, (1 - v) / 0.2);
+      const a = (d[i + 3] / 255) * Math.max(0, fade) * 255;
+      d[i] = d[i + 1] = d[i + 2] = a;
+      d[i + 3] = 255;
+    }
+  g.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  wakeMat = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -2 });
+  wakeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, alphaMap: t, transparent: true, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -2 });
   markShared(wakeMat);
   return wakeMat;
 }
@@ -644,7 +639,7 @@ export class ShipsView {
         const wx = x + lx * c + lz * sn, wz = z - lx * sn + lz * c;
         const h = m.heightAt(wx, wz);
         if (h > need) v += h - need + 0.05;
-        if (avoid && wx > avoid.x - 0.55 && wx < avoid.x + avoid.w + 0.55 && wz > avoid.y - 0.55 && wz < avoid.y + avoid.h + 0.55) v += 1;
+        if (avoid && wx > avoid.x - 0.5 && wx < avoid.x + avoid.w + 0.5 && wz > avoid.y - 0.5 && wz < avoid.y + avoid.h + 0.5) v += 1;
       }
     }
     return v;

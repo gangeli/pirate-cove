@@ -141,6 +141,9 @@ S.setup_king = `h.click('[data-act="tab:king"]')`;
 
 // ------------------------------------------------------------------------------------------- checks
 const CHECK = () => {
+  // measure where things come to rest, not mid slide-in (the frozen headless page can hold an entry animation at its
+  // first frame while the screenshot shows it finished)
+  for (const an of document.getAnimations()) if (an.effect?.getTiming().iterations !== Infinity) an.finish();
   const W = innerWidth;
   const H = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-h')) || innerHeight;
   const vis = (e) => e && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden' && !e.closest('.hidden') && !e.closest('.gone');

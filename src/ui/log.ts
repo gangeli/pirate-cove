@@ -225,7 +225,7 @@ export class IslandLog {
     return html`<table class="ledger"><tr><th>Date</th><th>Event</th><th></th></tr>${[...g.messages].reverse().slice(0, 120).map((m) => html`<tr data-act="msg:${m.id}" style="cursor:pointer"><td style="white-space:nowrap">${m.date}</td><td><b style="font-family:var(--head);font-weight:normal">${m.title}</b>${(() => {
         const st = letterStrip(m, false);
         return st ? html`<div class="vcompact">${st}</div>` : html`: ${m.text.split('\n')[0].slice(0, 140)}`;
-      })()}</td><td><span class="chip ${m.kind === 'bad' || m.kind === 'alert' ? 'bad' : m.kind === 'good' ? 'ok' : ''}">${m.kind === 'bad' ? 'trouble' : m.kind === 'alert' ? 'alarm' : m.kind}</span></td></tr>`)}</table>`;
+      })()}</td><td><span class="kseal ${m.kind}" data-tip="${KIND_TIP[m.kind]}" aria-label="${KIND_TIP[m.kind]}">${icon(KIND_IC[m.kind], 16)}</span></td></tr>`)}</table>`;
   }
 
   private graph(c: HTMLCanvasElement, kind: string): void {
@@ -268,3 +268,6 @@ const FIN_ICON: Record<string, string> = {
   plunder: 'chest', entertainment: 'g_rum', smuggling: 'ship', ransom: 'purse', patron: 'crown', 'black market': 'scales', housing: 'hammer',
   construction: 'hammer', edicts: 'scroll', kidnapping: 'captive', maintenance: 'gear', shipbuilding: 'anchor', wages: 'coin',
 };
+/** a seal per kind of letter, as on the toasts */
+const KIND_IC: Record<string, string> = { ship: 'ship', bad: 'skull', good: 'coin', alert: 'bell', info: 'info', advisor: 'quill' };
+const KIND_TIP: Record<string, string> = { ship: 'Ships', bad: 'Trouble', good: 'Good news', alert: 'Alarm', info: 'News', advisor: 'Advice' };
