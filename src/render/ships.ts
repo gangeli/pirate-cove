@@ -947,6 +947,7 @@ export class ShipsView {
     if (!c || u.curveFor !== s.status) {
       c = u.curve ??= new Float64Array(7);
       u.curveFor = s.status;
+      u.curveArcFor = undefined; // (measured again below)
       if (s.status === 'returning') {
         const k = d / 3, tx = Math.cos(p.h), tz = -Math.sin(p.h);
         c.set([p.x, p.z, p.x + tx * k, p.z + tz * k, B[0] - hbx * k, B[1] - hbz * k, d]);
@@ -959,11 +960,27 @@ export class ShipsView {
     const d0 = c[6];
     if (d >= d0) return;
     // her progress: 0 at the rim, 1 at the berth; the sim's last two tiles of crawl brought to rest,
-    // f(d) = 2d²/S - d³/S² meeting the sim's speed at S and stopping at the berth
+    // f(d) = 2d²/S - d³/S² meeting the sim's speed at S and stopping at the berth. Taken along the curve's length
+    // (its parameter runs unevenly: she would surge through the bend and dawdle at its ends)
     const S = 2, dd = d < S ? d * ((2 * d) / S - (d * d) / (S * S)) : d;
-    const t = 1 - dd / d0;
-    const m = 1 - t, w0 = m * m * m, w1 = 3 * m * m * t, w2 = 3 * m * t * t, w3 = t * t * t;
-    const qx = c[0] * w0 + c[2] * w1 + c[4] * w2 + B[0] * w3, qz = c[1] * w0 + c[3] * w1 + c[5] * w2 + B[1] * w3;
+    const arc = (u.curveArc ??= new Float64Array(CURVE_N + 1));
+    if (u.curveArcFor !== c) {
+      u.curveArcFor = c;
+      let px = c[0], pz = c[1];
+      arc[0] = 0;
+      for (let i = 1; i <= CURVE_N; i++) {
+        bez(c, B, i / CURVE_N);
+        arc[i] = arc[i - 1] + Math.hypot(bezOut[0] - px, bezOut[1] - pz);
+        px = bezOut[0];
+        pz = bezOut[1];
+      }
+    }
+    const goal = (1 - dd / d0) * arc[CURVE_N];
+    let i = 1;
+    while (i < CURVE_N && arc[i] < goal) i++;
+    const t = (i - 1 + (goal - arc[i - 1]) / Math.max(1e-6, arc[i] - arc[i - 1])) / CURVE_N;
+    bez(c, B, Math.max(0, Math.min(1, t)));
+    const qx = bezOut[0], qz = bezOut[1];
     // going out, her real track strays a little from the path it was laid on: she joins it over the outer quarter
     const f = s.status === 'departing' ? smooth(d0 * 0.75, d0, d) : 0;
     p.x = qx + (p.x - qx) * f;
@@ -1125,6 +1142,9 @@ interface GlideState {
   curve?: Float64Array;
   /** the passage (departing, returning) the curve was laid for */
   curveFor?: string;
+  /** the curve's length at CURVE_N + 1 even steps of its parameter, and the curve it was measured on (cleared when laid again) */
+  curveArc?: Float64Array;
+  curveArcFor?: Float64Array;
   /** 1 at the berth, 0 an easing length or more out */
   near?: number;
   /** distance from the berth (Infinity without one) */
@@ -1144,6 +1164,16 @@ const NUDGES = [-3, -2, -1.2, -0.6, 0, 0.6, 1.2, 2, 3];
 /** how far out from the berth a ship gathers or loses way */
 function berthEase(L: number): number {
   return Math.max(5, Math.min(8, L * 0.8));
+}
+
+/** samples along a berth curve for its length */
+const CURVE_N = 16;
+const bezOut = [0, 0];
+/** the berth curve c (start, two control points; see berthed) ending at B, at parameter t, into bezOut */
+function bez(c: Float64Array, B: [number, number, number], t: number): void {
+  const m = 1 - t, w0 = m * m * m, w1 = 3 * m * m * t, w2 = 3 * m * t * t, w3 = t * t * t;
+  bezOut[0] = c[0] * w0 + c[2] * w1 + c[4] * w2 + B[0] * w3;
+  bezOut[1] = c[1] * w0 + c[3] * w1 + c[5] * w2 + B[1] * w3;
 }
 
 /** where a path first runs out to `R` from (x, z), and its direction there (the path's end if it never does) */
