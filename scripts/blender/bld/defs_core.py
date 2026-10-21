@@ -674,9 +674,11 @@ def field_shelter(k, x, z, kind):
 def farm(k, kind):
     W, D = 3, 2
     furrows(k, W, D)
-    dry_wall(k, V(-W / 2, 0, -D / 2), V(W / 2, 0, -D / 2))
-    dry_wall(k, V(-W / 2, 0, -D / 2), V(-W / 2, 0, D / 2))
-    dry_wall(k, V(W / 2, 0, -D / 2), V(W / 2, 0, D / 2 - 0.5))
+    # the walls run just inside the field's edge (stones ~0.15 across), so a neighbour's walls never meet them
+    e = 0.12
+    dry_wall(k, V(-W / 2 + e, 0, -D / 2 + e), V(W / 2 - e, 0, -D / 2 + e))
+    dry_wall(k, V(-W / 2 + e, 0, -D / 2 + e), V(-W / 2 + e, 0, D / 2 - e))
+    dry_wall(k, V(W / 2 - e, 0, -D / 2 + e), V(W / 2 - e, 0, D / 2 - 0.5))
     field_shelter(k, W / 2 - 0.45, -D / 2 + 0.42, kind)
     if kind == 'corn' and not k.lod:
         # a scarecrow in an old coat and a tricorn
