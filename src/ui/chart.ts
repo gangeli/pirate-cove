@@ -1,8 +1,7 @@
 import type { App } from './app';
 import { el, html, setHTML, patchHTML, delegate, fmt, raw } from './dom';
 import { icon } from './icons';
-import { NATIONS, NATION_NAMES, NATION_ADJ } from '../sim/data/kings';
-import { SHIPS, MISSION_NAMES } from '../sim/data/ships';
+import { NATIONS, NATION_NAMES, NATION_ADJ, type Nation } from '../sim/data/kings';
 import { regionReachable, transitTime } from '../sim/sea';
 import { relationLevel } from '../sim/diplomacy';
 import { MONTH } from '../sim/time';
@@ -34,7 +33,7 @@ const ASPECT = 4 / 3;
 const PAPER_W = 1600;
 const INK = '#3a1a08', BLOOD = '#8a1a10', REACH = '#2c6a36';
 /** the title cartouche, on the southern mainland clear of the seas (centre, map units) */
-const CARTOUCHE: [number, number] = [0.75, 0.915];
+const CARTOUCHE: [number, number] = [0.83, 0.935];
 const LEVELS = ['Uncharted', 'Surveyed', 'Charted', 'Familiar seas', 'Like the back of our hand', 'Our own waters'];
 
 type Mode = 'reach' | 'risk' | 'reward';
@@ -66,6 +65,8 @@ export class SeaChart {
   private drag: { x: number; y: number; cx: number; cy: number; moved: boolean } | null = null;
   private pinch: { d: number; z: number } | null = null;
   private raf = 0;
+  /** the Great Power whose details are unfolded in the side sheet */
+  private power: Nation | null = null;
 
   constructor(private app: App) {
     this.panel = el('div', 'panel big chart hidden', app.root);
@@ -108,17 +109,9 @@ export class SeaChart {
         this.zoomAt(cw / 2, ch / 2, this.view.z * (+d > 0 ? 1.5 : 1 / 1.5));
       },
       region: (id) => this.pickRegion(+id),
-      open: () => {
-        if (this.ship) {
-          app.select({ type: 'ship', id: this.ship });
-          this.hide();
-        }
-      },
-      sail: () => {
-        if (this.ship && app.cmd({ type: 'setSail', ship: this.ship })) {
-          audio.sfx('ship_bell');
-          this.refresh(true);
-        }
+      power: (n) => {
+        this.power = this.power === n ? null : (n as Nation);
+        this.drawSide(true);
       },
     }, () => audio.sfx('ui_click'));
     this.bindMap();
@@ -157,7 +150,7 @@ export class SeaChart {
         const dr = this.drag;
         if (dr) {
           const dx = p.x - dr.x, dy = p.y - dr.y;
-          if (Math.hypot(dx, dy) > 6) dr.moved = true;
+          if (Math.hypot(dx, dy) > 6) (dr.moved = true), this.learnt();
           if (dr.moved && this.view.z > 1.001) {
             this.view.cx = dr.cx - dx / (this.geo.mw * this.view.z);
             this.view.cy = dr.cy - dy / (this.geo.mh * this.view.z);
@@ -206,7 +199,27 @@ export class SeaChart {
     }, { passive: false });
   }
 
+  /** the "scroll to zoom" hint shows until the player has panned or zoomed once (remembered per browser) */
+  private used = (() => {
+    try {
+      return localStorage.getItem('bc.chartUsed') === '1';
+    } catch {
+      return false;
+    }
+  })();
+  private learnt(): void {
+    if (this.used) return;
+    this.used = true;
+    try {
+      localStorage.setItem('bc.chartUsed', '1');
+    } catch {
+      /* not remembered */
+    }
+    this.drawBar();
+  }
+
   private zoomAt(sx: number, sy: number, nz: number): void {
+    this.learnt();
     const v = this.view, { cw, ch, mw, mh } = this.geo;
     nz = Math.max(1, Math.min(4, nz));
     const mx = v.cx + (sx - cw / 2) / (mw * v.z), my = v.cy + (sy - ch / 2) / (mh * v.z);
@@ -380,7 +393,7 @@ export class SeaChart {
     g.lineWidth = 1.5;
     for (let i = 0; i < 70; i++) {
       const x = rnd() * W, y = H * (0.82 + rnd() * 0.17);
-      if (Math.abs(x / W - CARTOUCHE[0]) < 0.2 && y > H * 0.84) continue;
+      if (Math.abs(x / W - CARTOUCHE[0]) < 0.15 && y > H * 0.88) continue;
       g.beginPath();
       g.moveTo(x - 9, y);
       g.lineTo(x, y - 10);
@@ -417,19 +430,19 @@ export class SeaChart {
     g.strokeStyle = '#5a3a1a';
     g.lineWidth = 2;
     g.beginPath();
-    g.roundRect(tx - W * 0.2, ty - H * 0.055, W * 0.4, H * 0.1, 10);
+    g.roundRect(tx - W * 0.13, ty - H * 0.04, W * 0.26, H * 0.07, 8);
     g.fill();
     g.stroke();
     g.beginPath();
-    g.roundRect(tx - W * 0.2 + 6, ty - H * 0.055 + 6, W * 0.4 - 12, H * 0.1 - 12, 6);
+    g.roundRect(tx - W * 0.13 + 4, ty - H * 0.04 + 4, W * 0.26 - 8, H * 0.07 - 8, 5);
     g.lineWidth = 1;
     g.stroke();
     g.textAlign = 'center';
     g.fillStyle = '#4a2a10';
-    g.font = `${Math.round(H * 0.045)}px "IM Fell English SC", Georgia`;
-    g.fillText('Mare Caribbeum', tx, ty + 2);
-    g.font = `italic ${Math.round(H * 0.026)}px "IM Fell English", Georgia`;
-    g.fillText('Here be Pyrates', tx, ty + H * 0.032);
+    g.font = `${Math.round(H * 0.03)}px "IM Fell English SC", Georgia`;
+    g.fillText('Mare Caribbeum', tx, ty + 1);
+    g.font = `italic ${Math.round(H * 0.018)}px "IM Fell English", Georgia`;
+    g.fillText('Here be Pyrates', tx, ty + H * 0.022);
     return c;
   }
 
@@ -661,7 +674,7 @@ export class SeaChart {
   private drawLabels(g: CanvasRenderingContext2D, info: { r: Region; x: number; y: number; known: boolean; home: boolean; reach: { ok: boolean } | null; months: number }[], R: number, small: boolean, sel?: Ship): void {
     const f1 = small ? 11.5 : 13.5, f2 = small ? 10.5 : 12;
     // the title cartouche is an obstacle too
-    const placed: Box[] = [{ x: this.sx(CARTOUCHE[0] - 0.2), y: this.sy(CARTOUCHE[1] - 0.055), w: 0.4 * this.geo.mw * this.view.z, h: 0.1 * this.geo.mh * this.view.z }];
+    const placed: Box[] = [{ x: this.sx(CARTOUCHE[0] - 0.13), y: this.sy(CARTOUCHE[1] - 0.04), w: 0.26 * this.geo.mw * this.view.z, h: 0.07 * this.geo.mh * this.view.z }];
     const discs = info.map((o) => ({ x: o.x - R, y: o.y - R, w: R * 2, h: R * 2 }));
     const inter = (a: Box, b: Box) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
     // the labels that matter are placed first, so the minor ones are the ones that give way
@@ -752,7 +765,7 @@ export class SeaChart {
     const sel = this.selShip();
     const modes: [Mode, string, string][] = [['reach', 'Reach', 'compass'], ['risk', 'Danger', 'skull'], ['reward', 'Plunder', 'chest']];
     const bar = html`<div class="seg" role="radiogroup" aria-label="Chart view">${modes.map(([m, n, ic]) => html`<button class="${this.mode === m ? 'on' : ''}" data-act="mode:${m}" role="radio" aria-checked="${this.mode === m ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</div>
-      <span class="how">${this.app.touchMode ? 'Pinch to zoom, drag to pan' : 'Scroll to zoom, drag to pan'}</span>`;
+      ${this.used ? '' : html`<span class="how">${this.app.touchMode ? 'Pinch to zoom, drag to pan' : 'Scroll to zoom, drag to pan'}</span>`}`;
     patchHTML(this.bar, bar);
     patchHTML(this.bar2, bar);
     const sw = (inner: string) => raw(`<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">${inner}</svg>`);
@@ -774,43 +787,71 @@ export class SeaChart {
     const isHome = r.id === game.homeRegion;
     const ships = [...game.ships.values()];
     const sel = this.selShip();
-    const pips = (v: number, on: string, off: string) => html`<span class="pips">${on.repeat(v)}<i>${off.repeat(5 - v)}</i></span>`;
     const statusName = (s: Ship) => ({ docked: 'In port', boarding: 'Boarding', departing: 'Setting sail', atsea: 'At sea', returning: 'Homeward', repairing: 'Repairing', building: 'Being built', lost: 'Lost' } as Record<string, string>)[s.status] ?? s.status;
     const reach = sel ? regionReachable(game, sel, r.id) : null;
-    const canTask = sel && (sel.status === 'docked' || sel.status === 'boarding' || sel.status === 'repairing');
+    const bound = !!sel && sel.region === r.id;
+    // a five-step meter as icons: lit glyphs for the value, faint ones for the rest
+    const meter = (ic: string, v: number, cls: string, tip: string) => html`<span class="sea-meter ${cls}" data-tip="${tip}" role="img" aria-label="${tip.replace(/<[^>]+>/g, '')}">${icon(ic, 16)}<span class="pips">${Array.from({ length: 5 }, (_, i) => html`<i class="${i < v ? 'on' : ''}"></i>`)}</span></span>`;
+    const risk = known ? this.risk(r) : 0, reward = known ? this.reward(r) : 0;
+    const months = sel && reach?.ok ? (transitTime(game, sel, r.id) / MONTH).toFixed(1) : '';
+    const level = LEVELS[Math.min(5, Math.floor(r.knowledge))];
+    const found = r.settlements.filter((x) => x.found);
     patchHTML(this.side, html`
+      <section class="sect sea-card">
+        <div class="titled"><h3>${r.name}</h3>${isHome ? html`<span class="home-mark" data-tip="Home waters: your island lies here" aria-label="Home waters">${icon('anchor', 14)}</span>` : ''}${known ? '' : html`<span class="chip">Uncharted</span>`}</div>
+        <div class="sea-stats">
+          ${known ? html`${meter('skull', risk, 'risk', `<b>Danger ${risk} of 5</b><br>Navies and rival pirates in these waters.`)}${meter('chest', reward, 'reward', `<b>Plunder ${reward} of 5</b><br>Merchant traffic${r.tradeRoute ? ' and a trade route' : ''}.`)}` : ''}
+          ${sel && reach ? (reach.ok ? html`<span class="badge" data-tip="${sel.name}: ${months} months' sail each way">${icon('compass', 13)} ${months} mo</span>` : html`<span class="chip bad" data-tip="${reach.reason ?? ''}">${icon('info', 12)} Out of reach</span>`) : ''}
+          ${sel && bound ? html`<span class="chip ok bound" data-tip="${sel.name}'s orders take her here">${icon('flag', 12)} ${sel.name} bound here</span>` : ''}
+        </div>
+        ${sel && reach && !reach.ok ? html`<div class="sea-why">${reach.reason}</div>` : ''}
+        ${known ? html`<div class="sea-nations">${NATIONS.map((n) => {
+          const m = r.merchant[n], v = r.naval[n];
+          const ml = m > 0.6 ? 3 : m > 0.3 ? 2 : m > 0.05 ? 1 : 0, vl = v > 0.5 ? 3 : v > 0.2 ? 2 : v > 0.05 ? 1 : 0;
+          const words = `<b>${NATION_ADJ[n]}</b><br>${['No', 'Few', 'Some', 'Busy'][ml]} merchants · ${['no', 'little', 'some', 'strong'][vl]} navy`;
+          return html`<span class="nat-pres" data-tip="${words}">${flag(n, 18)}<span class="mini">${icon('coin', 12)}${'▮'.repeat(ml)}<i>${'▮'.repeat(3 - ml)}</i></span><span class="mini navy">${icon('g_cannon', 12)}${'▮'.repeat(vl)}<i>${'▮'.repeat(3 - vl)}</i></span></span>`;
+        })}</div>
+        <div class="sea-facts">
+          <span class="stat" data-tip="<b>${level}</b><br>How well your captains know these waters">${icon('telescope', 14)} ${level}</span>
+          <span class="stat" data-tip="${found.length ? found.map((x) => `${x.name} (${NATION_ADJ[x.nat]} ${x.type})`).join('<br>') : 'No settlements known'}">${icon('flag', 14)} ${found.length}</span>
+          ${r.routeFound ? html`<span class="stat" data-tip="A trade route runs through here">${icon('ship', 14)} Route</span>` : ''}
+        </div>` : html`<div class="sea-why">Explore the neighbouring seas to chart these waters.</div>`}
+      </section>
       <section class="sect">
         <h4 class="eng">Your fleet</h4>
         ${ships.length ? html`<div class="pick-list">${ships.map((s) => html`<button class="pick ${s.id === this.ship ? 'on' : ''}" data-act="ship:${s.id}">
-          ${icon('ship', 18)}<span class="nm">${s.name}<small>${SHIPS[s.type].name}</small></span><span class="chip ${s.status === 'docked' ? 'ok' : ''}">${statusName(s)}</span></button>`)}</div>`
+          ${icon('ship', 18)}<span class="nm">${s.name}<small>${game.regions[s.region]?.name ?? ''}</small></span><span class="chip ${s.status === 'docked' ? 'ok' : ''}">${statusName(s)}</span></button>`)}</div>`
           : html`<div class="sub">You have no ships yet. Build a Boatyard and a Dock.</div>`}
       </section>
       <section class="sect">
-        <div class="titled"><h3>${r.name}</h3>${isHome ? html`<span class="chip home">Home waters</span>` : ''}</div>
-        <div class="sub">${LEVELS[Math.min(5, Math.floor(r.knowledge))]}${isHome ? ' · your island lies here' : ''}</div>
-        ${sel && reach ? html`<div class="callout ${reach.ok ? 'ok' : 'bad'}">${icon(reach.ok ? 'ship' : 'info', 16)}<span>${reach.ok
-          ? (isHome ? `${sel.name} is moored at home.` : `${sel.name}: ${(transitTime(game, sel, r.id) / MONTH).toFixed(1)} months' sail each way.${canTask && sel.region === r.id ? ' Course set.' : ''}`)
-          : reach.reason}</span></div>` : ''}
-        ${known ? html`<div class="kv">
-          <span>Danger</span>${pips(this.risk(r), '●', '○')}
-          <span>Plunder</span>${pips(this.reward(r), '◆', '◇')}
-          ${NATIONS.map((n) => html`<span>${NATION_ADJ[n]}</span><span>${r.merchant[n] > 0.6 ? 'busy' : r.merchant[n] > 0.3 ? 'some' : 'few'} merchants, ${r.naval[n] > 0.5 ? 'strong' : r.naval[n] > 0.2 ? 'some' : 'little'} navy</span>`)}
-          <span>Settlements</span><span>${r.settlements.filter((s) => s.found).map((s) => `${s.name} (${NATION_ADJ[s.nat]} ${s.type})`).join(', ') || 'none known'}</span>
-          <span>Trade route</span><span>${r.routeFound ? 'found' : 'none known'}</span></div>` : html`<div class="sub">Send a ship to explore the neighbouring seas to chart these waters.</div>`}
-      </section>
-      ${sel ? html`<section class="sect">
-        <h4 class="eng">${sel.name}'s orders</h4>
-        <div class="kv"><span>Mission</span><span>${MISSION_NAMES[sel.mission]}</span><span>Bound for</span><span>${game.regions[sel.region].name}</span>
-          <span>Rations</span><span>${Math.floor(sel.rations)} of ${SHIPS[sel.type].rations}</span></div>
-        <div class="actions">${canTask && sel.status !== 'repairing' ? html`<button class="btn primary" data-act="sail">${icon('bell', 16)} ${sel.status === 'boarding' ? 'Leave now' : 'Set sail'}</button>` : ''}<button class="btn ghost" data-act="open">Ship details</button></div>
-      </section>` : ''}
-      <section class="sect">
         <h4 class="eng">Great Powers</h4>
-        ${NATIONS.map((n) => {
+        <div class="powers">${NATIONS.map((n) => {
           const st = game.nations[n];
-          return html`<div class="power"><b>${NATION_NAMES[n]}</b> <span class="chip">${relationLevel(st.relation)}</span>${st.invasion.stage ? html` <span class="chip bad">Invasion ${['', 'rumoured', 'assembling', 'underway'][st.invasion.stage]}</span>` : ''}
-            <div class="sub">${st.knows ? 'Knows where you are' : 'Your island is a secret'}${st.atWarWith.length ? ` · at war with ${st.atWarWith.map((x) => NATION_NAMES[x]).join(', ')}` : ''} · plundered ${fmt(st.plunderGold)} gold</div></div>`;
-        })}
+          const lv = relationLevel(st.relation);
+          const open = this.power === n;
+          return html`<button class="power-chip ${STANCE[lv] ?? ''} ${open ? 'on' : ''}" data-act="power:${n}" aria-expanded="${open ? 'true' : 'false'}" data-tip="<b>${NATION_NAMES[n]}</b>: ${lv}">${flag(n, 20)}<span>${lv}</span>${st.invasion.stage ? html`<b class="warn" aria-label="Invasion">!</b>` : ''}</button>`;
+        })}</div>
+        ${this.power ? (() => {
+          const n = this.power, st = game.nations[n];
+          return html`<div class="power-detail"><b>${NATION_NAMES[n]}</b>
+            <span class="stat" data-tip="${st.knows ? 'They know where your island is' : 'Your island is a secret to them'}">${icon(st.knows ? 'eye' : 'shield', 14)} ${st.knows ? 'Knows' : 'Secret'}</span>
+            <span class="stat" data-tip="Gold you have plundered from ${NATION_NAMES[n]}">${icon('coin', 14)} ${fmt(st.plunderGold)}</span>
+            ${st.atWarWith.length ? html`<span class="stat bad" data-tip="At war with ${st.atWarWith.map((x) => NATION_NAMES[x]).join(', ')}">${icon('g_cannon', 14)} ${st.atWarWith.map((x) => html`${flag(x, 14)}`)}</span>` : ''}
+            ${st.invasion.stage ? html`<span class="chip bad">Invasion ${['', 'rumoured', 'assembling', 'underway'][st.invasion.stage]}</span>` : ''}</div>`;
+        })() : ''}
       </section>`);
   }
+}
+
+const STANCE: Record<string, string> = { Hostile: 'bad', Cold: 'warn', Neutral: '', Cordial: 'ok', Harmonious: 'ok' };
+
+/** a small period flag: St George for England, the lilies for France, the Burgundy cross for Spain */
+function flag(n: string, size = 18) {
+  const w = Math.round(size * 1.4), h = size;
+  const body = n === 'eng'
+    ? '<rect width="28" height="20" fill="#f4ecd8"/><path d="M0 10h28M12 0v20" stroke="#b02418" stroke-width="4"/>'
+    : n === 'fra'
+      ? '<rect width="28" height="20" fill="#24408a"/><g fill="#e2c060"><circle cx="8" cy="7" r="2"/><circle cx="20" cy="7" r="2"/><circle cx="14" cy="14" r="2"/></g>'
+      : '<rect width="28" height="20" fill="#f4ecd8"/><path d="M3 2l22 16M25 2L3 18" stroke="#b02418" stroke-width="2.6" stroke-linecap="round"/>';
+  return raw(`<svg class="flag" width="${w}" height="${h}" viewBox="0 0 28 20" aria-hidden="true">${body}<rect x=".5" y=".5" width="27" height="19" fill="none" stroke="#2a1a0a" stroke-opacity=".7"/></svg>`);
 }

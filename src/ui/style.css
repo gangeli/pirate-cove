@@ -1015,9 +1015,11 @@ body.touch .cursor-tip { display: none; }
   .chart .chart-wrap { flex-direction: column; gap: 10px; margin-top: 6px; }
   .big .sheet-head h2, .big > h2:first-child { font-size: 23px; }
   .big .sheet-head .sub { font-size: 13px; }
-  .chart-main { flex: none; }
-  .chart-map { flex: none; aspect-ratio: 4 / 3; max-height: calc(var(--app-h, 100dvh) * 0.42); }
-  .chart-sidecol { width: auto; flex: 1; }
+  /* the map takes what is left; the details ride in a bottom sheet with their own scroll */
+  .chart-main { flex: 1 1 auto; min-height: 140px; }
+  .chart-map { flex: 1; min-height: 0; }
+  .chart-sidecol { width: auto; flex: 0 1 auto; max-height: 46%; margin: 0 -14px -12px; padding: 10px 14px 6px; border-top: 1px solid var(--ink2); border-radius: 10px 10px 0 0; background: linear-gradient(rgba(255, 248, 228, 0.55), rgba(240, 228, 196, 0.25)); box-shadow: 0 -4px 10px rgba(60, 30, 10, 0.18); }
+  .chart-sidecol::before { content: ''; display: block; width: 40px; height: 4px; margin: -4px auto 6px; border-radius: 2px; background: color-mix(in srgb, var(--ink2) 40%, transparent); }
   .chart-side { overflow-y: auto; }
   .chart-legend { font-size: 12.5px; gap: 2px 12px; }
   .chart-bar .seg { display: flex; flex: 1; }
@@ -1210,3 +1212,35 @@ body.touch .toggle { min-height: 40px; }
 .aura b { font-weight: normal; color: var(--bottle); font-variant-numeric: tabular-nums; }
 .aura.neg b { color: var(--blood); }
 .aura .reach { display: inline-flex; align-items: center; gap: 1px; font-style: normal; font-size: 12px; color: var(--ink3); margin-left: 2px; }
+
+/* sea chart side sheet: the chosen sea first, as icons; nations as flags */
+.sea-card .titled h3 { font-size: 21px; }
+.sea-card .titled { align-items: center; }
+.sea-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 6px; }
+.sea-meter { display: inline-flex; align-items: center; gap: 4px; color: var(--ink2); }
+.sea-meter .pips { display: inline-flex; gap: 2px; }
+.sea-meter .pips i { width: 8px; height: 8px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--ink2) 55%, transparent); }
+.sea-meter.risk .pips i.on { background: var(--blood); border-color: #3a0806; }
+.sea-meter.reward .pips i { border-radius: 1px; transform: rotate(45deg) scale(0.85); }
+.sea-meter.reward .pips i.on { background: #b8901e; border-color: #5a3a08; }
+.chip.bound { font-size: 13px; }
+.sea-why { margin-top: 6px; font-size: 13.5px; font-style: italic; color: var(--ink2); }
+.sea-nations { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; }
+.nat-pres { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--bottle); letter-spacing: -1px; }
+.nat-pres .mini { display: inline-flex; align-items: center; gap: 1px; }
+.nat-pres .mini .ic { color: var(--ink2); margin-right: 1px; }
+.nat-pres .mini.navy { color: var(--blood); }
+.nat-pres .mini i { font-style: normal; opacity: 0.22; color: var(--ink2); }
+.sea-facts { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; }
+.flag { display: inline-block; flex: none; border-radius: 1px; box-shadow: 0 1px 2px rgba(40, 20, 5, 0.3); }
+.powers { display: flex; gap: 6px; }
+.power-chip { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 3px 6px; cursor: pointer; font: 13.5px var(--body); color: var(--ink); background: rgba(250, 242, 220, 0.4); border: 1px solid color-mix(in srgb, var(--ink2) 45%, transparent); border-radius: 3px; position: relative; }
+.power-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.power-chip.ok { border-color: color-mix(in srgb, var(--bottle) 55%, transparent); color: #1f4a28; }
+.power-chip.warn { border-color: color-mix(in srgb, #8a6410 55%, transparent); color: #6a4808; }
+.power-chip.bad { border-color: color-mix(in srgb, var(--blood) 60%, transparent); color: var(--blood); background: color-mix(in srgb, var(--blood) 8%, rgba(250, 242, 220, 0.4)); }
+.power-chip.on { box-shadow: inset 0 -3px 0 currentColor; }
+.power-chip .warn { position: absolute; top: -6px; right: -4px; width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; color: #f6e4c2; background: var(--blood); }
+body.touch .power-chip { min-height: 42px; }
+.power-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 6px; padding: 6px 8px; font-size: 14px; border-left: 3px solid var(--brass-lo); background: color-mix(in srgb, var(--brass) 10%, transparent); }
+.power-detail .stat .flag { margin-left: 2px; }
