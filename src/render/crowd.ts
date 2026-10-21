@@ -4,6 +4,7 @@ import { assetUrl, withKTX2 } from './textures';
 import { gpu } from './backend';
 import { analyzeGait, type FootTrack, type Gait } from './gait';
 import { prepareClips } from './clipfix';
+import { loadCharLod, maxPixels } from './charlod';
 
 /**
  * Instanced, GPU-skinned crowds. Each character model's animation clips are baked into a float texture
@@ -47,22 +48,71 @@ export interface Look {
   coat?: THREE.Color;
 }
 
-export class CrowdModel {
+/**
+ * One drawn mesh of a model and its per-instance data: the full model (near) or its far LOD. Both read the model's
+ * bone texture through the same shader; each has its own instances, so a person is drawn by one or the other.
+ */
+class Bank {
   /** an InstancedMesh on WebGL; on WebGPU a plain Mesh drawn `count` times (its instance matrices live in the data texture) */
   mesh!: THREE.Mesh & { count: number };
-  private inst: THREE.InstancedMesh | null = null;
-  private setData: ((t: THREE.DataTexture) => void) | null = null;
+  inst: THREE.InstancedMesh | null = null;
+  setData: ((t: THREE.DataTexture) => void) | null = null;
+  dataTex!: THREE.DataTexture;
+  data!: Float32Array;
+  /** rows in the per-instance data texture: grows in powers of two up to `cap`, so the per-frame upload
+   *  is about the size of the crowd rather than the capacity */
+  rows = 0;
+  readonly uData = { value: null as THREE.DataTexture | null };
+  lastCount = 0;
+  count = 0;
+
+  constructor(readonly dataW: number, readonly cap: number) {
+    this.resize(Math.min(cap, 64));
+  }
+
+  resize(rows: number): void {
+    const W = this.dataW;
+    const data = new Float32Array(W * rows * 4);
+    if (this.data) data.set(this.data.subarray(0, Math.min(this.data.length, data.length)));
+    this.data = data;
+    this.dataTex?.dispose();
+    this.dataTex = new THREE.DataTexture(data as any, W, rows, THREE.RGBAFormat, THREE.FloatType);
+    this.dataTex.needsUpdate = true;
+    this.uData.value = this.dataTex;
+    this.setData?.(this.dataTex);
+    this.rows = rows;
+  }
+
+  commit(): void {
+    this.mesh.count = this.count;
+    // nothing drawn now or last frame: no uploads at all
+    if (this.count === 0 && this.lastCount === 0) return;
+    this.lastCount = this.count;
+    if (this.inst) {
+      const im = this.inst.instanceMatrix;
+      im.clearUpdateRanges();
+      im.addUpdateRange(0, Math.max(1, this.count) * 16);
+      im.needsUpdate = true;
+    }
+    this.dataTex.needsUpdate = true;
+  }
+}
+
+export class CrowdModel {
   private readonly dataW = dataWidth();
   clips = new Map<string, ClipInfo>();
   private boneTex!: THREE.DataTexture;
-  private dataTex!: THREE.DataTexture;
-  private data!: Float32Array;
-  /** rows in the per-instance data texture: grows in powers of two up to `cap`, so the per-frame upload
-   *  is about the size of the crowd rather than the capacity */
-  private rows = 0;
-  private readonly uData = { value: null as THREE.DataTexture | null };
-  private lastCount = 0;
-  count = 0;
+  /** the full model, and its far LOD (chars/<name>.lod.bin; null when there is none) */
+  private near!: Bank;
+  private far: Bank | null = null;
+  /** every mesh to add to the scene */
+  meshes: THREE.Mesh[] = [];
+  /** a figure of the model's own height drawn shorter than this many pixels may use the far model (charlod.ts maxPixels) */
+  farBelowPx = 0;
+  /** height of the model in its own units (rest pose) */
+  height = 1.8;
+  /** the bank and slot of the last instance added (instanceFeet) */
+  private last: { bank: Bank; i: number } | null = null;
   readonly cap: number;
   private bones = 0;
   textured = false;
@@ -136,7 +186,6 @@ export class CrowdModel {
     rows.forEach((r, i) => buf.set(r, i * w * 4));
     this.boneTex = new THREE.DataTexture(buf, w, h, THREE.RGBAFormat, THREE.FloatType);
     this.boneTex.needsUpdate = true;
-    this.resizeData(Math.min(this.cap, 64));
 
     const geo = skinned.geometry;
     // the atlas holds linear detail multipliers (x2), not colours
@@ -147,34 +196,55 @@ export class CrowdModel {
       map.needsUpdate = true;
     }
     this.textured = !!map;
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    this.height = Math.max(0.5, geo.boundingBox!.max.y - geo.boundingBox!.min.y);
+    this.near = this.makeBank(geo, map ?? null);
+    // the far model: the same vertices with a simplified index (charlod.ts), drawn while it passes for the full one
+    const lod = await loadCharLod(url.replace(/\.glb$/, '.lod.bin'), geo);
+    if (lod) {
+      this.far = this.makeBank(lod.geometry, map ?? null);
+      this.farBelowPx = maxPixels(lod.lod, this.height);
+    }
+  }
+
+  /** a mesh drawing `geo` with this model's skinning and region colours, and its own instance data */
+  private makeBank(geo: THREE.BufferGeometry, map: THREE.Texture | null): Bank {
+    const bank = new Bank(this.dataW, this.cap);
     const g = gpu();
     if (g) {
       // WebGPU: skinning, region colours and the instance transform in one node vertex stage (nodes.ts crowdMaterial)
-      const c = g.crowdMaterial({ boneTex: this.boneTex as any, dataTex: this.dataTex as any, textured: this.textured, map: map as any });
-      this.setData = c.setData as unknown as (t: THREE.DataTexture) => void;
+      const c = g.crowdMaterial({ boneTex: this.boneTex as any, dataTex: bank.dataTex as any, textured: this.textured, map: map as any });
+      bank.setData = c.setData as unknown as (t: THREE.DataTexture) => void;
       const mat = c.material as unknown as THREE.Material;
       mat.userData.textures = [this.boneTex];
-      this.mesh = Object.assign(new THREE.Mesh(geo, mat), { count: 0 });
+      bank.mesh = Object.assign(new THREE.Mesh(geo, mat), { count: 0 });
     } else {
       const mat = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, map, alphaTest: map ? 0.5 : 0, side: map ? THREE.DoubleSide : THREE.FrontSide });
-      this.inject(mat, false);
-      this.inst = new THREE.InstancedMesh(geo, mat, this.cap);
-      this.inst.count = 0;
+      this.inject(mat, false, bank.uData);
+      bank.inst = new THREE.InstancedMesh(geo, mat, this.cap);
+      bank.inst.count = 0;
       const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
-      this.inject(depth, true);
-      this.inst.customDepthMaterial = depth;
-      this.mesh = this.inst;
+      this.inject(depth, true, bank.uData);
+      bank.inst.customDepthMaterial = depth;
+      bank.mesh = bank.inst;
     }
-    this.mesh.frustumCulled = false;
-    this.mesh.castShadow = true;
-    this.mesh.receiveShadow = true;
+    bank.mesh.frustumCulled = false;
+    bank.mesh.castShadow = true;
+    bank.mesh.receiveShadow = true;
+    this.meshes.push(bank.mesh);
+    return bank;
   }
 
-  private inject(mat: THREE.Material, depthOnly: boolean): void {
+  /** has a far model */
+  get hasFar(): boolean {
+    return !!this.far;
+  }
+
+  private inject(mat: THREE.Material, depthOnly: boolean, uData: { value: THREE.DataTexture | null }): void {
     const boneTex = () => this.boneTex;
     mat.onBeforeCompile = (sh) => {
       sh.uniforms.uBones = { value: boneTex() };
-      sh.uniforms.uData = this.uData; // shared, so a regrown data texture reaches both materials
+      sh.uniforms.uData = uData; // shared by the bank's colour and depth materials, so a regrown data texture reaches both
       sh.vertexShader = sh.vertexShader
         .replace(
           '#include <common>',
@@ -238,22 +308,16 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
     mat.customProgramCacheKey = () => 'crowd' + (depthOnly ? 'd' : 'c') + (this.textured ? 't' : '');
   }
 
-  private resizeData(rows: number): void {
-    const W = this.dataW;
-    const data = new Float32Array(W * rows * 4);
-    if (this.data) data.set(this.data.subarray(0, Math.min(this.data.length, data.length)));
-    this.data = data;
-    this.dataTex?.dispose();
-    this.dataTex = new THREE.DataTexture(data as any, W, rows, THREE.RGBAFormat, THREE.FloatType);
-    this.dataTex.needsUpdate = true;
-    this.uData.value = this.dataTex;
-    this.setData?.(this.dataTex);
-    this.rows = rows;
-  }
-
   /** begin a frame */
   reset(): void {
-    this.count = 0;
+    this.near.count = 0;
+    if (this.far) this.far.count = 0;
+    this.last = null;
+  }
+
+  /** instances added this frame (near + far) */
+  get count(): number {
+    return this.near.count + (this.far?.count ?? 0);
   }
 
   /** add an instance; t = seconds into the clip */
@@ -278,14 +342,17 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
 
   /**
    * add an instance posed by clip `a` at cycle phase `ua`, cross-faded with weight `w` toward clip `b` at phase `ub`
-   * (b = null or w = 0: clip a alone). The hand prop is the one of whichever clip dominates.
+   * (b = null or w = 0: clip a alone). The hand prop is the one of whichever clip dominates. `far`: draw it with the
+   * far model (when the model has one).
    */
-  addPose(matrix: THREE.Matrix4, a: string, ua: number, b: string | null, ub: number, w: number, look: Look): void {
-    if (this.count >= this.cap) return;
-    const i = this.count++;
-    if (i >= this.rows) this.resizeData(Math.min(this.cap, this.rows * 2));
-    const d = this.data, o = i * this.dataW * 4;
-    if (this.inst) matrix.toArray(this.inst.instanceMatrix.array, i * 16);
+  addPose(matrix: THREE.Matrix4, a: string, ua: number, b: string | null, ub: number, w: number, look: Look, far = false): void {
+    const bank = far && this.far ? this.far : this.near;
+    if (bank.count >= this.cap) return;
+    const i = bank.count++;
+    if (i >= bank.rows) bank.resize(Math.min(this.cap, bank.rows * 2));
+    this.last = { bank, i };
+    const d = bank.data, o = i * this.dataW * 4;
+    if (bank.inst) matrix.toArray(bank.inst.instanceMatrix.array, i * 16);
     else matrix.toArray(d, o + 36);
     const A = this.frameOf(a, ua);
     d[o] = A[0];
@@ -311,11 +378,12 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
   }
 
   /**
-   * world positions of the four foot contact points (L ankle, L ball, R ankle, R ball) of instance i as drawn this
-   * frame: the same row blend the vertex shader does, applied to the points (debug: foot slide measurement)
+   * world positions of the four foot contact points (L ankle, L ball, R ankle, R ball) of the instance added last, as
+   * drawn this frame: the same row blend the vertex shader does, applied to the points (debug: foot slide measurement)
    */
-  instanceFeet(i: number, matrix: THREE.Matrix4, out: THREE.Vector3[]): void {
-    const d = this.data, o = i * this.dataW * 4, ob = o + animBTexel() * 4;
+  instanceFeet(matrix: THREE.Matrix4, out: THREE.Vector3[]): void {
+    if (!this.last) return;
+    const d = this.last.bank.data, o = this.last.i * this.dataW * 4, ob = o + animBTexel() * 4;
     const F = this.feet;
     const wb = d[ob + 3];
     for (let k = 0; k < 4; k++) {
@@ -338,17 +406,8 @@ ${depthOnly ? '' : 'vRC = rc;'}`,
   }
 
   commit(): void {
-    this.mesh.count = this.count;
-    // nothing drawn now or last frame: no uploads at all
-    if (this.count === 0 && this.lastCount === 0) return;
-    this.lastCount = this.count;
-    if (this.inst) {
-      const im = this.inst.instanceMatrix;
-      im.clearUpdateRanges();
-      im.addUpdateRange(0, Math.max(1, this.count) * 16);
-      im.needsUpdate = true;
-    }
-    this.dataTex.needsUpdate = true;
+    this.near.commit();
+    this.far?.commit();
   }
 }
 

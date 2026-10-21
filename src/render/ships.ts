@@ -667,16 +667,24 @@ export class ShipsView {
     g.userData.L = L;
     // the rig's reach fore and aft of midships (bowsprit, booms, a lateen yard), in tiles
     g.userData.ext = [src.plan.xmin * s, src.plan.xmax * s];
+    halfBeam.set(L, Math.max(L * 0.11, (src.plan.beam * s) / 2 + 0.1)); // (+ the channels and wales)
     return g;
   }
 
-  /** wooden frame for a ship under construction: same model, unrigged, clipped by progress (null while the model loads) */
-  hullFrame(type: ShipType): THREE.Object3D | null {
+  /**
+   * wooden frame for a ship under construction: same model, unrigged, clipped by progress (null while the model loads).
+   * `maxLen`: the length of the yard's slipway (its lot's short side), to which a longer hull is scaled down: every
+   * ship is longer than her slip, and drawn at full size a galleon ran through the shipyard's mould loft and out over
+   * its neighbours
+   */
+  hullFrame(type: ShipType, maxLen = Infinity): THREE.Object3D | null {
     const g = this.instance(type, undefined, false);
     if (!g) return null;
     const src = shipModel(type)!;
+    const f = Math.min(1, maxLen / LENGTH[type]), hull = g.userData.hull as THREE.Object3D;
+    hull.scale.multiplyScalar(f);
     // standing on the keel blocks, not floating at its waterline
-    (g.userData.hull as THREE.Object3D).position.y = src.plan.draft * (LENGTH[type] / src.plan.length);
+    hull.position.y = src.plan.draft * (LENGTH[type] / src.plan.length) * f;
     const plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
     const clipped = new Map<THREE.Material, THREE.Material>();
     g.traverse((o) => {
@@ -694,7 +702,7 @@ export class ShipsView {
       m.material = Array.isArray(m.material) ? m.material.map(swap) : swap(m.material);
     });
     g.userData.clip = plane;
-    g.userData.L = LENGTH[type];
+    g.userData.L = LENGTH[type] * f;
     return g;
   }
   setHullProgress(o: THREE.Object3D, p: number): void {
@@ -879,9 +887,11 @@ export class ShipsView {
     const dock = dockId ? this.game.buildings.get(dockId) : undefined;
     u.near = 0;
     u.dBerth = Infinity;
-    let d = Infinity;
+    let d = Infinity, sbx = 0, sby = 0;
     if (dock) {
       const [bx, by, bdir] = dockBerth(dock);
+      sbx = bx;
+      sby = by;
       const key = `${dock.id}:${bx},${by}:${s.type}`;
       if (u.berthKey !== key) {
         u.berthKey = key;
@@ -930,20 +940,37 @@ export class ShipsView {
     p.x += nx * u.nudge;
     p.z += nz * u.nudge;
     if (d >= R || !u.berth) return;
+    const B = u.berth, hb = u.berthHead!, hbx = Math.cos(hb), hbz = -Math.sin(hb);
+    // her curve, laid once per passage (a curve whose ends moved with her would add their speed to hers): coming in,
+    // from where she meets the rim, on her heading, to the berth; going out, from the berth to where her track crosses
+    // the rim. Control arms of a third of the reach keep her speed where the curve meets the track
+    let c = u.curve;
+    if (!c || u.curveFor !== s.status) {
+      c = u.curve ??= new Float64Array(7);
+      u.curveFor = s.status;
+      if (s.status === 'returning') {
+        const k = d / 3, tx = Math.cos(p.h), tz = -Math.sin(p.h);
+        c.set([p.x, p.z, p.x + tx * k, p.z + tz * k, B[0] - hbx * k, B[1] - hbz * k, d]);
+      } else {
+        const [ex, ez, etx, etz] = rimCrossing(s.voyagePath, sbx, sby, R);
+        const k = R / 3;
+        c.set([ex, ez, ex - etx * k, ez - etz * k, B[0] + hbx * k, B[1] + hbz * k, R]);
+      }
+    }
+    const d0 = c[6];
+    if (d >= d0) return;
     // her progress: 0 at the rim, 1 at the berth; the sim's last two tiles of crawl brought to rest,
     // f(d) = 2d²/S - d³/S² meeting the sim's speed at S and stopping at the berth
     const S = 2, dd = d < S ? d * ((2 * d) / S - (d * d) / (S * S)) : d;
-    const t = 1 - dd / R;
-    const B = u.berth, hb = u.berthHead!, hbx = Math.cos(hb), hbz = -Math.sin(hb);
-    const tx = Math.cos(p.h), tz = -Math.sin(p.h);
-    const k = Math.min(R * 0.5, Math.hypot(B[0] - p.x, B[1] - p.z) * 0.4);
-    // coming in she moves from the track toward the berth, leaving from it toward the track (bow first both ways)
-    const sg = s.status === 'returning' ? 1 : -1;
-    const c1x = p.x + tx * k * sg, c1z = p.z + tz * k * sg, c2x = B[0] - hbx * k * sg, c2z = B[1] - hbz * k * sg;
+    const t = 1 - dd / d0;
     const m = 1 - t, w0 = m * m * m, w1 = 3 * m * m * t, w2 = 3 * m * t * t, w3 = t * t * t;
-    p.x = p.x * w0 + c1x * w1 + c2x * w2 + B[0] * w3;
-    p.z = p.z * w0 + c1z * w1 + c2z * w2 + B[1] * w3;
+    const qx = c[0] * w0 + c[2] * w1 + c[4] * w2 + B[0] * w3, qz = c[1] * w0 + c[3] * w1 + c[5] * w2 + B[1] * w3;
+    // going out, her real track strays a little from the path it was laid on: she joins it over the outer quarter
+    const f = s.status === 'departing' ? smooth(d0 * 0.75, d0, d) : 0;
+    p.x = qx + (p.x - qx) * f;
+    p.z = qz + (p.z - qz) * f;
   }
+
 
   /** which way round she lies at a fitted berth: nearest the heading she has, unless her rig would then reach over land */
   private berthWay(b: [number, number, number], heading: number, L: number, dock: { x: number; y: number; w: number; h: number }, ext?: [number, number]): number {
@@ -958,7 +985,7 @@ export class ShipsView {
   private aground(x: number, z: number, head: number, L: number, avoid: { x: number; y: number; w: number; h: number } | null, ext?: [number, number]): number {
     const m = this.game.map;
     const c = Math.cos(head), sn = Math.sin(head);
-    const hl = L * 0.4, hb = L * 0.11, need = -Math.min(0.5, L * 0.035);
+    const hl = L * 0.4, hb = halfBeam.get(L) ?? L * 0.11, need = -Math.min(0.5, L * 0.035);
     let v = 0;
     for (let i = 0; i <= 6; i++) {
       const lx = -hl + (2 * hl * i) / 6;
@@ -1100,6 +1127,10 @@ interface GlideState {
   berthHead?: number;
   /** coming in, she is within reach of her berth (and has picked which way round she lies) */
   inR?: boolean;
+  /** her curve between the track and the berth: start x, z, two control points, the sim's distance at its start */
+  curve?: Float64Array;
+  /** the passage (departing, returning) the curve was laid for */
+  curveFor?: string;
   /** 1 at the berth, 0 an easing length or more out */
   near?: number;
   /** distance from the berth (Infinity without one) */
@@ -1110,12 +1141,32 @@ interface GlideState {
   ipFrame?: number;
 }
 
+/** a hull's half breadth by its length (the classes' lengths differ), for the outline kept in the water */
+const halfBeam = new Map<number, number>();
+
 /** sideways offsets tried to keep a hull off the shore */
 const NUDGES = [-3, -2, -1.2, -0.6, 0, 0.6, 1.2, 2, 3];
 
 /** how far out from the berth a ship gathers or loses way */
 function berthEase(L: number): number {
   return Math.max(5, Math.min(8, L * 0.8));
+}
+
+/** where a path first runs out to `R` from (x, z), and its direction there (the path's end if it never does) */
+function rimCrossing(path: [number, number][] | undefined, x: number, z: number, R: number): [number, number, number, number] {
+  if (!path || path.length < 2) return [x + R, z, 1, 0];
+  for (let i = 0; i + 1 < path.length; i++) {
+    const [ax, az] = path[i], [bx, bz] = path[i + 1];
+    const l = Math.hypot(bx - ax, bz - az);
+    if (l < 1e-6) continue;
+    const n = Math.ceil(l / 0.25);
+    for (let j = 1; j <= n; j++) {
+      const px = ax + ((bx - ax) * j) / n, pz = az + ((bz - az) * j) / n;
+      if (Math.hypot(px - x, pz - z) >= R) return [px, pz, (bx - ax) / l, (bz - az) / l];
+    }
+  }
+  const [ax, az] = path[path.length - 2], [bx, bz] = path[path.length - 1], l = Math.hypot(bx - ax, bz - az) || 1;
+  return [bx, bz, (bx - ax) / l, (bz - az) / l];
 }
 
 /** how far out from the berth she leaves (or joins) the sim's track for a curve of her own */

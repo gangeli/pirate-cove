@@ -5,6 +5,7 @@ import { BUILDING } from '../sim/data/buildings';
 import type { World } from './world';
 import { DT } from '../sim/time';
 import { farmKeepOut, PLANT_R } from './croplayout';
+import { cullDebug } from './instcull';
 import { loadCrowd, type CrowdModel, type Look, type ModelName } from './crowd';
 
 /** Is this person drawn in the world right now (vs inside a building / at sea)? */
@@ -97,6 +98,8 @@ interface Mover {
   anchor: boolean;
   /** snapped this frame (a jump no walk explains): no ground covered, no speed */
   jumped: boolean;
+  /** drawn with the model's far LOD */
+  far: boolean;
   nx: number; ny: number;
   /** drawn ground position, facing (radians about +y, 0 = +z), gait phase (cycles, R heel strike at 0) */
   rx: number; ry: number;
@@ -153,6 +156,8 @@ export class PeopleView {
   beforeFrame: (() => void) | null = null;
   /** debug: the old drawing (raw sim positions, clips at a fixed rate) for before/after foot-slide measurements */
   legacy = false;
+  /** far character models for small figures (debug A/B: off draws everyone with the full model) */
+  charLod = true;
   /** debug: record the drawn foot contact points of these people every frame */
   footLog: Map<number, { t: number; body: [number, number]; pts: [number, number, number][]; ground: number; clip: string }[]> | null = null;
   private movers = new Map<number, Mover>();
@@ -172,7 +177,7 @@ export class PeopleView {
     this.roleRings = this.makeRoleRings(64);
     this.ready = loadCrowd().then((m) => {
       this.models = m;
-      for (const k of Object.values(m)) if (k) this.group.add(k.mesh);
+      for (const k of Object.values(m)) if (k) for (const mesh of k.meshes) this.group.add(mesh);
     });
   }
 
@@ -377,7 +382,7 @@ export class PeopleView {
     let m = this.movers.get(per.id);
     if (!m) {
       m = {
-        id: per.id, frame: -9, t0: 0, x0: 0, y0: 0, t1: 0, x1: 0, y1: 0, ox: 0, oy: 0, fx: per.x, fy: per.y, anchor: false, jumped: false, nx: 0, ny: 0, rx: 0, ry: 0, yaw: 0, phase: hash(per.id, 30),
+        id: per.id, frame: -9, t0: 0, x0: 0, y0: 0, t1: 0, x1: 0, y1: 0, ox: 0, oy: 0, fx: per.x, fy: per.y, anchor: false, jumped: false, far: false, nx: 0, ny: 0, rx: 0, ry: 0, yaw: 0, phase: hash(per.id, 30),
         spd: 0, moveW: 0, runW: 0, bx: 0, by: 0, hx: 0, hy: 0, face: NaN, fresh: true, per, y: 0, sc: 1,
       };
       this.movers.set(per.id, m);
@@ -776,9 +781,15 @@ export class PeopleView {
       q.setFromAxisAngle(UP, m.yaw);
       if (roll) q.multiply(this.q2.setFromAxisAngle(FWD, roll));
       mtx.compose(p3.set(px + Math.sin(m.yaw) * lurch, y, py + Math.cos(m.yaw) * lurch), q, s.set(sc, sc, sc));
-      model.addPose(mtx, clipA, ua, clipB, ub, w, this.lookOf(per));
+      // near or far model by the height the figure stands on screen (with a little hysteresis, so nobody flickers
+      // between the two at the threshold); the far model passes for the full one below model.farBelowPx
+      if (model.hasFar && this.charLod && cullDebug.lod) {
+        const pix = this.world.volumes.pixels(px, y + 0.5 * model.height * sc, py, model.height * sc);
+        m.far = pix < model.farBelowPx * (m.far ? 1.1 : 0.9);
+      } else m.far = false;
+      model.addPose(mtx, clipA, ua, clipB, ub, w, this.lookOf(per), m.far);
       if (this.footLog?.has(per.id)) {
-        model.instanceFeet(model.count - 1, mtx, this.feet);
+        model.instanceFeet(mtx, this.feet);
         this.footLog.get(per.id)!.push({ t: now, body: [px, py], pts: this.feet.map((f) => [f.x, f.y, f.z] as [number, number, number]), ground: y, clip: `${clipA}${clipB ? '/' + clipB + ':' + w.toFixed(2) : ''}` });
       }
       this.pushDrawn(per.id, px, y, py);

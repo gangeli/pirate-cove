@@ -10,8 +10,8 @@ import * as THREE from 'three';
  * model is used while that deviation projects to under half a pixel, i.e. while the figure stands fewer than
  * `maxPixels()` pixels tall: then no edge moves by a visible amount.
  *
- * Not wired in yet: CrowdModel (crowd.ts) would keep a second InstancedMesh on `lodGeometry(...)` and PeopleView
- * (people.ts) would send each person to one or the other by `ViewVolumes.pixels()` (instcull.ts).
+ * Wired in: CrowdModel (crowd.ts) keeps a second instanced mesh on `lodGeometry(...)` and PeopleView (people.ts)
+ * sends each person to one or the other by `ViewVolumes.pixels()` (instcull.ts), with a little hysteresis.
  */
 export interface CharLod {
   index: Uint16Array | Uint32Array;
