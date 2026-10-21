@@ -72,3 +72,15 @@ describe('captains', () => {
   });
 });
 
+
+describe('renaming a ship', () => {
+  it('sanitizes and limits the name, and refuses a blank one', () => {
+    const g = new Game({ seed: 1 });
+    const s = [...g.ships.values()][0];
+    expect(g.cmd({ type: 'renameShip', ship: s.id, name: '  Queen\n Anne\'s   <b>Revenge</b> and a very long tail  ' }).ok).toBe(true);
+    expect(s.name).toBe('Queen Anne\'s bRevenge/b');
+    expect(s.name.length).toBeLessThanOrEqual(24);
+    expect(g.cmd({ type: 'renameShip', ship: s.id, name: '   ' }).ok).toBe(false);
+    expect(s.name).toBe('Queen Anne\'s bRevenge/b');
+  });
+});
