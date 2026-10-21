@@ -969,16 +969,20 @@ export class ShipsView {
       v.position.x = x;
       v.position.z = z;
       u.speed = Math.hypot(u.velX, u.velZ);
-      let want = restHeading;
+      // near: 1 at the berth, 0 an easing length out. Leaving or coming in she keeps her berth's heading while she
+      // barely has way on, and otherwise points where she is going; she swings alongside only in the last of it
+      const near = u.near ?? 0, berthing = moving && near > 0 && u.berthHead !== undefined;
+      let want = berthing ? u.berthHead! : restHeading;
       if (moving && u.speed > 0.2) {
         want = -Math.atan2(u.velZ, u.velX);
-        // alongside her berth she swings to its heading (near: 1 at the berth, 0 an easing length out)
-        const near = u.near ?? 0;
-        if (near > 0 && u.berthHead !== undefined) want += Math.atan2(Math.sin(u.berthHead - want), Math.cos(u.berthHead - want)) * near;
+        const close = smooth(0.6, 0.95, near);
+        if (berthing && close > 0) want += Math.atan2(Math.sin(u.berthHead! - want), Math.cos(u.berthHead! - want)) * close;
       }
       let d = want - (u.head ?? want);
       d = Math.atan2(Math.sin(d), Math.cos(d)); // shortest way round
-      const step = d * (1 - Math.exp(-dt * (moving ? 4 : 1.5)));
+      // a ship turns no faster than her way lets her (she pivots slowly when all but stopped)
+      const rate = moving ? 0.35 + 0.8 * u.speed : 0.6;
+      const step = Math.max(-rate * dt, Math.min(rate * dt, d * (1 - Math.exp(-dt * (moving ? 4 : 1.5)))));
       u.head = (u.head ?? want) + step;
       u.turn = (u.turn ?? 0) + (step / dt - (u.turn ?? 0)) * (1 - Math.exp(-dt * 3));
     }

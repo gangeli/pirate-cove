@@ -394,6 +394,10 @@ export function updateShips(g: Game, dt: number): void {
             s.vx = tx;
             s.vy = ty;
             s.vdir = (s as any).berthDir ?? s.vdir;
+          } else {
+            // keep way on past the waypoint (a step standing still shows as a hitch in her speed)
+            s.vx += Math.cos(s.vdir) * sp;
+            s.vy += Math.sin(s.vdir) * sp;
           }
         } else {
           const want = Math.atan2(dy, dx);

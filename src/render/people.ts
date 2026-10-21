@@ -4,6 +4,7 @@ import type { Person } from '../sim/types';
 import { BUILDING } from '../sim/data/buildings';
 import type { World } from './world';
 import { DT } from '../sim/time';
+import { farmKeepOut, PLANT_R } from './croplayout';
 import { loadCrowd, type CrowdModel, type Look, type ModelName } from './crowd';
 
 /** Is this person drawn in the world right now (vs inside a building / at sea)? */
@@ -416,16 +417,23 @@ export class PeopleView {
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
     let cand: Spot[] = [];
     if (def?.gather?.crop) {
-      // farms: in the furrows between crop rows (prefabs.ts crops()), never in the field shelter's corner
+      // farms: in the furrows between crop rows (croplayout.ts, as the crops are planted), clear of the walls and of
+      // whatever the farm stands in its field (shelter, water butt, scarecrow: farmKeepOut)
       const W = b.rot % 2 ? b.h : b.w, D = b.rot % 2 ? b.w : b.h;
+      const kind = def.gather.crop;
       const a = -b.rot * (Math.PI / 2), ca = Math.cos(a), sa = Math.sin(a);
+      const R = PLANT_R[kind] ?? 0.3, mz = Math.max(0.25, R * 1.12);
       const rows = Math.round(D * 2.2);
-      const cols = Math.max(2, Math.round((W - 0.7) / 0.5) + 1);
+      const keep = farmKeepOut(W, D, kind);
+      const BODY = 0.16, EDGE = 0.24;
+      const cols = Math.max(2, Math.round((W - 2 * EDGE) / 0.45) + 1);
       for (let r = 0; r < rows - 1; r++) {
-        const z = -D / 2 + 0.25 + ((r + 0.5) / Math.max(1, rows - 1)) * (D - 0.5);
+        const z = -D / 2 + mz + ((r + 0.5) / Math.max(1, rows - 1)) * (D - 2 * mz);
         for (let k = 0; k < cols; k++) {
-          const x = -W / 2 + 0.35 + (k / (cols - 1)) * (W - 0.7);
-          if (x > W / 2 - 1.05 && z < -D / 2 + 1.05) continue;
+          const x = -W / 2 + EDGE + (k / (cols - 1)) * (W - 2 * EDGE);
+          if (Math.abs(z) > D / 2 - EDGE) continue;
+          if (keep.rects.some(([x0, z0, x1, z1]) => x + BODY > x0 && x - BODY < x1 && z + BODY > z0 && z - BODY < z1)) continue;
+          if (keep.discs.some(([dx, dz, dr]) => Math.hypot(x - dx, z - dz) < dr + BODY)) continue;
           // model space to world: rotation about +y by a (x' = x cos a + z sin a, z' = -x sin a + z cos a)
           const wx = cx + x * ca + z * sa, wy = cy - x * sa + z * ca;
           // face along the row, alternately up and down it
