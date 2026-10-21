@@ -143,6 +143,46 @@ export function canPlace(g: Game, def: BuildingDef, x: number, y: number, rot: n
   return res;
 }
 
+/** a dock's deck height above the sea (the model's and the people view's, src/render) */
+const DOCK_DECK = 0.35;
+/**
+ * The pier runs in over its own tiles and lands on the beach in front at deck height. Beach rising above the
+ * deck there buried the approach: the ground under the dock is cut down below the deck, and the beach in front
+ * graded to meet it (it only ever lowers ground, and never under another building).
+ */
+function gradeForDock(g: Game, pl: Placement): void {
+  const m = g.map, s = m.size + 1;
+  const free = (i: number, j: number): boolean => {
+    for (const [a, b] of [[i - 1, j - 1], [i, j - 1], [i - 1, j], [i, j]]) if (m.inBounds(a, b) && m.occupied[m.idx(a, b)]) return false;
+    return true;
+  };
+  const lower = (i: number, j: number, to: number) => {
+    if (i < 0 || j < 0 || i > m.size || j > m.size || !free(i, j)) return;
+    m.vh[j * s + i] = Math.min(m.vh[j * s + i], to);
+  };
+  // under the pier: below the deck, and low enough that the people view puts walkers on the deck (tile height < 0.2)
+  for (let j = pl.y; j <= pl.y + pl.h; j++) for (let i = pl.x; i <= pl.x + pl.w; i++) lower(i, j, 0.15);
+  // the vertex rows in front: the landing (the pier runs 0.35 onto it), then a gentle bank up to the beach
+  const [fx, fy] = FRONT[pl.rot];
+  for (const [d, to] of [[1, DOCK_DECK + 0.12], [2, DOCK_DECK + 0.45]] as const) {
+    if (fy) {
+      const j = fy > 0 ? pl.y + pl.h + d : pl.y - d;
+      for (let i = pl.x; i <= pl.x + pl.w; i++) lower(i, j, to);
+    } else {
+      const i = fx > 0 ? pl.x + pl.w + d : pl.x - d;
+      for (let j = pl.y; j <= pl.y + pl.h; j++) lower(i, j, to);
+    }
+  }
+  // tile heights follow (the people view reads them to put walkers on the deck)
+  for (let j = pl.y - 2; j < pl.y + pl.h + 2; j++)
+    for (let i = pl.x - 2; i < pl.x + pl.w + 2; i++) {
+      if (!m.inBounds(i, j)) continue;
+      const k = m.idx(i, j);
+      if (m.occupied[k]) continue;
+      m.height[k] = Math.min(m.height[k], Math.max(m.vh[j * s + i], m.vh[j * s + i + 1], m.vh[(j + 1) * s + i], m.vh[(j + 1) * s + i + 1]));
+    }
+}
+
 function frontDoor(g: Game, x: number, y: number, w: number, h: number, rot: number): [number, number] {
   const e = edgeTiles(x, y, w, h, rot);
   return e[Math.floor(e.length / 2)];
@@ -248,7 +288,7 @@ export function placeBuilding(g: Game, def: BuildingDef, pl: Placement, instant 
       return !!ob && BUILDING[ob.def].water !== 'dock';
     };
     m.flatten(pl.x, pl.y, pl.w, pl.h, (i, j) => standing(i - 1, j - 1) || standing(i, j - 1) || standing(i - 1, j) || standing(i, j));
-  }
+  } else gradeForDock(g, pl);
   for (let j = pl.y; j < pl.y + pl.h; j++)
     for (let i = pl.x; i < pl.x + pl.w; i++) {
       const k = m.idx(i, j);

@@ -6,6 +6,7 @@ import { assetUrl, loadTex } from './textures';
 import { M, sign, flag } from './kit';
 import { markSharedTree } from './dispose';
 import { gpu } from './backend';
+import { BUILDING } from '../sim/data/buildings';
 
 /** the browser's Float16Array (Chrome 135+, Safari 18.2+, Firefox 129+), if it has one */
 const F16 = (globalThis as unknown as { Float16Array?: new (a: ArrayLike<number>) => ArrayLike<number> }).Float16Array;
@@ -95,6 +96,71 @@ function quantize(root: THREE.Object3D): void {
     mesh.scale.multiplyScalar(q.h);
     mesh.updateMatrix();
   }
+}
+
+/** every vertex of a model in its own space (xyz), for the hooks below */
+function modelPoints(root: THREE.Object3D): Float32Array {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const out: number[] = [];
+  const v = new THREE.Vector3(), mm = new THREE.Matrix4();
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const pos = mesh.geometry.getAttribute('position');
+    mm.multiplyMatrices(inv, mesh.matrixWorld);
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(mm);
+      out.push(v.x, v.y, v.z);
+    }
+  });
+  return new Float32Array(out);
+}
+
+/** the tile footprint (W, D) of the building a model belongs to, if known */
+function lotOf(name: string): [number, number] | null {
+  const d = BUILDING[name] ?? BUILDING[name.replace(/_(lod|\d+)$/, '').replace(/_\d+$/, '')];
+  return d ? d.size : null;
+}
+
+/**
+ * Smoke rises from its marker; a hearth under a tent fly, a spit under a roast or a brazier under a pavilion roof
+ * would send it straight through the cover. Such smoke starts just above what covers it instead (as if seeping out).
+ */
+function clearSmoke(pts: Float32Array, p: THREE.Vector3): THREE.Vector3 {
+  let top = -Infinity, n = 0;
+  for (let i = 0; i < pts.length; i += 3) {
+    const y = pts[i + 1] - p.y;
+    if (y > 0.05 && y < 1.2 && Math.hypot(pts[i] - p.x, pts[i + 2] - p.z) < 0.1 + y * 0.15) (top = Math.max(top, pts[i + 1])), n++;
+  }
+  return n > 8 ? new THREE.Vector3(p.x, top + 0.08, p.z) : p;
+}
+
+/**
+ * A flag's cloth flies 0.7 to one side of its pole (+x in the model). Turn it to the side where it cuts through
+ * the least of the model and stays over the lot, and make it smaller on lots too small for it (1x1 decorations).
+ */
+function flyClear(f: THREE.Object3D, pts: Float32Array, p: THREE.Vector3, lot: [number, number] | null): void {
+  const L = 0.72;
+  const score = (dx: number, dz: number, s: number) => {
+    let hits = 0;
+    for (let i = 0; i < pts.length; i += 3) {
+      const x = pts[i] - p.x, y = pts[i + 1] - p.y, z = pts[i + 2] - p.z;
+      const along = x * dx + z * dz, across = Math.abs(-x * dz + z * dx);
+      if (along > 0.06 && along < L * s && y > -0.55 * s && y < -0.03 && across < 0.08) hits++;
+    }
+    const out = lot ? Math.max(0, Math.max(p.x + dx * L * s - lot[0] / 2, -lot[0] / 2 - (p.x + dx * L * s), p.z + dz * L * s - lot[1] / 2, -lot[1] / 2 - (p.z + dz * L * s))) : 0;
+    return hits + out * 400;
+  };
+  let best = { ry: 0, s: 1, v: score(1, 0, 1) };
+  if (best.v === 0) return;
+  for (const s of [1, 0.8, 0.65])
+    for (const [dx, dz, ry] of [[1, 0, 0], [-1, 0, Math.PI], [0, -1, Math.PI / 2], [0, 1, -Math.PI / 2]]) {
+      const v = score(dx, dz, s) + (1 - s) * 30;
+      if (v < best.v) best = { ry, s, v };
+    }
+  f.rotation.y = best.ry;
+  f.scale.setScalar(best.s);
 }
 
 class BuildingModels {
@@ -275,10 +341,13 @@ class BuildingModels {
     out.add(root);
     if (bare) return out;
     const smoke: THREE.Vector3[] = [];
+    // the model's vertices (model space), gathered once and only if a hook needs to look around itself
+    let cloud: Float32Array | null = null;
+    const pts = () => (cloud ??= modelPoints(root));
     for (const m of markers) {
       m.name = m.name.replace(/\.\d{3}$/, ''); // blender suffixes duplicate names (smoke.001)
       const p = m.getWorldPosition(new THREE.Vector3());
-      if (m.name.startsWith('smoke')) smoke.push(p);
+      if (m.name.startsWith('smoke')) smoke.push(clearSmoke(pts(), p));
       else if (m.name.startsWith('sign:')) {
         const s = sign(m.name.slice(5).replace(/_/g, ' '));
         s.scale.setScalar(0.5);
@@ -303,6 +372,7 @@ class BuildingModels {
       else if (m.name.startsWith('flag')) {
         const f = flag(M().flagBlack, 0.01);
         f.position.copy(p);
+        flyClear(f, pts(), p, lotOf(name));
         out.add(f);
       }
     }
