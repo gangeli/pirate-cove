@@ -21,7 +21,7 @@ import { installR170Look, SOFT_SHADOW_RADIUS } from './legacy/r170';
 import { PMREMGenerator as PMREM170 } from './legacy/pmrem170';
 import { RB, SOFTWARE_GPU, chooseBackend, isWebGPU, type AnyRenderer, type Backend, type NodesModule } from './backend';
 import type { GpuPost } from './nodes';
-import { ViewVolumes } from './instcull';
+import { SHADOW_LAYER, ViewVolumes, cullDebug, installShadowTwins } from './instcull';
 
 export interface Quality {
   shadows: boolean;
@@ -197,6 +197,7 @@ export class World {
     } else {
       // the shadow map is redrawn on demand (view moved, or at quality.shadowHz), not on every render call
       renderer.shadowMap.autoUpdate = false;
+      installShadowTwins(renderer);
       setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
       // r170's environment prefilter (see legacy/pmrem170.ts)
       this.pmrem = new PMREM170(renderer) as unknown as THREE.PMREMGenerator;
@@ -221,6 +222,8 @@ export class World {
     su.mieDirectionalG.value = 0.8;
     this.scene.add(this.sky);
     this.sun = new THREE.DirectionalLight(0xfff1dc, 3.2);
+    // the shadow pass also draws the shadow-only twins of culled instance batches (instcull.ts)
+    this.sun.shadow.camera.layers.enable(SHADOW_LAYER);
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.04;
     if (nodes) {
@@ -739,6 +742,14 @@ export class World {
     if (this.gpuPost) this.gpuPost.render();
     else if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, cam);
+  }
+
+  /** debug: per-instance culling and screen-size LOD on or off (before/after comparisons in one page) */
+  setCulling(cull: boolean, lod = cull): void {
+    cullDebug.cull = cull;
+    cullDebug.lod = lod;
+    this.volumes.touch();
+    this.redraw();
   }
 
   /** debug: draw calls and triangles per pass and subsystem over a few frames (costprobe.ts) */

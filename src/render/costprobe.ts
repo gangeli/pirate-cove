@@ -52,7 +52,10 @@ export async function probeCost(world: World, frames = 10): Promise<CostReport> 
   const orig = r.renderBufferDirect;
   const autoReset = info.autoReset;
   info.autoReset = false;
+  // (only draws of the probed World.render calls count: not a frame already under way, thumbnails etc.)
+  let on = false;
   r.renderBufferDirect = function (camera, scene, geometry, material, object, group) {
+    if (!on) return orig.call(this, camera, scene, geometry, material, object, group);
     const c0 = info.render.calls, t0 = info.render.triangles;
     orig.call(this, camera, scene, geometry, material, object, group);
     const dc = info.render.calls - c0, dt = info.render.triangles - t0;
@@ -74,7 +77,12 @@ export async function probeCost(world: World, frames = 10): Promise<CostReport> 
       world.redraw();
       r.shadowMap.needsUpdate = true;
       const t = performance.now();
-      origRender(dt);
+      on = true;
+      try {
+        origRender(dt);
+      } finally {
+        on = false;
+      }
       cpu += performance.now() - t;
       n++;
     };

@@ -338,7 +338,7 @@ export class BuildingsView {
 
   private rebuildBatches(): void {
     this.batchDirty = false;
-    for (const im of this.batches) {
+    for (const im of [...this.batches, ...this.cullers.flatMap((c) => c.made)]) {
       this.group.remove(im);
       im.dispose();
     }

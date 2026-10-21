@@ -121,8 +121,9 @@ function windify(mat: THREE.Material, stiff = 1): void {
 
 /**
  * A palm: curved tapering trunk and arched fronds. `far` is the same tree for when it stands a few dozen pixels tall
- * (screen-size LOD, see Vegetation.FAR_PX): fewer trunk rings and sides, fronds in half the segments, no coconuts
- * (each well under a pixel by then).
+ * (screen-size LOD, see Vegetation.FAR_PX): half the trunk rings, six sides instead of seven (the trunk is a few
+ * pixels wide by then), no coconuts (each well under a pixel). The fronds stay as they are: with fewer segments their arch and
+ * outline visibly straighten even at 40 px.
  */
 function palmGeometry(far = false): { trunk: THREE.BufferGeometry; fronds: THREE.BufferGeometry } {
   // curved trunk
@@ -133,7 +134,8 @@ function palmGeometry(far = false): { trunk: THREE.BufferGeometry; fronds: THREE
     pts.push(new THREE.Vector3(Math.sin(t * 1.4) * 0.9 * t, t * H, 0));
   }
   const curve = new THREE.CatmullRomCurve3(pts);
-  const trunk = new THREE.TubeGeometry(curve, far ? 7 : 14, 0.16, far ? 5 : 7, false);
+  // (far: 6 sides, a touch wider so the hexagon shows the same mean width as the heptagon)
+  const trunk = new THREE.TubeGeometry(curve, far ? 7 : 14, far ? 0.16 * 1.02 : 0.16, far ? 6 : 7, false);
   // taper
   const p = trunk.getAttribute('position') as THREE.BufferAttribute;
   for (let i = 0; i < p.count; i++) {
@@ -156,7 +158,7 @@ function palmGeometry(far = false): { trunk: THREE.BufferGeometry; fronds: THREE
     const ang = (f / N) * Math.PI * 2 + hash(f, 9) * 0.3;
     const len = 2.6 + hash(f, 3) * 0.9;
     const droop = 0.9 + hash(f, 4) * 0.7;
-    const seg = far ? 4 : 8;
+    const seg = 8;
     const pos: number[] = [], uvs: number[] = [], idx: number[] = [];
     for (let i = 0; i <= seg; i++) {
       const t = i / seg;
@@ -421,6 +423,7 @@ export class Vegetation {
       if (fr) ch.pi.forEach((g, i) => fr.setColorAt(i, col.setHSL(0.2 + hash(g, 4) * 0.06, 0.4 + hash(g, 5) * 0.3, 0.75 + hash(g, 6) * 0.25)));
       mk(this.geo.broad.crown, this.mats.leafMat, ch.bushes, false);
     }
-    for (const p of pending) this.cullers.push(new InstanceCuller(p.im, 1.5, p.far ? { far: p.far, px: Vegetation.FAR_PX } : undefined));
+    // (shadow casters get shadow-only twins, which the see-through switch then toggles: see setGhost)
+    for (const p of pending) this.cullers.push(new InstanceCuller(p.im, 1.5, p.far ? { far: p.far, px: Vegetation.FAR_PX } : undefined, p.im.userData.shadow !== false));
   }
 }

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as THREE from 'three';
 import { parseCharLod, lodGeometry, maxPixels } from '../src/render/charlod';
-import { InstanceCuller, ViewVolumes } from '../src/render/instcull';
+import { InstanceCuller, SHADOW_LAYER, ViewVolumes } from '../src/render/instcull';
 
 const DIR = path.resolve(__dirname, '../public/assets/chars');
 
@@ -47,6 +47,7 @@ describe('instance culling', () => {
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const n = 5;
     const im = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial(), n);
+    im.castShadow = true;
     const far = new THREE.InstancedMesh(geo, im.material, n);
     // instances along x at 0, 10, 20, 30, 40, each with a colour
     for (let i = 0; i < n; i++) {
@@ -94,7 +95,19 @@ describe('instance culling', () => {
     sc.updateMatrixWorld();
     v.update(cam, 720, sc);
     c.cull(v);
-    expect(im.count).toBe(5);
+    // the view's four in the mesh (no longer casting), the sun's one in the shadow-only twin
+    expect(im.count).toBe(4);
+    expect(im.castShadow).toBe(false);
+    expect(c.made.length).toBe(1);
+    const twin = c.made[0];
+    expect(twin.count).toBe(1);
+    expect(twin.castShadow).toBe(true);
+    // (WebGL: hidden outside the shadow-map render, see installShadowTwins)
+    expect(twin.visible).toBe(false);
+    void SHADOW_LAYER;
+    const m = new THREE.Matrix4();
+    twin.getMatrixAt(0, m);
+    expect(new THREE.Vector3().setFromMatrixPosition(m).x).toBe(40);
   });
 
   it('sends instances under the pixel threshold to the far model', () => {

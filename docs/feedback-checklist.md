@@ -16,7 +16,15 @@ section.
 - [ ] Optional quality-for-speed trades on the MacBook, only if the player agrees: depth-normal AO (drops a scene pass), character LODs
 - [~] WebGPU: opt-in only until the palace-goes-dark bug on High is fixed
 
-- [~] Render less: only what's in view in every pass (instance chunks, shadow and AO passes, water grid) and less detail when zoomed out where it doesn't show (characters, trees, buildings, ships) [perf agent]
+- [~] Rendering cost: render less when less is visible, and less detail where zoomed out far enough not to notice (same image at every setting) [perf agent]
+  Probe: `await __app.world.costProbe(5)` (draw calls and triangles per pass and subsystem); `__app.world.setCulling(false)` for before/after in one page; `?nocull=1`, `?novlod=1`
+  - [x] Measured: main, shadow-map and AO pre-pass draws by subsystem at default, close-up, max zoom-out, open sea and a developed town (seed 7, 1.5 bot years)
+  - [x] Instanced trees and building batches: only the instances a pass can see are drawn (they used to draw whole whenever any was in view); pixel-identical
+  - [x] Shadow pass: casters just outside the view go to shadow-only twins, so they no longer cost the main and AO passes; pixel-identical
+  - [x] Sea cut into 144 tiles: the 290k-triangle plane drew whole in the main and AO passes (now 16-30k); pixel-identical
+  - [x] Palms under 40 px: far model without coconuts and with a lighter trunk (fronds unchanged), in every pass
+  - [ ] Characters: far model (~1.5-2.8k triangles instead of ~9k) baked (chars/*.lod.bin, src/render/charlod.ts); needs wiring into crowd.ts and people.ts (people are already culled to the view)
+  - [ ] Terrain is one 51k-triangle mesh (cheap; chunking not worth it yet); buildings and ships already switch by distance in every pass
 
 ## Sound
 - [x] Sound starts muted; the speaker button turns it on (remembered)

@@ -199,7 +199,7 @@ void main(){
 }
 
 /** the sea plane is cut into this many tiles per side (384 divisible by it) */
-const SEA_TILES = 12;
+const SEA_TILES = typeof location !== 'undefined' && /[?&]nocull=1/.test(location.search) ? 1 : 12;
 
 /** heights (R) and an open-sea mask (G) for the s x s vertex grid: water below sea level reached from the edge */
 function heightAndSea(vh: Float32Array, s: number): Uint16Array {
