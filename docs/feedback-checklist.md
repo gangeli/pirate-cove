@@ -50,7 +50,7 @@ section.
 - [x] Fewer, clearer bottom-bar entries (Build, Views, Island, Menu) plus a floating Undo
 
 ## Panels and visual language (apply to ALL pages, not just the examples)
-- [~] Less text, more visual hierarchy everywhere; explanations into tooltips [UI agent]
+- [~] Less text, more visual hierarchy everywhere; explanations into tooltips [UI agent] (done: ship, building, person, chart, letters. Not yet swept: edicts sheet, log Overview/Finances/Powers tabs, settings and setup)
 - [x] Ship panel: Set sail always in the panel (done in 7a9d2aa), quieter orders, spoils bar, rename [UI agent]
 - [x] "Treat crew" was unclear: now "Bonus −500" with a tooltip; restyle as a transactional button [UI agent]
 - [x] Remove "Hide details" (× folds the inspector) [UI agent: done in 7a9d2aa]
@@ -65,7 +65,7 @@ section.
 - [x] Soil isn't a bar: a toggle for the soil overlay with its number; progress belongs with production [UI agent]
 - [x] Influence as small subdued icons ("Defense +35 · 2 tiles") [UI agent]
 - [x] Buttons styled to their purpose: navigation, primary, transactional, social or moral, destructive (Kill, Scuttle and Demolish unmistakably dangerous); toggles look like toggles [UI agent]
-- [~] Letters and reports (e.g. "Night Heron Returns"): icon results (a coin pile for gold, one figure per recruit, skilled profession badges, losses), apply to every message type and the log [UI agent]
+- [~] Letters and reports (e.g. "Night Heron Returns"): icon results (a coin pile for gold, one figure per recruit, skilled profession badges, losses), apply to every message type and the log [UI agent] (done: voyage letters, Letters tab, Fleet tab. Still to do: invasion, trade, edict-result, monthly and game-over letters need their own structured data in src/sim)
 
 ## Mobile
 - [x] Address bar covering the bottom buttons (sizes follow the visible viewport)

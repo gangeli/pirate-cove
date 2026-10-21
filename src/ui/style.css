@@ -1313,3 +1313,10 @@ body.touch .cards > button { min-height: 44px; }
 .vcompact .hull { width: 40px; height: 9px; }
 .tally svg.pile { flex: none; width: 52px; height: 38px; }
 .vcompact .tally svg.pile { width: 32px; height: 24px; }
+/* a line of icon + number stats, the words in their tooltips */
+.statrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 6px; }
+.statrow .stat { color: var(--ink); font-size: 15px; }
+.statrow .stat .ic { color: var(--ink2); }
+.pips9 { display: inline-flex; gap: 2px; }
+.pips9 i { width: 6px; height: 10px; border-radius: 1px; border: 1px solid color-mix(in srgb, var(--ink2) 50%, transparent); }
+.pips9 i.on { background: var(--ink2); }

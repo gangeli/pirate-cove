@@ -468,10 +468,11 @@ export class Inspector {
             const pid = p ? portraitIdFor(p) : null;
             return p ? html`<button class="slot full ${present ? '' : 'res'}" data-act="goto:${p.id}" aria-label="${p.name}" data-tip="${p.name}${present ? '' : ' (on the way)'}">${pid ? raw(portraitImg(pid, 32, 'face')) : icon('pirate', 18)}</button>` : html`<span class="slot empty"></span>`;
           })}</div>
-          <div class="kv" style="margin-top:8px"><span>Satisfies</span><span>${Object.keys(sv.needs).map((n) => NEED_NAMES[n]).join(', ')}</span>
-            <span>Extras</span><span>${sv.bonus.length ? sv.bonus.map((x) => `${GOOD_NAMES[x]} (${Math.floor(b.inv[x] ?? 0)})`).join(', ') : 'none'}</span>
-            <span>Serves</span><span>${RANKS[lo - 1].name} to ${RANKS[hi - 1].name}</span>
-            <span>Fee</span><span>${serviceFee(b)} gold a visit</span><span>Last month</span><span>${fmt(b.lastIncome)} gold</span></div></section>
+          <div class="statrow" style="margin-top:8px">${Object.keys(sv.needs).map((n) => html`<span class="chip">${NEED_NAMES[n]}</span>`)}
+            ${sv.bonus.map((x) => goodChip(x, GOOD_NAMES[x], Math.floor(b.inv[x] ?? 0), { tip: `<b>${GOOD_NAMES[x]}</b>: an extra for the customers · ${Math.floor(b.inv[x] ?? 0)} in stock` }))}
+            <span class="stat" data-tip="<b>Serves</b> ${RANKS[lo - 1].name} to ${RANKS[hi - 1].name}">${icon('pirate', 15)} ${lo}–${hi}</span>
+            <span class="stat" data-tip="<b>Fee</b>: ${serviceFee(b)} gold a visit">${icon('coin', 15)} ${serviceFee(b)}</span>
+            <span class="stat" data-tip="<b>Last month</b>: ${fmt(b.lastIncome)} gold taken">${icon('chest', 15)} ${fmt(b.lastIncome)}</span></div></section>
           <section class="sect"><h4 class="eng">Running it</h4>
           <div class="field-row"><span class="lbl">Prices</span>${coinPick('price', b.price, PRICE_LEVELS.map((_, i) => i), PRICE_LEVELS.map((n, i) => ['Bargain', 'Middling', "Gouge 'em"][i] ?? n), PRICE_LEVELS.map((n, i) => `<b>${['Bargain', 'Middling', "Gouge 'em"][i] ?? n}</b><br>Dearer visits take more gold from each customer's purse.`), 'Prices')}</div>
           <div class="field-row" data-tip="Narrow the clientele to a band of ranks. Pirates outside the band enjoy it less."><span class="lbl">Clientele</span>${this.seg('quality', b.quality, [[0, 'All'], ...[1, 2, 3].filter((q) => sv.ranks[0] + q + 1 <= sv.ranks[1]).map((q) => [q, `Ranks ${sv.ranks[0] + q - 1}–${sv.ranks[0] + q + 1}`] as [number, string])])}</div></section>`);
@@ -480,8 +481,8 @@ export class Inspector {
       if (def.house) {
         const o = b.owner ? g.people.get(b.owner) : null;
         const lv = HOUSE_LEVELS[(b.houseLevel ?? 1) - 1];
-        body.push(html`<section class="sect"><h4 class="eng">Dwelling</h4><div class="kv"><span>Owner</span><span>${o ? html`<a data-act="goto:${o.id}">${o.name}</a>` : 'Vacant'}</span>
-          <span>Kind</span><span>${lv.name}</span><span>Rest</span><span>${pct(lv.rest)}</span><span>Stash fee</span><span>${lv.fee} gold</span></div>
+        body.push(html`<section class="sect"><h4 class="eng">Dwelling</h4><div class="statrow"><span class="stat" data-tip="<b>Rest</b> ${pct(lv.rest)}: how well the owner sleeps here">${icon('heart', 15)} ${pct(lv.rest)}</span><span class="stat" data-tip="<b>Stash fee</b>: ${lv.fee} gold">${icon('chest', 15)} ${lv.fee}</span></div><div class="kv"><span>Owner</span><span>${o ? html`<a data-act="goto:${o.id}">${o.name}</a>` : 'Vacant'}</span>
+</div>
 </section>`);
       }
       if (def.id === 'dock') {
@@ -597,8 +598,12 @@ export class Inspector {
       const needs = p.kind === 'pirate' || p.kind === 'wealthy' ? ['feast', 'drink', 'company', 'gamble', 'rest', 'stash'] : p.kind === 'captive' ? ['food', 'rest', 'prayer'] : [];
       if (needs.length) body.push(html`<section class="sect"><h4 class="eng">Needs</h4><div class="meters">${needs.map((n) => meter(NEED_NAMES[n], p.needs[n]))}</div></section>`);
       const kv: unknown[] = [];
+      const stats: unknown[] = [];
       if (p.kind === 'pirate') {
-        kv.push(html`<span>Purse</span><span>${fmt(p.gold)} gold <i class="dim">· ${fmt(p.stashed)} stashed</i></span><span>Earned</span><span>${fmt(p.earned)} gold in all</span><span>Happiness</span><span>${pct(p.happiness)}</span>`);
+        stats.push(html`<span class="stat" data-tip="<b>Purse</b>: ${fmt(p.gold)} gold to spend">${icon('coin', 15)} ${fmt(p.gold)}</span>`,
+          html`<span class="stat" data-tip="<b>Stashed</b>: ${fmt(p.stashed)} gold put away at home">${icon('chest', 15)} ${fmt(p.stashed)}</span>`,
+          html`<span class="stat" data-tip="<b>Earned</b>: ${fmt(p.earned)} gold in all (it decides their rank)">${icon('crown', 15)} ${fmt(p.earned)}</span>`,
+          html`<span class="stat ${p.happiness < 0.35 ? 'bad' : ''}" data-tip="<b>Happiness</b> ${pct(p.happiness)}">${icon('heart', 15)} ${pct(p.happiness)}</span>`);
         const ship = p.ship ? g.ships.get(p.ship) : null;
         kv.push(html`<span>Ship</span><span>${ship ? html`<a data-act="gotoS:${ship.id}">${ship.name}</a>${p.officer ? ' (officer)' : ''}` : 'None'}</span>`);
         const home = p.home ? g.buildings.get(p.home) : null;
@@ -606,11 +611,14 @@ export class Inspector {
         if (p.shoreJob) kv.push(html`<span>Shore job</span><span>${p.shoreRole} at the ${BUILDING[g.buildings.get(p.shoreJob)?.def ?? 'palace'].name}</span>`);
       } else if (p.kind === 'captive') {
         const job = p.job ? g.buildings.get(p.job) : null;
-        kv.push(html`<span>Work</span><span>${job ? html`<a data-act="gotoB:${job.id}">${JOB_NAMES[p.jobRole!]} at the ${BUILDING[job.def].name}</a>` : 'Idle'}</span><span>Resignation</span><span>${pct(p.resignation)}</span>`);
-        if (p.skilled) kv.push(html`<span>Ransom</span><span>${fmt(p.ransom)} gold</span>`);
-        kv.push(html`<span>Courage</span><span>${p.traits.courage} of 9</span><span>Leadership</span><span>${p.traits.leadership} of 9</span>`);
-      } else if (p.kind === 'wealthy') kv.push(html`<span>Ransom</span><span>${fmt(p.ransom + p.credit)} gold</span>`);
-      if (kv.length) body.push(html`<section class="sect"><h4 class="eng">Particulars</h4><div class="kv">${kv}</div></section>`);
+        kv.push(html`<span>Work</span><span>${job ? html`<a data-act="gotoB:${job.id}">${JOB_NAMES[p.jobRole!]} at the ${BUILDING[job.def].name}</a>` : 'Idle'}</span>`);
+        const nine = (n: number) => html`<span class="pips9">${Array.from({ length: 9 }, (_, i) => html`<i class="${i < n ? 'on' : ''}"></i>`)}</span>`;
+        stats.push(html`<span class="stat" data-tip="<b>Resignation</b> ${pct(p.resignation)}: how far they have given up on escape">${icon('chain', 15)} ${pct(p.resignation)}</span>`);
+        if (p.skilled) stats.push(html`<span class="stat" data-tip="<b>Ransom</b>: ${fmt(p.ransom)} gold">${icon('coin', 15)} ${fmt(p.ransom)}</span>`);
+        stats.push(html`<span class="stat" data-tip="<b>Courage</b> ${p.traits.courage} of 9">${icon('skull', 15)} ${nine(p.traits.courage)}</span>`,
+          html`<span class="stat" data-tip="<b>Leadership</b> ${p.traits.leadership} of 9">${icon('flag', 15)} ${nine(p.traits.leadership)}</span>`);
+      } else if (p.kind === 'wealthy') stats.push(html`<span class="stat" data-tip="<b>Ransom</b>: ${fmt(p.ransom + p.credit)} gold">${icon('coin', 15)} ${fmt(p.ransom + p.credit)}</span>`);
+      if (kv.length || stats.length) body.push(html`<section class="sect">${stats.length ? html`<div class="statrow">${stats}</div>` : ''}${kv.length ? html`<div class="kv">${kv}</div>` : ''}</section>`);
       if (p.kind === 'soldier') body.push(html`<div class="callout bad">${icon('skull', 16)}<span>An enemy soldier. Guards, forts and armed pirates will fight him.</span></div>`);
     } else if (this.tab === 'happiness') {
       const f = pirateFactors(g, p);
