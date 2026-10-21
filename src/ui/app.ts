@@ -69,6 +69,27 @@ export class App {
   private autosaveAt = 0;
   private menuSpin = 0;
   quality: 'low' | 'medium' | 'high' = 'high';
+  /** frames per second limit (0 = the display's rate). Settings › Frame rate; on battery, Cool (30) unless chosen */
+  frameCap = (() => {
+    try {
+      const v = localStorage.getItem('bc_fps');
+      if (v !== null) return +v;
+    } catch {
+      /* ignore */
+    }
+    (navigator as Navigator & { getBattery?: () => Promise<{ charging: boolean }> }).getBattery?.().then((b) => {
+      if (!b.charging && localStorage.getItem('bc_fps') === null) this.frameCap = 30;
+    }).catch(() => {});
+    return 0;
+  })();
+  setFrameCap(fps: number): void {
+    this.frameCap = fps;
+    try {
+      localStorage.setItem('bc_fps', String(fps));
+    } catch {
+      /* ignore */
+    }
+  }
   /** performance recording in progress (Settings › Record performance) */
   prof?: Profiler;
   fps = 60;

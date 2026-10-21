@@ -166,6 +166,7 @@ export class Modal {
       <section class="sect"><h4 class="eng">Sound</h4>${slider('master', 'Master')}${slider('music', 'Music')}${slider('voice', 'Voices')}${slider('sfx', 'Effects')}${slider('ambient', 'Ambience')}</section>
       <section class="sect"><h4 class="eng">Graphics</h4><div class="seg full" role="radiogroup">${(['low', 'medium', 'high'] as const).map((x) => html`<button class="${q === x ? 'on' : ''}" data-act="do:q_${x}">${x[0].toUpperCase() + x.slice(1)}</button>`)}</div>
       <div class="sub" style="font-size:12px;margin-top:4px;user-select:text;-webkit-user-select:text">Renderer: ${this.app.world.backend === 'webgpu' ? 'WebGPU (experimental)' : 'WebGL'} &middot; ${this.app.world.gpu.renderer}${this.app.world.gpu.software ? ' (software, no graphics acceleration)' : ''} &middot; resolution ${Math.round(this.app.world.pr * 100)}%</div>
+      <div class="seg full" role="radiogroup" style="margin-top:8px" aria-label="Frame rate">${([[0, 'Smooth (full frame rate)'], [30, 'Cool (30 fps, quieter laptop)']] as const).map(([v, n]) => html`<button class="${this.app.frameCap === v ? 'on' : ''}" data-act="do:fps_${v}">${n}</button>`)}</div>
       ${'gpu' in navigator ? html`<label class="check" style="margin-top:6px"><input type="checkbox" data-webgpu ${this.app.world.backend === 'webgpu' ? 'checked' : ''}><span>WebGPU renderer (experimental; reloads the game, so save first)</span></label>` : ''}
       <div class="row start" style="margin-top:8px;align-items:center;gap:8px"><button class="btn ghost small" data-act="do:profile">Record performance (60 s)</button><span class="sub" style="font-size:12px">Play normally for a minute, then copy the report.</span></div></section>
       <section class="sect"><h4 class="eng">Advisor</h4><div class="seg full" role="radiogroup">${(['full', 'brief', 'off'] as const).map((x) => html`<button class="${adv === x ? 'on' : ''}" data-act="do:a_${x}">${x === 'full' ? 'Chatty' : x === 'brief' ? 'Brief' : 'Silent'}</button>`)}</div>
@@ -180,6 +181,8 @@ export class Modal {
       q_low: () => this.setQuality('low'),
       q_medium: () => this.setQuality('medium'),
       q_high: () => this.setQuality('high'),
+      fps_0: () => (this.app.setFrameCap(0), this.close(), this.settings()),
+      fps_30: () => (this.app.setFrameCap(30), this.close(), this.settings()),
       a_full: () => this.setAdvisor('full'),
       a_brief: () => this.setAdvisor('brief'),
       a_off: () => this.setAdvisor('off'),

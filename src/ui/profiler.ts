@@ -257,7 +257,7 @@ export class Profiler {
         webgl: gl ? { maxTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE), timerQuery: !!this.gpuT, parallelCompile: has('KHR_parallel_shader_compile'), astc: has('WEBGL_compressed_texture_astc'), bc7: has('EXT_texture_compression_bptc'), etc: has('WEBGL_compressed_texture_etc') } : null,
         webgpu: isGpu ? { webgl2Backend: !dev, maxTexture: dev?.limits.maxTextureDimension2D ?? null, timestampQuery: !!this.gpuTs, astc: feat('texture-compression-astc'), bc: feat('texture-compression-bc'), etc2: feat('texture-compression-etc2'), compatibilityMode: dev ? !feat('core-features-and-limits') : null } : null,
       },
-      quality: { tier: a.quality, pixelRatio: w.pr, canvas: `${w.renderer.domElement.width}x${w.renderer.domElement.height}`, settings: w.quality },
+      quality: { tier: a.quality, frameCap: a.frameCap, relief: w.relief, pixelRatio: w.pr, canvas: `${w.renderer.domElement.width}x${w.renderer.domElement.height}`, settings: w.quality },
       game: g ? { date: g.date, people: g.people.size, buildings: g.buildings.size, ships: g.ships?.size ?? null, speed: g.speed, mapSize: g.map.size } : null,
       perSecond: s,
       worstFrames: this.worst,

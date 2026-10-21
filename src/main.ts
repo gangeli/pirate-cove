@@ -96,7 +96,15 @@ async function boot() {
     (window as any).__shotDone = true;
     return;
   }
+  let lastFrame = 0;
   const loop = (now: number) => {
+    // an optional frame cap (Settings: Cool = 30 fps) keeps a laptop's GPU from running flat out
+    const cap = app.frameCap;
+    if (cap && now - lastFrame < 1000 / cap - 2) {
+      requestAnimationFrame(loop);
+      return;
+    }
+    lastFrame = now;
     app.frame(now);
     requestAnimationFrame(loop);
   };

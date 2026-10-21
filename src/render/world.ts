@@ -243,6 +243,8 @@ export class World {
   /** switch quality live (settings): shadows, post chain and resolution */
   setQuality(q: Partial<Quality>): void {
     this.quality = { ...QUALITY_DEFAULTS, ...q };
+    this.baseQuality = this.quality;
+    this.relief = 0;
     this.pr = this.maxPixelRatio();
     this.applyShadowQuality();
     this.effects?.setFlashLights(this.quality.flashLights);
@@ -465,6 +467,23 @@ export class World {
   private resBlock = new Map<number, number>();
 
   /** lower the pixel ratio when frames run over budget, raise it again when every frame makes vsync */
+  /** the tier's settings as chosen; `quality` is these with `relief` applied */
+  private baseQuality!: Quality;
+  /** 0 = as chosen; 1 = shadows redrawn at 30 Hz; 2 = + ambient occlusion at half resolution; 3 = + half-res bloom */
+  relief = 0;
+  private reliefBlock = 0;
+  private setRelief(n: number): void {
+    const b = this.baseQuality, prev = this.quality;
+    this.relief = n;
+    this.quality = {
+      ...b,
+      shadowHz: n >= 1 ? Math.min(b.shadowHz, 30) : b.shadowHz,
+      aoScale: n >= 2 ? Math.min(b.aoScale, 0.5) : b.aoScale,
+      bloomScale: n >= 3 ? Math.min(b.bloomScale, 0.5) : b.bloomScale,
+    };
+    if (prev.aoScale !== this.quality.aoScale || prev.bloomScale !== this.quality.bloomScale) this.setupComposer();
+  }
+
   private adaptResolution(dt: number): void {
     const q = this.quality;
     if (!q.dynamicRes || q.minPixelRatio >= this.maxPixelRatio() || document.hidden) return;
@@ -481,6 +500,19 @@ export class World {
     const now = performance.now();
     const max = this.maxPixelRatio(), min = Math.min(max, q.minPixelRatio);
     const key = (v: number) => Math.round(v * 20);
+    // at the lowest resolution and still over budget (a hot laptop GPU): ease off the costliest passes, least visible
+    // first; they come back, before the resolution climbs, once frames make the budget again
+    if (med > budget && this.pr <= min && this.relief < 3 && now > this.reliefBlock) {
+      this.setRelief(this.relief + 1);
+      this.resCooldown = 3;
+      return;
+    }
+    if (p90 < this.refresh * 1.15 && this.relief > 0) {
+      this.reliefBlock = now + 30000;
+      this.setRelief(this.relief - 1);
+      this.resCooldown = 5;
+      return;
+    }
     if (med > budget && this.pr > min) {
       this.resBlock.set(key(this.pr), now + 30000);
       this.pr = Math.max(min, Math.round((this.pr - (med > budget * 1.8 ? 0.2 : 0.1)) * 20) / 20);
