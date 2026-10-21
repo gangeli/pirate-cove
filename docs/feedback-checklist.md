@@ -53,6 +53,7 @@ section.
 - [x] Wake: a ribbon of foam along the ship's recent track (bends through turns), the water's own foam noise riding the swell, Kelvin arms spreading from a quiet bow wave and churn astern, fading with age, distance and speed; no sticker edge, no dark AO line on the water [ship agent]
 - [x] Sails: clean canvas with faint seams; the cloth casts its shadow as it moves (no blotches); furled sails fatter and darker, read as rolled canvas [ship agent]
 - [x] Sailing motion checked on frame sequences and a 60 Hz track (depart, sail, return, dock; high and low): drawn between sim steps (no step stutter, no hitch at waypoints), ease out of and into the berth, bow always where she is going (no crabbing or stern-first), comes alongside on the berth's line, sails taken in on the way in, hull clear of sand and pier; pause freezes sails, flags and wake [ship agent]
+- [x] Ships berth close alongside the rebuilt dock's T-head (fitted berth pulled in toward the pier, hull kept half a tile clear of the lot); WebGPU path run in headless Chromium (wake, cloth, flags draw; no broken shaders) [ship agent]
 
 ## Controls and building
 - [x] Delete (Delete key, Demolish for buildings and roads, road quick action) and undo (button, Ctrl/Cmd+Z)

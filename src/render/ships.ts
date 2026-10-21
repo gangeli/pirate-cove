@@ -927,11 +927,15 @@ export class ShipsView {
   private fitBerth(bx: number, by: number, head: number, L: number, dock: { x: number; y: number; w: number; h: number }): [number, number, number] {
     let best: [number, number, number] = [bx, by, head], bestC = Infinity;
     const m = this.game.map;
+    // the sim's berth stands well off the pier head: aim close alongside it (the hull outline is kept half a tile
+    // clear of the dock's lot), pulling in toward the pier by up to a tile and a half
+    const cx = dock.x + dock.w / 2, cz = dock.y + dock.h / 2, sl = Math.hypot(bx - cx, by - cz) || 1;
+    const ax = bx - ((bx - cx) / sl) * 1.5, az = by - ((by - cz) / sl) * 1.5;
     for (const [dh, hc] of [[0, 0], [Math.PI, 0.4], [Math.PI / 2, 2.5], [-Math.PI / 2, 2.5]] as [number, number][]) {
       const h = head + dh, c = Math.cos(h), sn = Math.sin(h);
       for (let dx = -8; dx <= 8; dx += 0.5)
         for (let dz = -8; dz <= 8; dz += 0.5) {
-          const d = Math.hypot(dx, dz);
+          const d = Math.hypot(bx + dx - ax, by + dz - az);
           if (d + hc >= bestC) continue;
           const x = bx + dx, z = by + dz;
           if (this.aground(x, z, h, L, dock) > 0) continue;
