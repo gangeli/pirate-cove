@@ -24,7 +24,7 @@ section.
 - [x] Roads easier to see (packed earth)
 - [x] Trees fade while the road tool is out (now 15%; the player said "not opaque enough", taken as "fade more": confirm)
 - [x] Calm inland lakes: no swell, whitecaps or surf (seen on seed 9, deployed 8f01981)
-- [~] Everything overlapping with everything (buildings vs footprints and each other, trees through buildings, props, terrain, UI) [overlap agent]
+- [x] Everything overlapping with everything (buildings vs footprints and each other, trees through buildings, props, terrain, UI) [overlap agent] (deployed 959b3c2; small leftovers listed below)
   Detectors: `npx tsx scripts/overlap/footprints.mts` (models vs footprint), `crops.mts`, `hooks.mts` (flags/smoke), `node scripts/overlap/world.mjs` (in-world: models, neighbours, trees, terrain), `shot.mjs` (close-ups)
   - [x] Trees through buildings and trunks in roads: trees lean away, move, shrink or are left out (seed 7: 79 crowns + 18 trunks -> 0)
   - [x] Terrain: a new building re-levelled its neighbour's shared edge (walls buried/floating up to 1.5); now it takes the neighbour's level (45 -> 10 footprints)
