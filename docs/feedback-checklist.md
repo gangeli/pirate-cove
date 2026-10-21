@@ -50,6 +50,9 @@ section.
 - [x] Rig and animate: sails billow/flutter in a vertex shader (WebGL + TSL), furl at the dock and set at sea, flags and pennants wave down the wind, heel into turns, pitch underway, bow wave + wake decal [ship agent]
 - [x] Docked ship clips into the beach and palms: render-side berth fitting (hull outline kept in water and clear of the pier); ships underway lean off any shore their hull would cross [ship agent]
 - [x] Rename ships [UI agent: done in 7a9d2aa, deployed]
+- [x] Wake: a ribbon of foam along the ship's recent track (bends through turns), the water's own foam noise riding the swell, Kelvin arms spreading from a quiet bow wave and churn astern, fading with age, distance and speed; no sticker edge, no dark AO line on the water [ship agent]
+- [x] Sails: clean canvas with faint seams; the cloth casts its shadow as it moves (no blotches); furled sails fatter and darker, read as rolled canvas [ship agent]
+- [x] Sailing motion checked on frame sequences and a 60 Hz track (depart, sail, return, dock; high and low): drawn between sim steps (no step stutter, no hitch at waypoints), ease out of and into the berth, bow always where she is going (no crabbing or stern-first), comes alongside on the berth's line, sails taken in on the way in, hull clear of sand and pier; pause freezes sails, flags and wake [ship agent]
 
 ## Controls and building
 - [x] Delete (Delete key, Demolish for buildings and roads, road quick action) and undo (button, Ctrl/Cmd+Z)

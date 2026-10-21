@@ -863,23 +863,24 @@ export class ShipsView {
         u.berthHead = Math.cos(fh + bdir) >= 0 ? fh : fh + Math.PI;
         // coming in, she rounds up onto her berth's line from astern, where that water is clear
         const E = berthEase(L), ax = Math.cos(u.berthHead), az = -Math.sin(u.berthHead);
-        u.lineIn = [0.35, 0.7, 1].every((k) => this.aground(u.berth![0] - ax * E * k, u.berth![1] - az * E * k, u.berthHead!, L, dock) === 0);
+        u.lineIn = [0.35, 0.7, 1, 1.4].every((k) => this.aground(u.berth![0] - ax * E * k, u.berth![1] - az * E * k, u.berthHead!, L, dock) === 0);
       }
       const b = u.berth!;
       let d = Math.hypot(p.x - bx, p.z - by);
-      // f(d) = 2d²/E - d³/E²: meets the sim's track at E at the sim's speed, and comes to rest at the berth
-      const E = berthEase(L);
-      if (d < E && d > 1e-6) {
-        const f = (2 * d) / E - (d * d) / (E * E);
+      // the sim's ship slows to a crawl over the last of her way in (and gathers way leaving); the view brings that
+      // crawl to rest: f(d) = 2d²/S - d³/S² meets the sim's track at S at the sim's speed and stops at the berth
+      const E = berthEase(L), S = 2;
+      if (d < S && d > 1e-6) {
+        const f = (2 * d) / S - (d * d) / (S * S);
         p.x = bx + (p.x - bx) * f;
         p.z = by + (p.z - by) * f;
         d *= f;
-        if (s.status === 'returning' && u.lineIn) {
-          // bend the last of her track onto the berth's line, so she comes alongside bow first and needn't crab in
-          const k = smooth(E, E * 0.35, d), ax = Math.cos(u.berthHead!), az = -Math.sin(u.berthHead!);
-          p.x += (bx - ax * d - p.x) * k;
-          p.z += (by - az * d - p.z) * k;
-        }
+      }
+      if (s.status === 'returning' && u.lineIn && d < E * 1.4) {
+        // bend the last of her track onto the berth's line, so she comes alongside bow first and needn't crab in
+        const k = smooth(E * 1.4, E * 0.15, d), ax = Math.cos(u.berthHead!), az = -Math.sin(u.berthHead!);
+        p.x += (bx - ax * d - p.x) * k;
+        p.z += (by - az * d - p.z) * k;
       }
       u.dBerth = d;
       u.near = 1 - smooth(0, E * 0.8, d);
@@ -1042,7 +1043,7 @@ const NUDGES = [-3, -2, -1.2, -0.6, 0, 0.6, 1.2, 2, 3];
 
 /** how far out from the berth a ship gathers or loses way */
 function berthEase(L: number): number {
-  return Math.max(4, Math.min(7, L * 0.6));
+  return Math.max(5, Math.min(8, L * 0.8));
 }
 
 function smooth(e0: number, e1: number, x: number): number {

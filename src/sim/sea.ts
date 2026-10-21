@@ -387,7 +387,9 @@ export function updateShips(g: Game, dt: number): void {
         const [tx, ty] = path[i];
         const dx = tx - s.vx, dy = ty - s.vy, d = Math.hypot(dx, dy);
         const last = i === path.length - 1;
-        const sp = 3.2 * dt * (i < 2 || (s.status === 'returning' && i > path.length - 3) ? 0.6 : 1);
+        // she gathers way over her first few tiles out and loses it over the last few in, to a crawl at the berth
+        const [ex, ey] = s.status === 'returning' ? path[path.length - 1] : path[0];
+        const sp = 3.2 * dt * Math.min(1, 0.25 + Math.hypot(s.vx - ex, s.vy - ey) / 12);
         if (d < sp + (last ? 0.3 : 2.2)) {
           s.pathI = i + 1;
           if (last && s.status === 'returning') {
