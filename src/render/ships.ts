@@ -861,6 +861,9 @@ export class ShipsView {
         // leaves the berth on that heading (sailing off bow first) and the sim brings her in to it
         const fh = u.berth[2];
         u.berthHead = Math.cos(fh + bdir) >= 0 ? fh : fh + Math.PI;
+        // coming in, she rounds up onto her berth's line from astern, where that water is clear
+        const E = berthEase(L), ax = Math.cos(u.berthHead), az = -Math.sin(u.berthHead);
+        u.lineIn = [0.35, 0.7, 1].every((k) => this.aground(u.berth![0] - ax * E * k, u.berth![1] - az * E * k, u.berthHead!, L, dock) === 0);
       }
       const b = u.berth!;
       let d = Math.hypot(p.x - bx, p.z - by);
@@ -871,6 +874,12 @@ export class ShipsView {
         p.x = bx + (p.x - bx) * f;
         p.z = by + (p.z - by) * f;
         d *= f;
+        if (s.status === 'returning' && u.lineIn) {
+          // bend the last of her track onto the berth's line, so she comes alongside bow first and needn't crab in
+          const k = smooth(E, E * 0.35, d), ax = Math.cos(u.berthHead!), az = -Math.sin(u.berthHead!);
+          p.x += (bx - ax * d - p.x) * k;
+          p.z += (by - az * d - p.z) * k;
+        }
       }
       u.dBerth = d;
       u.near = 1 - smooth(0, E * 0.8, d);
@@ -1016,6 +1025,8 @@ interface GlideState {
   berthKey?: string;
   berth?: [number, number, number];
   berthHead?: number;
+  /** the water astern of the berth, along its line, is clear to come in on */
+  lineIn?: boolean;
   /** 1 at the berth, 0 an easing length or more out */
   near?: number;
   /** distance from the berth (Infinity without one) */

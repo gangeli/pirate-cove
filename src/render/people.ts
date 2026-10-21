@@ -36,6 +36,7 @@ function hash(n: number, s: number): number {
 }
 const C = (hex: number) => new THREE.Color(hex);
 const UP = new THREE.Vector3(0, 1, 0);
+const FWD = new THREE.Vector3(0, 0, 1);
 const SKIN = [0xd8a585, 0xc89070, 0xb07a58, 0x8a5a3c, 0x6a4028, 0x4a2c1c].map(C);
 const HAIR = [0x1a1210, 0x3a2414, 0x5a3a1e, 0x8a5a2a, 0xb8884a, 0x9a3a1a, 0x8a8a88].map(C);
 const PIRATE_SHIRT = [0xe8e0cc, 0xd8ccb0, 0xf0ece0, 0x8a2a20, 0x2a3a5a, 0x4a3a2a, 0xa8a090].map(C);
@@ -60,6 +61,8 @@ const RUN_FROM = 1.65, RUN_TO = 2.75;
 const TURN = 9;
 /** a person's work spot, standing spot or lane is eased in at this speed (tiles per sim second): walked, not slid */
 const OFFSET_SPEED = 1.0;
+/** a farmer crossing their field to their spot (tiles per sim second): the sim's field-walking pace */
+const ANCHOR_SPEED = 1.1;
 /** the drawn path trails the sim's by this lag (sim s): rounds the corners of tile-to-tile paths (~0.08 tiles at a walk) */
 const CORNER_LAG = 0.07;
 /** at most this much turn per drawn frame (radians), however fast the game runs: a turn always takes a few frames */
@@ -71,6 +74,10 @@ const PERSONAL = 0.3;
 /** the nudge rate (tiles per sim second) for someone standing (slow enough to read as shifting weight) and walking */
 const NUDGE_STAND = 0.12, NUDGE_WALK = 0.5, NUDGE_MAX = 0.3;
 const TAU = Math.PI * 2;
+/** limp: the clip phase runs up to this much (fraction of its rate) faster and slower within a cycle; the dip (radians) */
+const LIMP_WARP = 0.4, LIMP_DIP = 0.07;
+/** swagger: roll (radians) to each side */
+const SWAGGER_ROLL = 0.06;
 const wrapAngle = (a: number) => a - TAU * Math.round(a / TAU);
 
 /** the renderer's per-person motion state: sim samples to interpolate, and the drawn pose */
@@ -84,6 +91,8 @@ interface Mover {
   ox: number; oy: number;
   /** the interpolated sim position followed with CORNER_LAG */
   fx: number; fy: number;
+  /** placed at an absolute spot this frame (a farmer on their field): walked to from where they are drawn */
+  anchor: boolean;
   nx: number; ny: number;
   /** drawn ground position, facing (radians about +y, 0 = +z), gait phase (cycles, R heel strike at 0) */
   rx: number; ry: number;
@@ -339,6 +348,7 @@ export class PeopleView {
   // per-frame scratch (no allocations in update)
   private mtx = new THREE.Matrix4();
   private q = new THREE.Quaternion();
+  private q2 = new THREE.Quaternion();
   private sv = new THREE.Vector3();
   private p3 = new THREE.Vector3();
   private sphere = new THREE.Sphere();
@@ -359,7 +369,7 @@ export class PeopleView {
     let m = this.movers.get(per.id);
     if (!m) {
       m = {
-        id: per.id, frame: -9, t0: 0, x0: 0, y0: 0, t1: 0, x1: 0, y1: 0, ox: 0, oy: 0, fx: per.x, fy: per.y, nx: 0, ny: 0, rx: 0, ry: 0, yaw: 0, phase: hash(per.id, 30),
+        id: per.id, frame: -9, t0: 0, x0: 0, y0: 0, t1: 0, x1: 0, y1: 0, ox: 0, oy: 0, fx: per.x, fy: per.y, anchor: false, nx: 0, ny: 0, rx: 0, ry: 0, yaw: 0, phase: hash(per.id, 30),
         spd: 0, moveW: 0, runW: 0, bx: 0, by: 0, hx: 0, hy: 0, face: NaN, fresh: true, per, y: 0, sc: 1,
       };
       this.movers.set(per.id, m);
@@ -425,8 +435,9 @@ export class PeopleView {
       const R = PLANT_R[kind] ?? 0.3, mz = Math.max(0.25, R * 1.12);
       const rows = Math.round(D * 2.2);
       const keep = farmKeepOut(W, D, kind);
-      const BODY = 0.16, EDGE = 0.24;
-      const cols = Math.max(2, Math.round((W - 2 * EDGE) / 0.45) + 1);
+      // the field walls stand 0.12-0.27 in from the lot's edge: a body (0.16) clear of their inner face
+      const BODY = 0.16, EDGE = 0.43;
+      const cols = Math.max(2, Math.round((W - 2 * EDGE) / 0.42) + 1);
       for (let r = 0; r < rows - 1; r++) {
         const z = -D / 2 + mz + ((r + 0.5) / Math.max(1, rows - 1)) * (D - 2 * mz);
         for (let k = 0; k < cols; k++) {
@@ -483,7 +494,22 @@ export class PeopleView {
   private placement(m: Mover, ix: number, iy: number): [number, number] {
     const per = m.per, t = per.task, g = this.game;
     m.face = NaN;
+    m.anchor = false;
     if (t.kind === 'dead') return [m.ox, m.oy];
+    if (t.kind === 'work' && t.bld) {
+      // a farmer on their own field (the sim walks them from tile to random tile of it, shed tile included): they keep
+      // to their own spot in the furrows instead, walking straight to it
+      const b = g.buildings.get(t.bld);
+      if (b && BUILDING[b.def]?.gather?.crop && ix > b.x - 0.05 && ix < b.x + b.w + 0.05 && iy > b.y - 0.05 && iy < b.y + b.h + 0.05) {
+        const spots = this.spotsOf(b);
+        if (spots.length) {
+          const sp = spots[this.slotOf(b, per.id) % spots.length];
+          m.face = sp[2];
+          m.anchor = true;
+          return [sp[0] - ix, sp[1] - iy];
+        }
+      }
+    }
     if (t.phase === 0) {
       // waiting for a path, or blocked: stay where they are
       if (!m.hx && !m.hy) return [m.ox, m.oy];
@@ -611,7 +637,14 @@ export class PeopleView {
       } else {
         const [tx, ty] = this.placement(m, ix, iy);
         if (m.fresh) (m.ox = tx), (m.oy = ty);
-        else {
+        else if (m.anchor) {
+          // walk from where they were drawn last frame straight to the spot, at a walking pace
+          const sx = m.fx + tx, sy = m.fy + ty; // the spot
+          const ex = sx - m.bx, ey = sy - m.by, el = Math.hypot(ex, ey), step = ANCHOR_SPEED * dts;
+          const nx = el <= step || el > 3 ? sx : m.bx + (ex / el) * step, ny = el <= step || el > 3 ? sy : m.by + (ey / el) * step;
+          m.ox = nx - m.fx;
+          m.oy = ny - m.fy;
+        } else {
           // eased in at a walking pace (so the feet carry them there), snapped if it is a long way
           const ex = tx - m.ox, ey = ty - m.oy, el = Math.hypot(ex, ey), step = OFFSET_SPEED * dts;
           if (el > 2.5 || el <= step) (m.ox = tx), (m.oy = ty);
@@ -641,7 +674,7 @@ export class PeopleView {
       const sc = this.scale * (per.kind === 'soldier' ? 1.02 : 0.94 + hash(per.id, 31) * 0.12) * (per.sex === 'F' ? 0.95 : 1);
       const dead = per.task.kind === 'dead';
       const [stand, rate] = this.standClip(per);
-      let clipA = stand, ua = 0, clipB: string | null = null, ub = 0, w = 0;
+      let clipA = stand, ua = 0, clipB: string | null = null, ub = 0, w = 0, roll = 0, lurch = 0;
       if (this.legacy) {
         const c = this.legacyClip(per);
         clipA = c;
@@ -663,7 +696,22 @@ export class PeopleView {
         // the feet: phase advances by the ground covered over the (blended) stride, so a planted foot stays put
         const stride = (sw + (sr - sw) * m.runW) * sc;
         m.phase = (m.phase + d / stride) % 1;
-        const uw = m.phase + (gw.gait?.strikeR ?? 0), ur = m.phase + (gr.gait?.strikeR ?? 0);
+        // a gait of one's own, layered on the synced walk (fading out into a run):
+        //  limp (peg leg): one step quicker than the other. The clip's phase is warped within the cycle and the body is
+        //    drawn ahead or behind by stride x (warped - true phase), so the planted foot still stays exactly put: the
+        //    body lurches instead, and dips as it comes down on the peg.
+        //  swagger: a roll from side to side at the step, pivoting at the ground (the feet barely move).
+        const style = per.accessories.pegleg ? 1 : per.kind === 'pirate' && hash(per.id, 23) < 0.5 ? 2 : 0;
+        const amt = dead ? 0 : m.moveW * (1 - m.runW);
+        let u = m.phase;
+        roll = 0;
+        lurch = 0;
+        if (style === 1 && amt > 0) {
+          u = m.phase + (LIMP_WARP * amt * Math.sin(TAU * m.phase)) / TAU;
+          lurch = stride * (u - m.phase);
+          roll = -LIMP_DIP * amt * Math.max(0, Math.sin(TAU * (u - 0.57)));
+        } else if (style === 2 && amt > 0) roll = SWAGGER_ROLL * amt * Math.sin(TAU * u);
+        const uw = u + (gw.gait?.strikeR ?? 0), ur = u + (gr.gait?.strikeR ?? 0);
         // facing: the way they move, else the way the sim (or their work spot) faces them
         let want = NaN;
         if (moving && d > 1e-5) want = Math.atan2(px - m.rx, py - m.ry);
@@ -695,7 +743,8 @@ export class PeopleView {
       m.y = y;
       m.sc = sc;
       q.setFromAxisAngle(UP, m.yaw);
-      mtx.compose(p3.set(px, y, py), q, s.set(sc, sc, sc));
+      if (roll) q.multiply(this.q2.setFromAxisAngle(FWD, roll));
+      mtx.compose(p3.set(px + Math.sin(m.yaw) * lurch, y, py + Math.cos(m.yaw) * lurch), q, s.set(sc, sc, sc));
       model.addPose(mtx, clipA, ua, clipB, ub, w, this.lookOf(per));
       if (this.footLog?.has(per.id)) {
         model.instanceFeet(model.count - 1, mtx, this.feet);
