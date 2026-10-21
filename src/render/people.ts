@@ -59,6 +59,10 @@ const RUN_FROM = 1.65, RUN_TO = 2.75;
 const TURN = 9;
 /** a person's work spot, standing spot or lane is eased in at this speed (tiles per sim second): walked, not slid */
 const OFFSET_SPEED = 1.0;
+/** the drawn path trails the sim's by this lag (sim s): rounds the corners of tile-to-tile paths (~0.08 tiles at a walk) */
+const CORNER_LAG = 0.07;
+/** at most this much turn per drawn frame (radians), however fast the game runs: a turn always takes a few frames */
+const TURN_STEP = 0.3;
 /** keep-right lane offset of walkers (tiles): two people meeting on a path pass shoulder to shoulder */
 const LANE = 0.15;
 /** people nearer than this (tiles, ~ shoulder width at scale) are nudged apart */
@@ -77,6 +81,8 @@ interface Mover {
   t1: number; x1: number; y1: number;
   /** placement offset (work spot, standing spot, lane), eased; and the separation nudge */
   ox: number; oy: number;
+  /** the interpolated sim position followed with CORNER_LAG */
+  fx: number; fy: number;
   nx: number; ny: number;
   /** drawn ground position, facing (radians about +y, 0 = +z), gait phase (cycles, R heel strike at 0) */
   rx: number; ry: number;
@@ -352,7 +358,7 @@ export class PeopleView {
     let m = this.movers.get(per.id);
     if (!m) {
       m = {
-        id: per.id, frame: -9, t0: 0, x0: 0, y0: 0, t1: 0, x1: 0, y1: 0, ox: 0, oy: 0, nx: 0, ny: 0, rx: 0, ry: 0, yaw: 0, phase: hash(per.id, 30),
+        id: per.id, frame: -9, t0: 0, x0: 0, y0: 0, t1: 0, x1: 0, y1: 0, ox: 0, oy: 0, fx: per.x, fy: per.y, nx: 0, ny: 0, rx: 0, ry: 0, yaw: 0, phase: hash(per.id, 30),
         spd: 0, moveW: 0, runW: 0, bx: 0, by: 0, hx: 0, hy: 0, face: NaN, fresh: true, per, y: 0, sc: 1,
       };
       this.movers.set(per.id, m);
@@ -579,6 +585,12 @@ export class PeopleView {
       const span = m.t1 - m.t0;
       const a = span > 0 ? Math.min(1, Math.max(0, (tr - m.t0) / span)) : 1;
       const ix = m.x0 + (m.x1 - m.x0) * a, iy = m.y0 + (m.y1 - m.y0) * a;
+      if (m.fresh || Math.hypot(ix - m.fx, iy - m.fy) > 1.5) (m.fx = ix), (m.fy = iy);
+      else {
+        const k = 1 - Math.exp(-dts / CORNER_LAG);
+        m.fx += (ix - m.fx) * k;
+        m.fy += (iy - m.fy) * k;
+      }
       // heading of the sim motion (for lanes)
       const hx = m.x1 - m.x0, hy = m.y1 - m.y0, hl = Math.hypot(hx, hy);
       if (hl > 1e-4) (m.hx = hx / hl), (m.hy = hy / hl);
@@ -595,8 +607,8 @@ export class PeopleView {
           if (el > 2.5 || el <= step) (m.ox = tx), (m.oy = ty);
           else (m.ox += (ex / el) * step), (m.oy += (ey / el) * step);
         }
-        m.bx = ix + m.ox;
-        m.by = iy + m.oy;
+        m.bx = m.fx + m.ox;
+        m.by = m.fy + m.oy;
       }
       list.push(m);
     };
@@ -648,7 +660,10 @@ export class PeopleView {
         else if (!Number.isNaN(m.face)) want = m.face;
         else if (per.task.phase !== 0 || m.moveW === 0) want = Math.PI / 2 - per.dir;
         if (m.fresh) m.yaw = Number.isNaN(want) ? Math.PI / 2 - per.dir : want;
-        else if (!Number.isNaN(want) && !dead) m.yaw += wrapAngle(want - m.yaw) * (1 - Math.exp(-dts * TURN));
+        else if (!Number.isNaN(want) && !dead) {
+          const turn = wrapAngle(want - m.yaw) * (1 - Math.exp(-dts * TURN));
+          m.yaw = wrapAngle(m.yaw + Math.max(-TURN_STEP, Math.min(TURN_STEP, turn)));
+        }
         const st = (dead ? 6 - (per.dyingTimer ?? 0) : this.t * rate + hash(per.id, 30) * 10) / model.clip(stand).duration;
         if (m.moveW >= 0.999) {
           clipA = base;

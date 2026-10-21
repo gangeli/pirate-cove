@@ -37,7 +37,7 @@ section.
   - [ ] Dock T-head reaches 0.25-0.4 past its footprint to seaward (ship berths: ship agent)
 
 ## People
-- [~] Walking out of time with the animation (feet sliding) [people agent]
+- [x] Walking out of time with the animation (feet sliding) [people agent]: gait phase driven by ground covered / measured stride (walk 1.25-1.50 m, run 2.02-2.45 m per cycle), walk-run blend by speed, positions interpolated between sim steps, facing eased; clip seams repaired; carriers walk. Foot slide 100-165% -> 8-11% (`?walktest`, scripts/walktest.mjs + footslide.ts)
 - [~] Workers bunching, standing on roofs, inside tents and crops [people agent]
 - [~] Selecting a building highlights its workers, haulers, overseer, guards, customers and residents in colours [people agent]
 - [x] People waiting on a path stand idle (not walking on the spot)
