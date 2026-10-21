@@ -93,6 +93,8 @@ interface Mover {
   fx: number; fy: number;
   /** placed at an absolute spot this frame (a farmer on their field): walked to from where they are drawn */
   anchor: boolean;
+  /** snapped this frame (a jump no walk explains): no ground covered, no speed */
+  jumped: boolean;
   nx: number; ny: number;
   /** drawn ground position, facing (radians about +y, 0 = +z), gait phase (cycles, R heel strike at 0) */
   rx: number; ry: number;
@@ -174,12 +176,14 @@ export class PeopleView {
 
   private makeRoleRings(cap: number): THREE.InstancedMesh {
     const m = new THREE.InstancedMesh(
-      new THREE.RingGeometry(0.27, 0.35, 24).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false, transparent: true, opacity: 0.85 }),
+      new THREE.RingGeometry(0.22, 0.29, 24).rotateX(-Math.PI / 2),
+      // depth-tested (pulled toward the camera so the ground does not cover them): a wall, roof or crop in front hides
+      // the ring as it would a mark on the ground, so no ring seems to sit on a wall or a roof
+      new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: false, transparent: true, opacity: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }),
       cap,
     );
     m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3);
-    m.renderOrder = 10;
+    m.renderOrder = 2;
     m.frustumCulled = false;
     m.count = 0;
     this.group.add(m);
@@ -208,7 +212,7 @@ export class PeopleView {
       r.dispose();
       this.roleRings = r = bigger;
     }
-    this.mtx.makeTranslation(x, y + 0.03, z);
+    this.mtx.makeTranslation(x, y + 0.09, z); // ankle-high: over furrow ridges and kerbs, under walls and roofs
     r.setMatrixAt(this.roleN, this.mtx);
     r.setColorAt(this.roleN, ROLE_COL[role]);
     this.roleN++;
@@ -369,7 +373,7 @@ export class PeopleView {
     let m = this.movers.get(per.id);
     if (!m) {
       m = {
-        id: per.id, frame: -9, t0: 0, x0: 0, y0: 0, t1: 0, x1: 0, y1: 0, ox: 0, oy: 0, fx: per.x, fy: per.y, anchor: false, nx: 0, ny: 0, rx: 0, ry: 0, yaw: 0, phase: hash(per.id, 30),
+        id: per.id, frame: -9, t0: 0, x0: 0, y0: 0, t1: 0, x1: 0, y1: 0, ox: 0, oy: 0, fx: per.x, fy: per.y, anchor: false, jumped: false, nx: 0, ny: 0, rx: 0, ry: 0, yaw: 0, phase: hash(per.id, 30),
         spd: 0, moveW: 0, runW: 0, bx: 0, by: 0, hx: 0, hy: 0, face: NaN, fresh: true, per, y: 0, sc: 1,
       };
       this.movers.set(per.id, m);
@@ -621,7 +625,8 @@ export class PeopleView {
       const span = m.t1 - m.t0;
       const a = span > 0 ? Math.min(1, Math.max(0, (tr - m.t0) / span)) : 1;
       const ix = m.x0 + (m.x1 - m.x0) * a, iy = m.y0 + (m.y1 - m.y0) * a;
-      if (m.fresh || Math.hypot(ix - m.fx, iy - m.fy) > 1.5) (m.fx = ix), (m.fy = iy);
+      m.jumped = !m.fresh && Math.hypot(ix - m.fx, iy - m.fy) > 1.5;
+      if (m.fresh || m.jumped) (m.fx = ix), (m.fy = iy);
       else {
         const k = 1 - Math.exp(-dts / CORNER_LAG);
         m.fx += (ix - m.fx) * k;
@@ -681,8 +686,8 @@ export class PeopleView {
         ua = (dead ? 6 - (per.dyingTimer ?? 0) : this.t * rate + hash(per.id, 30) * 10) / model.clip(c).duration;
         m.yaw = Math.PI / 2 - per.dir;
       } else {
-        const d = m.fresh ? 0 : Math.hypot(px - m.rx, py - m.ry);
-        if (dts > 0) m.spd += (d / dts - m.spd) * (1 - Math.exp(-dts * 14));
+        const d = m.fresh || m.jumped ? 0 : Math.hypot(px - m.rx, py - m.ry);
+        if (dts > 0 && !m.jumped) m.spd += (d / dts - m.spd) * (1 - Math.exp(-dts * 14));
         const moving = !dead && m.spd > MOVE_ON;
         m.moveW = Math.min(1, Math.max(0, m.moveW + (moving ? dts : -dts) / MOVE_FADE));
         // walk or run: by speed in the model's own units against the walk clip's natural pace
