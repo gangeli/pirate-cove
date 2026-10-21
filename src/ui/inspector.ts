@@ -614,7 +614,7 @@ export class Inspector {
       if (mission === 'cruise' || mission === 'explore' || mission === 'foster_war') {
         const reach = regionReachable(g, s, s.region);
         const months = (transitTime(g, s, s.region) / MONTH).toFixed(1);
-        orders.push(html`<div class="field-row"><span class="lbl">Waters</span><button class="dest-btn ${reach.ok ? '' : 'bad'}" data-act="chart" data-tip="Pick the waters on the sea chart">${icon('telescope', 16)}<b>${region.name}</b>${s.region === g.homeRegion ? html`<span class="chip home small">Home</span>` : ''}${reach.ok ? html`<span class="badge" aria-label="${months} months' sail each way">${icon('compass', 13)} ${months} mo</span>` : ''}${icon('chevr', 14)}</button></div>
+        orders.push(html`<div class="field-row"><span class="lbl">Waters</span><button class="dest-btn ${reach.ok ? '' : 'bad'}" data-act="chart" data-tip="Pick the waters on the sea chart">${icon('telescope', 16)}<b>${region.name}</b>${s.region === g.homeRegion ? html`<span class="home-mark" data-tip="Home waters: your island lies here" aria-label="Home waters">${icon('anchor', 14)}</span>` : ''}${reach.ok ? html`<span class="badge" aria-label="${months} months' sail each way">${icon('compass', 13)} ${months} mo</span>` : ''}${icon('chevr', 14)}</button></div>
           ${reach.ok ? '' : html`<div class="callout bad">${icon('info', 16)}<span>${reach.reason}</span></div>`}`);
       }
       if (mission === 'kidnap') {
@@ -633,7 +633,6 @@ export class Inspector {
       foot = html`<button class="btn primary sail" data-act="sail">${icon('bell', 16)} ${s.status === 'boarding' ? 'Leave now' : 'Set sail'}</button>
         ${payBtn}
         ${g.findBuilding('black_market') ? html`<button class="btn ghost small" data-act="bm" data-tip="Buy rations and weapons instantly">Black market</button>` : ''}
-        <button class="btn ghost small icon-only" data-act="follow" aria-label="Follow" data-tip="Follow the ship">${icon('follow', 15)}</button>
         <span class="spacer"></span><button class="btn ghost danger small" data-act="scuttle" data-tip="Sink her at her moorings">Scuttle</button>`;
     } else foot = html`<button class="btn ghost small" data-act="follow">${icon('follow', 14)} Follow</button><button class="btn ghost small" data-act="chart">${icon('telescope', 14)} Sea chart</button>`;
     return { head, body: html`${body}`, foot };
