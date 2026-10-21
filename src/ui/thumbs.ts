@@ -48,19 +48,52 @@ export function thumbOrQueue(world: World, id: string, onReady: (id: string, url
 /** everyone waiting on thumbnails (pass a stable function: the set keeps one entry per listener) */
 const listeners = new Set<(id: string, url: string) => void>();
 
+const sceneOf = () => scene as THREE.Scene;
+function initScene(world: World): void {
+  if (scene) return;
+  const r = world.renderer;
+  scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x6b5a3a, 1.4));
+  const sun = new THREE.DirectionalLight(0xfff1dc, 2.6);
+  sun.position.set(5, 9, 7);
+  scene.add(sun);
+  scene.environment = world.scene.environment;
+  rt = isWebGPU(r) ? new THREE.RenderTarget(W, H, { samples: 4 }) : new THREE.WebGLRenderTarget(W, H, { samples: 4 });
+}
+
+/**
+ * Compile every shader the construction menu's thumbnails need (their own lights and render target make them
+ * different programs from the island's) while the loading card is up: without parallel shader compilation
+ * (Firefox, many phones) each first thumbnail of a kind otherwise froze the game for a few hundred ms.
+ */
+export async function warmThumbPrograms(world: World, ids: string[]): Promise<void> {
+  initScene(world);
+  const r = world.renderer as THREE.WebGLRenderer;
+  const g = new THREE.Group();
+  for (const id of ids) {
+    const def = BUILDING[id];
+    g.add(buildPrefab(id, def.size[0], def.size[1], def.house ? 5 : 1));
+  }
+  g.add(new THREE.Mesh(new THREE.CircleGeometry(1, 8), new THREE.MeshStandardMaterial({ color: 0xb8a878, roughness: 1, transparent: true, opacity: 0.55 })));
+  scene!.add(g);
+  const prev = r.getRenderTarget();
+  r.setRenderTarget(rt as THREE.WebGLRenderTarget);
+  try {
+    await r.compileAsync(scene!, new THREE.PerspectiveCamera(30, W / H, 0.1, 200));
+  } catch (e) {
+    console.warn('thumbnail warm-up', e);
+  }
+  r.setRenderTarget(prev);
+  scene!.remove(g);
+  disposeObject(g, { keep: world.scene, renderer: world.renderer });
+}
+
 export async function thumb(world: World, id: string): Promise<string> {
   const hit = cache.get(id);
   if (hit) return hit;
   const r = world.renderer;
-  if (!scene) {
-    scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x6b5a3a, 1.4));
-    const sun = new THREE.DirectionalLight(0xfff1dc, 2.6);
-    sun.position.set(5, 9, 7);
-    scene.add(sun);
-    scene.environment = world.scene.environment;
-    rt = isWebGPU(r) ? new THREE.RenderTarget(W, H, { samples: 4 }) : new THREE.WebGLRenderTarget(W, H, { samples: 4 });
-  }
+  initScene(world);
+  const scene = sceneOf();
   const def = BUILDING[id];
   const [w, d] = def.size;
   const model = buildPrefab(id, w, d, def.house ? 5 : 1);

@@ -7,6 +7,7 @@ import type { Settings } from '../sim/types';
 import type { KingDef } from '../sim/data/kings';
 import { World, type Quality } from '../render/world';
 import { buildPrefab } from '../render/prefabs';
+import { warmThumbPrograms } from './thumbs';
 import { disposeObject } from '../render/dispose';
 import { audio } from '../audio/audio';
 import { el, setText } from './dom';
@@ -171,7 +172,48 @@ export class App {
     this.world.attach(g);
     await Promise.all([this.world.ships.ready, this.world.people.ready]);
     await this.world.warmShaders();
+    await this.warmBuildPrograms();
     (window as any).__game = g;
+  }
+
+  private buildWarm = false;
+  /**
+   * Once per session, under the loading card: compile the shaders of every building as built and as the placement
+   * ghost, and those of the construction menu's thumbnails. Browsers without parallel shader compilation (Firefox,
+   * many phones) otherwise froze for 100-400 ms the first time each kind showed up (opening the build menu, picking
+   * a building, its first construction).
+   */
+  private async warmBuildPrograms(): Promise<void> {
+    if (this.buildWarm || /[?&](shot=1|nowarm=1)/.test(location.search)) return;
+    this.buildWarm = true;
+    const ids = Object.keys(BUILDING).filter((id) => BUILDING[id].cat);
+    const w = this.world;
+    const g = new THREE.Group();
+    for (const id of ids) {
+      const def = BUILDING[id];
+      const built = buildPrefab(id, def.size[0], def.size[1], 1);
+      const ghost = buildPrefab(id, def.size[0], def.size[1], 1);
+      ghost.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.material = (Array.isArray(m.material) ? m.material[0] : m.material).clone();
+        const mm = m.material as THREE.MeshStandardMaterial;
+        mm.transparent = true;
+        mm.opacity = 0.62;
+        mm.depthWrite = false;
+      });
+      g.add(built, ghost);
+    }
+    g.position.set(0, -500, 0); // compiled, never seen
+    w.scene.add(g);
+    try {
+      await Promise.race([w.renderer.compileAsync(g, w.rig.camera, w.scene), new Promise((r) => setTimeout(r, 8000))]);
+    } catch (e) {
+      console.warn('building warm-up', e);
+    }
+    w.scene.remove(g);
+    disposeObject(g, { keep: w.scene, renderer: w.renderer });
+    await warmThumbPrograms(w, ids);
   }
 
   /** a full-screen loading card while a game is built, painted before the heavy work starts */
