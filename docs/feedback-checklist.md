@@ -31,10 +31,10 @@ section.
   - [x] Dock approach buried in the beach: ground under/in front of a new dock graded to the deck
   - [x] Farm crops vs. the field shelter, water butt and scarecrow, and banana/papaya leaves over the field walls
   - [x] Farm walls 0.08 past every edge (two farms side by side doubled up): inset
-  - [~] Models past their footprint (31 -> rebuilding): chuck tent guy ropes 0.34 (done), construction tent, bunkhouse, house 6/9 steps, eatery, inn, gambling den, iron mine, graveyard, smugglers' cove, courtesan, anarchy shrubs, school sign, fort lantern, slipways 1.4-2 tiles past the yard
+  - [x] Models past their footprint (GLB check: 31 -> 1, the dock's ramp landing on its beach, which is graded to meet it): chuck tent guy ropes, construction tent, bunkhouse, house 6/9 steps, eatery, inn, gambling den, iron mine, graveyard, smugglers' cove, courtesan, brothel/cave palms, anarchy shrubs, school sign, fort lantern, slipways (were 1.4-2 tiles past the yard), dock head; construction-site lumber kept on the lot
   - [x] Flags flying through their roofs or off small lots; smoke rising through tent flies and roofs (runtime fix in bldmodels.ts)
   - [x] "Update ready" toast over the undo seal / toolbar / minimap: placed clear of them (ui_shots state toast_undo, 7 devices clean)
-  - [ ] Dock T-head reaches 0.25-0.4 past its footprint to seaward (ship berths: ship agent)
+  - [x] Dock T-head pulled onto the dock's own tiles (berths may need 0.4 nudging: ship agent)
 
 ## People
 - [x] Walking out of time with the animation (feet sliding) [people agent]: gait phase driven by ground covered / measured stride (walk 1.25-1.50 m, run 2.02-2.45 m per cycle), walk-run blend by speed, positions interpolated between sim steps, facing eased; clip seams repaired; carriers walk. Foot slide 100-165% -> 8-11% (`?walktest`, scripts/walktest.mjs + footslide.ts)

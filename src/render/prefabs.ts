@@ -841,9 +841,9 @@ export function scaffold(W: number, D: number, h: number): THREE.Group {
     g.add(box(W - 0.3, 0.04, 0.04, k.bark, 0, y, D / 2 - 0.2), box(W - 0.3, 0.04, 0.04, k.bark, 0, y, -D / 2 + 0.2));
     g.add(box(0.04, 0.04, D - 0.3, k.bark, W / 2 - 0.2, y, 0), box(0.04, 0.04, D - 0.3, k.bark, -W / 2 + 0.2, y, 0));
   }
-  // timber waiting on the verge in front (the road side), kept within the lot's width so it never lies in a neighbour's
+  // timber waiting just inside the lot's front edge (the front can face a neighbour as well as a road)
   const ls = Math.min(1, (W - 0.3) / 1.4);
-  g.add(at(lumberStack(8), W >= 3 ? W / 2 - 0.85 : 0, 0, D / 2 + 0.2, 0, ls));
+  g.add(at(lumberStack(8), W >= 3 ? W / 2 - 0.85 : 0, 0, D / 2 - 0.05 - 0.4 * ls, 0, ls));
   return g;
 }
 
