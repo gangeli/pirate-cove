@@ -23,7 +23,7 @@ section.
   - [x] Shadow pass: casters just outside the view go to shadow-only twins, so they no longer cost the main and AO passes; pixel-identical
   - [x] Sea cut into 144 tiles: the 290k-triangle plane drew whole in the main and AO passes (now 16-30k); pixel-identical
   - [x] Palms under 40 px: far model without coconuts and with a lighter trunk (fronds unchanged), in every pass
-  - [ ] Characters: far model (~1.5-2.8k triangles instead of ~9k) baked (chars/*.lod.bin, src/render/charlod.ts); needs wiring into crowd.ts and people.ts (people are already culled to the view)
+  - [x] Characters: far model (chars/*.lod.bin) wired in: a second instanced mesh per model (WebGL and WebGPU paths, same skinning, its own instance data), each person sent to near or far by projected height with 10% hysteresis, in every pass. Max zoom-out: people 353.6k -> 62.7k triangles per pass (main and shadow, -82%), 140 of 922k pixels change. Default zoom and close-up: unchanged (0 px). Far figures differ in ~20% of their pixels at any size (shading/texture inside the figure, likely the bake crossing UV seams), so the switch is capped at 10 px tall rather than the bake's 50-107 px. Pose updates are not throttled for small figures: they cost CPU only, not GPU
   - [ ] Terrain is one 51k-triangle mesh (cheap; chunking not worth it yet); buildings and ships already switch by distance in every pass
 
 ## Sound
