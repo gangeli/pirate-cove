@@ -76,13 +76,20 @@ export async function warmThumbPrograms(world: World, ids: string[]): Promise<vo
   }
   g.add(new THREE.Mesh(new THREE.CircleGeometry(1, 8), new THREE.MeshStandardMaterial({ color: 0xb8a878, roughness: 1, transparent: true, opacity: 0.55 })));
   scene!.add(g);
+  // the programs are made for the thumbnail target during compileAsync's synchronous part, so the target goes back
+  // before the wait: the frames drawn while the compiles finish must still reach the screen; and, like the other
+  // warm-ups, the wait gives up after a while rather than holding the game back
   const prev = r.getRenderTarget();
   r.setRenderTarget(rt as THREE.WebGLRenderTarget);
+  let ready: Promise<unknown> = Promise.resolve();
   try {
-    await r.compileAsync(scene!, new THREE.PerspectiveCamera(30, W / H, 0.1, 200));
+    ready = r.compileAsync(scene!, new THREE.PerspectiveCamera(30, W / H, 0.1, 200));
   } catch (e) {
     console.warn('thumbnail warm-up', e);
   }
+  // (WebGPU's compileAsync reads the target asynchronously: there it keeps it until done, as before)
+  if (!isWebGPU(r)) r.setRenderTarget(prev);
+  await Promise.race([ready.catch((e) => console.warn('thumbnail warm-up', e)), new Promise((res) => setTimeout(res, 8000))]);
   r.setRenderTarget(prev);
   scene!.remove(g);
   disposeObject(g, { keep: world.scene, renderer: world.renderer });
