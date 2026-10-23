@@ -104,6 +104,7 @@ section.
 - [x] Themed, direct-manipulation controls instead of generic segmented controls: wages as coins, priority as pennants, spoils as a treasure split, prices as coin stacks, missions and tactics as icon cards [UI agent]
 - [x] Remove pointless explanatory lines ("Gold a month for each overseer…", "Higher-priority buildings are staffed first…") [UI agent]
 - [x] Inventory and production as goods icons with tooltips (e.g. "2× Logs → Lumber 92") [UI agent]
+- [x] Dock shows what it's stocked with: provisions (rations, cutlasses, muskets, cannons) as goods icons with counts and fill bars, the docked ship's stores aboard apart from the pier's stockpile, a notch at the rations her next voyage needs and short stores in red; the ship panel's stores use the same row (the yards hold no provisions)
 - [x] Soil isn't a bar: a toggle for the soil overlay with its number; progress belongs with production [UI agent]
 - [x] Influence as small subdued icons ("Defense +35 · 2 tiles") [UI agent]
 - [x] Buttons styled to their purpose: navigation, primary, transactional, social or moral, destructive (Kill, Scuttle and Demolish unmistakably dangerous); toggles look like toggles [UI agent]
