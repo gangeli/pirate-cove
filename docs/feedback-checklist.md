@@ -8,6 +8,7 @@ section.
 - [x] Island invisible on real GPUs (terrain over 16 textures after the three.js upgrade): roads and overlay packed into one texture; failed shader links are logged
 - [x] Sluggish input: height-field picking (5 ms to 0.01 ms per pointer move)
 - [x] Adaptive resolution on High; graduated relief (shadows 30 Hz, half-res AO, half-res bloom) when the GPU still can't keep up
+- [x] Game froze on start and the picture stretched on resize (relief crashed every frame when first needed on a slow GPU; fixed in 55bbbae)
 - [x] Frame-rate choice Smooth / Cool (30 fps), Cool by default on battery (laptop running hot)
 - [x] Shader hitches on phones (Firefox): building, ghost and thumbnail shaders compiled under the loading card
 - [x] Pause freezes all animation and stops redrawing a still picture
