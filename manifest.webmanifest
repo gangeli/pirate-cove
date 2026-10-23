@@ -1,0 +1,30 @@
+{
+  "id": "./",
+  "name": "Buccaneer Cove",
+  "short_name": "Buccaneer Cove",
+  "description": "Rule an island of rogues. Plunder the Caribbean. Die rich. A pirate island builder that plays fully offline once installed.",
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#0b0806",
+  "theme_color": "#1a120c",
+  "categories": ["games", "entertainment"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "screenshots/wide-title.jpg", "sizes": "1280x720", "type": "image/jpeg", "form_factor": "wide", "label": "The title screen over a living pirate island" },
+    { "src": "screenshots/narrow-island.jpg", "sizes": "720x1280", "type": "image/jpeg", "form_factor": "narrow", "label": "Your island cove, with the palace, docks and crew at work" }
+  ],
+  "shortcuts": [
+    { "name": "New Game", "short_name": "New", "description": "Set up a new reign", "url": "./?new=1", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Continue", "short_name": "Continue", "description": "Resume your autosaved game", "url": "./?continue=1", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
+  ]
+}
