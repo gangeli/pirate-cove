@@ -866,6 +866,35 @@ body.touch .setup .field .opts .o { min-height: 40px; min-width: 40px; justify-c
 .mrow:focus-visible { outline: 2px solid var(--blood-hi); outline-offset: 1px; }
 .mrow.danger, .mrow.danger .ic { color: var(--blood); }
 .mrow.danger { margin-top: 6px; }
+/* save slots: the game's name, the ruler, date and island beneath; a quill beside a filled slot renames it */
+.slot-row { display: flex; gap: 6px; align-items: stretch; min-width: 0; }
+.slot-row > .mrow { flex: 1; min-width: 0; }
+.slot-row .slot-name { min-width: 0; }
+.slot-row .slot-name > b { font-weight: normal; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slot-ren, .game-name .reroll { flex: none; width: 44px; display: grid; place-items: center; cursor: pointer; color: var(--ink3); background: rgba(250, 242, 220, 0.35);
+  border: 1px solid color-mix(in srgb, var(--ink2) 40%, transparent); border-radius: 3px; padding: 0; }
+.slot-ren:hover, .game-name .reroll:hover { color: var(--blood); background: rgba(255, 248, 228, 0.8); border-color: var(--ink2); }
+.slot-ren:focus-visible, .game-name .reroll:focus-visible { outline: 2px solid var(--blood-hi); outline-offset: 1px; }
+.slot-edit { box-sizing: border-box; width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--ink2); border-radius: 3px; background: rgba(255, 248, 228, 0.75); }
+.slot-edit .slot-tag { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 14px; font-style: italic; color: var(--ink2); }
+.slot-edit .slot-tag .ic { color: var(--ink2); }
+.slot-edit .slot-tag .over { color: var(--blood); }
+.slot-edit-row { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.slot-edit-row input, .game-name input { flex: 1; min-width: 0; font: 17px var(--body); color: var(--ink); padding: 5px 8px; min-height: 34px; box-sizing: border-box;
+  background: rgba(255, 250, 235, 0.8); border: 1px solid var(--ink2); border-radius: 2px; box-shadow: inset 0 1px 3px rgba(60, 30, 10, 0.2); }
+.slot-edit-row input:focus, .game-name input:focus { outline: 2px solid var(--blood-hi); outline-offset: 1px; }
+.slot-edit-row input.bad { border-color: var(--blood); }
+.slot-edit-row input::placeholder { color: var(--ink3); font-style: italic; }
+.slot-edit-row .btn { flex: none; min-height: 34px; }
+/* the field takes what the buttons leave (its own intrinsic width would push the row past a phone's edge) */
+.slot-edit-row input { width: 0; }
+/* the new game's name, above the setup's tabs */
+.game-name { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; min-width: 0; }
+.game-name label { display: inline-flex; align-items: center; gap: 6px; flex: none; font-family: var(--head); font-size: 16px; letter-spacing: 0.02em; color: #3a1c0c; }
+.game-name label .ic { color: var(--ink2); }
+.game-name input { max-width: 360px; }
+.game-name .reroll { height: 34px; }
+@media (max-width: 480px) { .game-name label span { display: none; } }
 .modal .body.settings { white-space: normal; }
 .slider { display: grid; grid-template-columns: 90px 1fr 44px; align-items: center; gap: 10px; font-size: 15px; min-height: 30px; }
 .slider output { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink2); font-size: 14px; }

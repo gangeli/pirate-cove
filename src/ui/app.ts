@@ -251,13 +251,15 @@ export class App {
     }
   }
 
-  async newGame(settings: Partial<Settings>, king: KingDef, botYears = 0): Promise<void> {
-    if (this.state === 'menu' && !location.search.includes('shot')) return this.withLoading('Charting your island...', () => this.newGameNow(settings, king, botYears));
-    return this.newGameNow(settings, king, botYears);
+  /** `name`: what the player called the game in the setup (blank keeps the default, chosen from ruler and seed) */
+  async newGame(settings: Partial<Settings>, king: KingDef, botYears = 0, name = ''): Promise<void> {
+    if (this.state === 'menu' && !location.search.includes('shot')) return this.withLoading('Charting your island...', () => this.newGameNow(settings, king, botYears, name));
+    return this.newGameNow(settings, king, botYears, name);
   }
 
-  private async newGameNow(settings: Partial<Settings>, king: KingDef, botYears = 0): Promise<void> {
+  private async newGameNow(settings: Partial<Settings>, king: KingDef, botYears = 0, name = ''): Promise<void> {
     const g = new Game(settings, king);
+    if (name) g.cmd({ type: 'renameGame', name });
     if (botYears > 0) {
       // debug/screenshots: let the bot play for a while before the world is built
       const { Bot } = await import('../sim/bot');
@@ -293,7 +295,7 @@ export class App {
   async save(slot = 'auto'): Promise<void> {
     if (this.state !== 'game' || !this.game || this.game.over) return;
     const g = this.game;
-    await saveGame(slot, g.serialize(), { time: g.time, king: g.king.name });
+    await saveGame(slot, g.serialize(), { time: g.time, king: g.king.name, name: g.name, size: g.settings.size });
   }
 
   private startPlaying(): void {

@@ -48,3 +48,48 @@ export const ENTERTAINMENT_NAMES = [
   'The Spotted Parrot', 'The Kraken\'s Arms', 'The Mermaid\'s Tail', 'The Jolly Corsair', 'The Crow\'s Nest', 'The Sunken Crown',
   'The Brass Monkey', 'The One-Eyed Cat', 'The Powder Keg', 'The Wet Whistle', 'The Gallows Rest', 'The Black Cormorant',
 ];
+
+/**
+ * A name the player typed: printable characters only (no control characters, no < or >), single-spaced, trimmed,
+ * at most `max` characters. '' when nothing is left (callers refuse it and keep the old name).
+ */
+export function cleanName(raw: unknown, max: number): string {
+  return String(raw ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, max).trim();
+}
+
+/** the longest name a game (a reign, a save) may have */
+export const GAME_NAME_MAX = 32;
+
+const COVE_PLACES = ['Cove', 'Haven', 'Hideaway', 'Roost', 'Lair', 'Landing', 'Refuge', 'Folly', 'Anchorage', 'Hold', 'Reach', 'Rest', 'Retreat', 'Harbour', 'Isle', 'Den'];
+const COVE_WORDS = ['Skull', 'Rum', 'Cutlass', 'Gallows', 'Doubloon', 'Parrot', 'Kraken', 'Driftwood', 'Powder', 'Lantern', 'Smuggler\'s', 'Corsair\'s', 'Mermaid\'s', 'Marooner\'s', 'Bosun\'s', 'Blackwater', 'Saltbone', 'Jolly Roger'];
+
+/** "Blackbeard" -> "Blackbeard", "Anne Bonny" -> "Bonny", "Charlotte de Berry" -> "de Berry", "Black Bart" stays */
+function shortRuler(name: string): string {
+  const w = name.split(' ');
+  if (w.length === 1 || name.length <= 11) return name;
+  const last = w[w.length - 1];
+  const prev = w[w.length - 2];
+  return /^[a-z]/.test(prev) ? `${prev} ${last}` : last;
+}
+const possessive = (n: string) => (/s$/i.test(n) ? `${n}'` : `${n}'s`);
+const capFirst = (s: string) => s[0].toUpperCase() + s.slice(1);
+
+/**
+ * The name a new game gets: the ruler's cove ("Blackbeard's Cove", "Bonny's Hideaway") or a themed one ("Rum Haven",
+ * "Kraken Landing"), picked by the seed so two reigns rarely share one.
+ */
+export function defaultGameName(ruler: string, seed: number): string {
+  let h = (Math.floor(seed) ^ 0x9e3779b9) >>> 0;
+  for (const c of ruler) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
+  const place = COVE_PLACES[h % COVE_PLACES.length];
+  const name = (h >>> 8) % 3 === 2
+    ? `${COVE_WORDS[(h >>> 12) % COVE_WORDS.length]} ${place}`
+    : `${capFirst(possessive(shortRuler(ruler)))} ${place}`;
+  return cleanName(name, GAME_NAME_MAX);
+}
+
+/** what a game saved before games had names is called: its ruler and the date it was saved, as the old slots read */
+export function legacyGameName(ruler: string, date: string): string {
+  return cleanName(`${ruler}, ${date}`, GAME_NAME_MAX) || 'A pirate reign';
+}

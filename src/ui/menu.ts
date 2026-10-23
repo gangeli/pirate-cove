@@ -8,6 +8,7 @@ import { PRESETS, difficultyOf } from '../sim/presets';
 import { audio } from '../audio/audio';
 import credits from '../credits.json';
 import { pwaMenuItems } from './install';
+import { cleanName, defaultGameName, GAME_NAME_MAX } from '../sim/names';
 
 const charCreditFiles = import.meta.glob('../charcredits/*.json', { eager: true }) as Record<string, { default: { asset: string; id: string; author: string; license: string; url: string }[] }>;
 
@@ -21,6 +22,10 @@ export class MainMenu {
   private king: KingDef = KINGS[2];
   private custom = false;
   private tab: 'preset' | 'island' | 'conditions' | 'king' = 'preset';
+  /** the game's name as the player typed it ('' = the default, which follows the ruler and the seed) */
+  private gameName = '';
+  /** bumped by the reroll beside the name: another default */
+  private nameSalt = 0;
 
   constructor(private app: App) {
     this.root = el('div', 'menu hidden', app.root);
@@ -81,10 +86,15 @@ export class MainMenu {
         this.s.seed = Math.floor(Math.random() * 1e6);
         this.renderSetup();
       },
+      gname: () => {
+        this.gameName = '';
+        this.nameSalt++;
+        this.renderSetup();
+      },
       start: () => {
         this.setup.classList.add('hidden');
         const s = { ...this.s, seed: this.s.seed ?? Math.floor(Math.random() * 1e6) };
-        app.newGame(s, this.king);
+        app.newGame(s, this.king, 0, this.currentName());
       },
     }, () => audio.sfx('ui_click'));
     delegate(this.credits, { close: () => this.credits.classList.add('hidden') }, () => audio.sfx('ui_click'));
@@ -111,7 +121,14 @@ export class MainMenu {
     this.credits.classList.add('hidden');
   }
 
+  /** the name the game will start with: the player's, or one chosen from the ruler and the seed */
+  private currentName(): string {
+    return cleanName(this.gameName, GAME_NAME_MAX) || defaultGameName(this.king.name, (this.s.seed ?? 0) + this.nameSalt * 7919);
+  }
+
   private openSetup(): void {
+    this.gameName = '';
+    this.nameSalt = 0;
     this.s.seed = Math.floor(Math.random() * 1e6);
     this.tab = 'preset';
     this.setup.classList.remove('hidden');
@@ -181,11 +198,29 @@ export class MainMenu {
     }
     setHTML(this.setup, html`<button class="close" data-act="close">${icon('close', 14)}</button>
       <h2>A New Reign</h2>
+      <div class="game-name"><label for="gname-in">${icon('quill', 16)}<span>Name your cove</span></label><input id="gname-in" type="text" data-gname maxlength="${GAME_NAME_MAX}" value="${this.currentName()}" autocomplete="off" spellcheck="false" enterkeyhint="done"><button class="reroll" data-act="gname" data-tip="Another name" aria-label="Another name">${icon('rotr', 14)}</button></div>
       <nav class="tabs book" role="tablist">${([['preset', 'Difficulty', 'skull'], ['island', 'The island', 'compass'], ['conditions', 'Conditions', 'scroll'], ['king', `Pirate ${this.king.sex === 'F' ? 'queen' : 'king'}`, 'crown']] as const).map(([t, n, ic]) => html`<button class="t ${this.tab === t ? 'on' : ''}" data-act="tab:${t}" role="tab" aria-selected="${this.tab === t ? 'true' : 'false'}">${icon(ic, 15)}${n}</button>`)}</nav>
       <div class="content scroll" style="flex:1;margin:8px 0">${body}</div>
       <div class="row" style="justify-content:space-between"><span class="sub diffline" data-tip="Difficulty: your final score is multiplied by this">${icon('skull', 15)} <b>×${(this.difficulty() / 100).toFixed(2)}</b></span>
         <div class="row">${this.tab !== 'king' ? html`<button class="btn ghost" data-act="tab:${this.tab === 'preset' ? 'island' : this.tab === 'island' ? 'conditions' : 'king'}">Next</button>` : ''}<button class="btn primary" data-act="start">Begin your reign</button></div></div>`);
     this.setup.querySelector('.tabs .t.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const gn = this.setup.querySelector<HTMLInputElement>('[data-gname]');
+    if (gn) {
+      // Enter keeps the name, Escape takes back what was typed since the field was entered (the setup stays open)
+      let before = this.gameName;
+      gn.onfocus = () => (before = this.gameName);
+      gn.oninput = () => (this.gameName = gn.value);
+      gn.onblur = () => (gn.value = this.currentName());
+      gn.onkeydown = (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') gn.blur();
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          this.gameName = before;
+          gn.blur();
+        }
+      };
+    }
     const sel = this.setup.querySelector<HTMLSelectElement>('[data-region]');
     if (sel) sel.onchange = () => (this.s.region = +sel.value);
     const bg = this.setup.querySelector<HTMLSelectElement>('[data-bg]');

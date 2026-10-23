@@ -4,7 +4,8 @@ import { el, html, setHTML, delegate, fmt, raw } from './dom';
 import { icon } from './icons';
 import type { Message } from '../sim/types';
 import { audio } from '../audio/audio';
-import { listSaves } from './saves';
+import { listSaves, renameSave, slotTitle, slotDetails, type SaveMeta } from './saves';
+import { cleanName, GAME_NAME_MAX } from '../sim/names';
 import { portraitImg } from './portraits';
 import { voyageStrip, letterStrip, useThumbs, scoreBars } from './tally';
 import { thumbOrQueue } from './thumbs';
@@ -141,34 +142,113 @@ export class Modal {
     });
   }
 
-  async saveDialog(): Promise<void> {
-    const saves = await listSaves();
-    const slots = ['slot1', 'slot2', 'slot3', 'slot4'];
-    this.show(html`<h2>Save Game</h2><div class="menu-list">
-      ${slots.map((s, i) => {
-        const m = saves.find((x) => x.slot === s);
-        return html`<button class="mrow" data-act="do:${s}">${icon('chest', 18)}<span>Slot ${i + 1}<small>${m ? `${m.king}, ${m.date}` : 'Empty'}</small></span></button>`;
-      })}</div><div class="row"><button class="btn ghost" data-act="do:cancel">Cancel</button></div>`, {
-      ...Object.fromEntries(slots.map((s) => [s, async () => {
-        this.close();
-        await this.app.save(s);
-        this.app.hud.flash('Game saved.');
-      }])),
-      cancel: () => this.close(),
-    });
+  /** swap the open dialog's contents in place (no queue, no rustle): for dialogs that edit themselves */
+  private repaint(content: ReturnType<typeof html>, handlers: Record<string, (a: string) => void>): void {
+    this.handlers = handlers;
+    setHTML(this.box, content);
   }
 
-  async loadDialog(fromMenu = false): Promise<void> {
-    const saves = await listSaves();
-    this.show(html`<h2>Load Game</h2><div class="menu-list scroll" style="max-height:50vh">
-      ${saves.length ? saves.map((m) => html`<button class="mrow" data-act="do:${m.slot}">${icon('book', 18)}<span>${m.slot === 'auto' ? 'Autosave' : m.slot === 'quick' ? 'Quicksave' : m.slot.replace('slot', 'Slot ')}: ${m.king}, ${m.date}<small>Saved ${new Date(m.savedAt).toLocaleString()}</small></span></button>`) : html`<div class="sub">No saved games yet.</div>`}
-      </div><div class="row"><button class="btn ghost" data-act="do:cancel">Cancel</button></div>`, {
-      ...Object.fromEntries(saves.map((m) => [m.slot, async () => {
+  saveDialog(): Promise<void> {
+    return this.slotDialog('save');
+  }
+
+  loadDialog(fromMenu = false): Promise<void> {
+    return this.slotDialog('load', fromMenu);
+  }
+
+  /**
+   * Save Game / Load Game. A filled slot goes by its game's name, with the ruler, date and island beneath. Saving asks
+   * for the game's name right in the slot picked; the quill beside a filled slot renames that save. While a name is
+   * being edited, Enter confirms and Escape backs out of the edit (the dialog stays open).
+   */
+  private async slotDialog(kind: 'save' | 'load', fromMenu = false): Promise<void> {
+    let saves = await listSaves();
+    let edit: { slot: string; mode: 'save' | 'rename' } | null = null;
+    const SLOTS = ['slot1', 'slot2', 'slot3', 'slot4'];
+    const label = (slot: string) => (slot === 'auto' ? 'Autosave' : slot === 'quick' ? 'Quicksave' : slot.replace('slot', 'Slot '));
+    const rows = (): { slot: string; m?: SaveMeta }[] => (kind === 'save' ? SLOTS.map((slot) => ({ slot, m: saves.find((x) => x.slot === slot) })) : saves.map((m) => ({ slot: m.slot, m })));
+    const editor = (slot: string, m: SaveMeta | undefined, mode: 'save' | 'rename') => {
+      const value = mode === 'save' ? this.app.game?.name ?? '' : m ? slotTitle(m) : '';
+      return html`<div class="slot-edit"><div class="slot-tag">${icon(mode === 'save' ? 'chest' : 'quill', 15)}${mode === 'save' ? `Save to ${label(slot)}` : `Rename ${label(slot)}`}${mode === 'save' && m ? html`<span class="over">replaces ${slotTitle(m)}</span>` : ''}</div>
+        <div class="slot-edit-row"><input type="text" data-slotname maxlength="${GAME_NAME_MAX}" value="${value}" placeholder="Name this game" autocomplete="off" spellcheck="false" enterkeyhint="done" aria-label="${mode === 'save' ? 'Name of this game' : 'New name for this save'}">
+          <button class="btn primary small" data-act="do:ok" data-tip="${mode === 'save' ? 'Save (Enter)' : 'Rename (Enter)'}">${icon('check', 14)} ${mode === 'save' ? 'Save' : 'Rename'}</button>
+          <button class="btn ghost small" data-act="do:back" data-tip="Cancel (Esc)" aria-label="Cancel">${icon('close', 12)}</button></div></div>`;
+    };
+    const row = ({ slot, m }: { slot: string; m?: SaveMeta }) => {
+      if (edit?.slot === slot) return editor(slot, m, edit.mode);
+      const renamable = !!m && SLOTS.includes(slot);
+      const main = !m
+        ? html`<button class="mrow" data-act="do:pick_${slot}">${icon('chest', 18)}<span>${label(slot)}<small>Empty</small></span></button>`
+        : html`<button class="mrow" data-act="do:${kind === 'save' ? 'pick' : 'load'}_${slot}" aria-label="${kind === 'save' ? 'Save over' : 'Load'} ${slotTitle(m)}">${icon(kind === 'save' ? 'chest' : 'book', 18)}<span class="slot-name"><b>${slotTitle(m)}</b><small>${label(slot)} · ${slotDetails(m)}</small>${kind === 'load' ? html`<small>Saved ${new Date(m.savedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</small>` : ''}</span></button>`;
+      return html`<div class="slot-row">${main}${renamable ? html`<button class="slot-ren" data-act="do:ren_${slot}" data-tip="Rename this save" aria-label="Rename ${slotTitle(m!)}">${icon('quill', 16)}</button>` : ''}</div>`;
+    };
+    const commit = async () => {
+      const inp = this.box.querySelector<HTMLInputElement>('input[data-slotname]');
+      if (!edit || !inp) return;
+      const name = cleanName(inp.value, GAME_NAME_MAX);
+      if (!name) {
+        // a blank name is refused: the field stays open
+        inp.classList.add('bad');
+        inp.setAttribute('aria-invalid', 'true');
+        inp.placeholder = 'Every reign needs a name';
+        inp.focus();
+        return;
+      }
+      const { slot, mode } = edit;
+      if (mode === 'save') {
         this.close();
-        await this.app.continueGame(m.slot);
-      }])),
+        this.app.cmd({ type: 'renameGame', name });
+        await this.app.save(slot);
+        this.app.hud.flash(`Saved as ${this.app.game.name}.`);
+        return;
+      }
+      await renameSave(slot, name);
+      saves = await listSaves();
+      edit = null;
+      paint();
+    };
+    const handlers = (): Record<string, (a: string) => void> => ({
+      ...Object.fromEntries(rows().flatMap(({ slot }) => [
+        [`pick_${slot}`, () => ((edit = { slot, mode: 'save' }), paint())],
+        [`ren_${slot}`, () => ((edit = { slot, mode: 'rename' }), paint())],
+        [`load_${slot}`, async () => {
+          this.close();
+          await this.app.continueGame(slot);
+        }],
+      ])),
+      ok: () => void commit(),
+      back: () => ((edit = null), paint()),
       cancel: () => this.close(),
-    }, !fromMenu);
+    });
+    const content = () => html`<h2>${kind === 'save' ? 'Save Game' : 'Load Game'}</h2>
+      <div class="menu-list slots ${kind === 'load' ? 'scroll' : ''}" ${kind === 'load' ? raw('style="max-height:50vh"') : ''}>
+      ${kind === 'load' && !saves.length ? html`<div class="sub">No saved games yet.</div>` : rows().map(row)}
+      </div><div class="row"><button class="btn ghost" data-act="do:cancel">${edit ? 'Close' : 'Cancel'}</button></div>`;
+    const paint = () => {
+      this.repaint(content(), handlers());
+      const inp = this.box.querySelector<HTMLInputElement>('input[data-slotname]');
+      if (inp) {
+        inp.focus();
+        inp.select();
+        inp.oninput = () => inp.classList.remove('bad');
+        inp.onkeydown = (e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void commit();
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            edit = null;
+            paint();
+          }
+        };
+      } else if (was) this.box.querySelector<HTMLElement>(`[data-act$="_${was}"]`)?.focus({ preventScroll: true });
+      was = edit?.slot ?? was;
+    };
+    // the slot last edited: focus goes back to it when the edit ends, so the keyboard keeps its place
+    let was = '';
+    this.show(content(), handlers(), kind === 'save' || !fromMenu);
   }
 
   settings(): void {

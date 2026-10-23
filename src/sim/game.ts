@@ -20,7 +20,8 @@ import { computeScore, type ScoreBreakdown } from './score';
 import { checkAdvisor } from './advisor';
 import type { ShipType, Mission, Orders, Spoils } from './data/ships';
 
-import { MONTH, YEAR, START_YEAR, DT } from './time';
+import { MONTH, YEAR, START_YEAR, DT, shortDate } from './time';
+import { cleanName, defaultGameName, legacyGameName, GAME_NAME_MAX } from './names';
 export { MONTH, YEAR, START_YEAR, DT };
 const AURA_DELAY = [YEAR * 2, YEAR, MONTH * 4, MONTH * 2, MONTH];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -38,6 +39,8 @@ export type Command =
   | { type: 'setQuality'; id: number; quality: number }
   | { type: 'rename'; id: number; name: string }
   | { type: 'renameShip'; ship: number; name: string }
+  /** name the game itself (the reign, shown on its save slots) */
+  | { type: 'renameGame'; name: string }
   | { type: 'commission'; yard: number; ship: ShipType }
   | { type: 'shipOrders'; ship: number; mission?: Mission; orders?: Orders; spoils?: Spoils; region?: number; kidnapJob?: Job; foster?: Nation }
   | { type: 'setSail'; ship: number; force?: boolean }
@@ -107,6 +110,8 @@ export class Game {
   /** the player's recent construction commands, newest last (session only, not saved; see undo.ts) */
   undo: UndoEntry[] = [];
   difficulty = 1;
+  /** the game's name, chosen at New Game and editable when saving: the title of its save slots */
+  name = '';
 
   constructor(settings: Partial<Settings> = {}, king: KingDef | KingState = KINGS[2]) {
     this.settings = {
@@ -122,6 +127,7 @@ export class Game {
     this.king = 'bio' in king
       ? { name: king.name, sex: king.sex, nat: king.nat, bg: king.bg, q: [...king.q], flaw: king.flaw, portrait: king.id }
       : king;
+    this.name = defaultGameName(this.king.name, s.seed);
     this.nations = {} as any;
     for (const n of NATIONS) {
       this.nations[n] = { relation: 0, knows: false, peace: false, peaceBroken: 0, plunderGold: 0, plunderCaptives: 0, invasion: { stage: 0, timer: 0, strength: 0 }, reserve: 6, atWarWith: [] };
@@ -494,9 +500,15 @@ export class Game {
       case 'renameShip': {
         const s = this.ships.get(c.ship);
         // printable characters only, single-spaced, at most 24 of them; a blank name keeps the old one
-        const name = String(c.name ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 24).trim();
+        const name = cleanName(c.name, 24);
         if (!s || !name) return { ok: false, reason: 'Ships need a name.' };
         s.name = name;
+        return { ok: true };
+      }
+      case 'renameGame': {
+        const name = cleanName(c.name, GAME_NAME_MAX);
+        if (!name) return { ok: false, reason: 'Every reign needs a name.' };
+        this.name = name;
         return { ok: true };
       }
       case 'blockSlot': {
@@ -647,7 +659,7 @@ export class Game {
     const enc = (a: ArrayBufferView) => base64(new Uint8Array(a.buffer, a.byteOffset, a.byteLength));
     return JSON.stringify({
       v: 1,
-      settings: this.settings, king: this.king, time: this.time, month: this.month, treasury: this.treasury, hoard: this.hoard,
+      name: this.name, settings: this.settings, king: this.king, time: this.time, month: this.month, treasury: this.treasury, hoard: this.hoard,
       hoardRate: this.hoardRate, people: [...this.people.values()], buildings: [...this.buildings.values()], ships: [...this.ships.values()],
       regions: this.regions, nations: this.nations, ongoing: [...this.ongoing], messages: this.messages.slice(-50), nextId: this.nextId,
       history: this.history, finance: this.finance, stats: this.stats, unrest: this.unrest, graveyard: this.graveyard, effects: this.effects,
@@ -667,7 +679,9 @@ export class Game {
     const m = g.map;
     dec(d.map.vh, m.vh); dec(d.map.height, m.height); dec(d.map.terrain, m.terrain); dec(d.map.trees, m.trees);
     dec(d.map.occupied, m.occupied); dec(d.map.path, m.path); dec(d.map.fertility, m.fertility); dec(d.map.ore, m.ore);
-    g.time = d.time; g.month = d.month; g.treasury = d.treasury; g.hoard = d.hoard; g.hoardRate = d.hoardRate;
+    g.time = d.time; g.month = d.month;
+    // saves from before games had names: the ruler and the date, as their slot used to read
+    g.name = cleanName(d.name, GAME_NAME_MAX) || legacyGameName(g.king.name, shortDate(g.time)); g.treasury = d.treasury; g.hoard = d.hoard; g.hoardRate = d.hoardRate;
     g.people = new Map(d.people.map((p: Person) => [p.id, p]));
     // a path request saved mid-wait belonged to the old session's worker: -1 is never issued, so the person searches anew
     for (const p of g.people.values()) if (p.pathReq) p.pathReq = -1;
