@@ -471,6 +471,10 @@ export class App {
     const fresh = !!s && (s.type !== this.selection?.type || s.id !== this.selection?.id);
     this.selection = s;
     if (fresh) this.frameSel = true;
+    // picking something always brings up its details: the inspector may have been folded away (its x folds it while
+    // the quick seals show), and the fold used to outlast clicking the same ship, building or person again (or
+    // letting it go and picking it anew), so its panel never came back
+    if (s) this.inspector.folded = false;
     this.roadPick = null;
     this.world.buildings.select(s?.type === 'building' ? s.id : 0);
     this.world.people.selected = s?.type === 'person' ? s.id : 0;

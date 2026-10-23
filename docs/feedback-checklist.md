@@ -81,6 +81,7 @@ section.
   - [x] Pause: sails, flags, wake and pose frozen (identical frames)
   - [x] LOD switch at 2.6 lengths checked near vs far from the same camera: silhouette, sails, flags and colours match; left as is
   - [ ] Left: thin rigging (shrouds, ratlines) breaks into dashes at game zoom (sub-pixel ropes); galleon full model 28.2k triangles, far 5.3k (at the top of the budget); a sinking invader can lie against our pier or docked ship (invaders don't avoid them)
+- [x] Ship details didn't come up when the ship was clicked again (after the sea chart): the inspector's x folds the panel away while the quick seals show, and the fold outlived clicking the same ship (or letting it go and picking it again), so the panel never came back. Picking anything now always unfolds its panel; same for buildings and people. Check: `node scripts/reselect-check.mjs` against a running build (chart, log, edicts, map views, x, deselect)
 
 ## Controls and building
 - [x] Delete (Delete key, Demolish for buildings and roads, road quick action) and undo (button, Ctrl/Cmd+Z)

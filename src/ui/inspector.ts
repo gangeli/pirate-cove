@@ -108,7 +108,7 @@ export class Inspector {
   private lastKey = '';
   /** the actions behind data-act names, shared with the quick-action seals beside the selection */
   readonly acts: Record<string, ActionHandler>;
-  /** inspector folded away (the quick seals and a name tag stay beside the selection); reset by a new selection */
+  /** inspector folded away (the quick seals and a name tag stay beside the selection); reset whenever something is picked (App.select), even the same thing again */
   folded = false;
   /** the quick seals are showing beside the selection: footer buttons they duplicate are hidden */
   private ringed = false;
