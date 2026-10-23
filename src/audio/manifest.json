@@ -110,6 +110,16 @@
       "speaker": "barnaby",
       "text": "Back already, and nothing to show for it but sunburn."
     },
+    "ship_returns_explore": {
+      "file": "audio/voice/ship_returns_explore.mp3",
+      "speaker": "barnaby",
+      "text": "She's back from the blue, Cap'n, with fresh charts of waters no one's sailed 'fore us."
+    },
+    "ship_returns_found": {
+      "file": "audio/voice/ship_returns_found.mp3",
+      "speaker": "barnaby",
+      "text": "Back with fresh charts, Cap'n, and new towns marked on 'em. Ripe for the picking!"
+    },
     "big_plunder": {
       "file": "audio/voice/big_plunder.mp3",
       "speaker": "barnaby",

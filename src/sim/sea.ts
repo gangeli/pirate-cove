@@ -549,6 +549,7 @@ function onStation(g: Game, s: Ship): void {
     const found: string[] = [];
     for (const st of r.settlements) if (!st.found) (st.found = true), found.push(`${st.name} (${NATION_ADJ[st.nat]} ${st.type})`);
     if (r.tradeRoute && !r.routeFound) (r.routeFound = true), found.push('a busy trade route');
+    s.voyage!.charted = { sea: r.name, found: [...(s.voyage!.charted?.found ?? []), ...found] };
     logV(g, s, `Charted the ${r.name}.${found.length ? ' Discovered ' + found.join(', ') + '.' : ''}`);
   }
   if (s.mission === 'raid') {
@@ -1033,10 +1034,14 @@ function unload(g: Game, s: Ship, dock: Building | undefined): void {
   if (l.skilled.length) parts.push(`skilled: ${l.skilled.map((j) => JOB_NAMES[j]).join(', ')}`);
   if (l.wealthy) parts.push(`${l.wealthy} wealthy hostage${l.wealthy > 1 ? 's' : ''}`);
   if (l.recruits) parts.push(`${l.recruits} new recruits`);
+  // explorers come home with charts, not plunder: they get their own words (and Barnaby's), not the empty-handed ones
+  const explored = s.mission === 'explore', found = s.voyage?.charted?.found.length ?? 0;
+  if (explored) parts.push(found ? `fresh charts and ${found} new ${found > 1 ? 'discoveries' : 'discovery'}` : 'fresh charts');
   const summary = parts.length ? parts.join(', ') : 'nothing but sunburn';
-  const m = g.msg('ship', `${s.name} Returns`, `The ${s.name} is back from her ${missionName(s)}, bringing ${summary}.\n\n${s.log.map((e) => `${e.date}: ${e.text}`).join('\n')}`, l.gold > 500 ? 'big_plunder' : l.gold > 0 || l.captives ? 'ship_returns' : 'ship_returns_empty', dock ? { x: dock.x, y: dock.y } : undefined, true);
+  const voice = l.gold > 500 ? 'big_plunder' : l.gold > 0 || l.captives ? 'ship_returns' : explored ? (found ? 'ship_returns_found' : 'ship_returns_explore') : 'ship_returns_empty';
+  const m = g.msg('ship', `${s.name} Returns`, `The ${s.name} is back from her ${missionName(s)}, bringing ${summary}.\n\n${s.log.map((e) => `${e.date}: ${e.text}`).join('\n')}`, voice, dock ? { x: dock.x, y: dock.y } : undefined, true);
   // the same news as data, for the letter's icons (display only: nothing in the sim reads it)
-  m.data = { kind: 'voyage', ship: s.name, mission: missionName(s), gold: l.gold, treasury: treasuryShare, captives: l.captives, skilled: [...l.skilled], wealthy: l.wealthy, recruits: l.recruits, cannons: l.cannons, hull: s.hull, log: s.log.map((e) => ({ date: e.date, text: e.text })) };
+  m.data = { kind: 'voyage', charted: s.voyage?.charted ? { sea: s.voyage.charted.sea, found: [...s.voyage.charted.found] } : undefined, ship: s.name, mission: missionName(s), gold: l.gold, treasury: treasuryShare, captives: l.captives, skilled: [...l.skilled], wealthy: l.wealthy, recruits: l.recruits, cannons: l.cannons, hull: s.hull, log: s.log.map((e) => ({ date: e.date, text: e.text })) };
   g.events.push({ type: 'plunder', ship: s.id, gold: l.gold });
   s.voyage = undefined;
   s.enemyNat = undefined;

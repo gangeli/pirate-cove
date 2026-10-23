@@ -199,6 +199,8 @@ export interface Voyage {
   rationRate: number;
   events: VoyageEvent[];
   loot: { gold: number; captives: number; skilled: Job[]; wealthy: number; recruits: number; cannons: number };
+  /** exploring: the sea charted and the towns and trade routes found there (for the homecoming letter and voice) */
+  charted?: { sea: string; found: string[] };
   lost: boolean;
   sunk: boolean;
   nextEncounter: number;
@@ -294,6 +296,8 @@ export type Fact =
 /** a ship's homecoming */
 export type VoyageData = {
   kind: 'voyage';
+  /** a voyage of exploration: the sea it charted and what it found there */
+  charted?: { sea: string; found: string[] };
   ship: string;
   mission: string;
   gold: number;

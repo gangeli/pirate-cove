@@ -50,7 +50,9 @@ export function voyageStrip(d: VoyageData, withLog = true): Raw {
   if (dead) items.push(html`<div class="tally" data-tip="${dead} men lost at sea">${figures('pirate', dead, 'dead')}<small>Lost</small></div>`);
   const hull = Math.round(d.hull * 100);
   items.push(html`<div class="tally" data-tip="Hull ${hull}%"><span class="hull ${hull < 60 ? 'bad' : ''}"><i style="width:${hull}%"></i></span><small>Hull ${hull}%</small></div>`);
-  if (!d.gold && !d.recruits && !d.captives && !d.skilled.length && !d.wealthy) items.unshift(html`<div class="tally empty"><span class="figs">${icon('ship', 22)}</span><small>Nothing but sunburn</small></div>`);
+  // a voyage of exploration brings home charts: the sea, and a pin for each town or trade route found there
+  if (d.charted) items.unshift(html`<div class="tally" data-tip="Charted the ${d.charted.sea}${d.charted.found.length ? ': ' + d.charted.found.join(', ') : ''}"><span class="figs">${icon('telescope', 22)}${d.charted.found.map(() => icon('flag', 14))}</span><small>${d.charted.sea}${d.charted.found.length ? ` · ${d.charted.found.length} found` : ''}</small></div>`);
+  else if (!d.gold && !d.recruits && !d.captives && !d.skilled.length && !d.wealthy) items.unshift(html`<div class="tally empty"><span class="figs">${icon('ship', 22)}</span><small>Nothing but sunburn</small></div>`);
   return html`<div class="tallies">${items}</div>
     ${withLog && d.log.length ? html`<details class="vlog"><summary>${icon('book', 14)} Ship's log <i>(${d.log.length})</i></summary><ol class="log">${d.log.map((e) => html`<li><i>${e.date}</i> ${logIcon(e.text)} ${e.text}</li>`)}</ol></details>` : ''}`;
 }

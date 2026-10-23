@@ -297,6 +297,20 @@ describe('missions', () => {
     expect(g.regions[target.id].knowledge).toBeGreaterThanOrEqual(2);
   });
 
+  it('an explorer comes home with charts, in her own words', () => {
+    const g0 = game(23);
+    const target = g0.regions.find((r) => r.id !== g0.homeRegion && r.neighbors.includes(g0.homeRegion))!;
+    const { g, s } = sail(23, { mission: 'explore', region: target.id });
+    const m = [...g.messages].reverse().find((x) => x.title === `${s.name} Returns`)!;
+    expect(m).toBeTruthy();
+    expect(m.text).toContain('fresh charts');
+    expect(m.text).not.toContain('sunburn');
+    if (m.data?.kind !== 'voyage') throw new Error('no voyage data');
+    expect(m.data.charted?.sea).toBe(target.name);
+    // plunder taken on the way still counts for more
+    if (!m.data.gold && !m.data.captives) expect(m.voice).toBe(m.data.charted!.found.length ? 'ship_returns_found' : 'ship_returns_explore');
+  });
+
   it('a cruise returns with plunder or a story', () => {
     const g0 = game(24);
     const target = g0.regions.find((r) => r.id === g0.homeRegion)!;
