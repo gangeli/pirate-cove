@@ -4,7 +4,7 @@ import type { QuickAct } from './quickring';
 import { icon, goodIcon } from './icons';
 import { BUILDING, HOUSE_LEVELS, JOB_NAMES, RANKS, PRICE_LEVELS, type PirateNeed, type Job } from '../sim/data/buildings';
 import { GOOD_NAMES, type Good } from '../sim/data/goods';
-import { SHIPS, SHIP_LIST, MISSION_NAMES, SPOILS_TREASURY, type ShipType } from '../sim/data/ships';
+import { SHIPS, SHIP_LIST, MISSION_NAMES, SPOILS_TREASURY, PROVISIONS, DOCK_STOCK, type ShipType } from '../sim/data/ships';
 import { NATION_ADJ, NATION_NAMES, NATIONS } from '../sim/data/kings';
 import type { Building, Person, Ship } from '../sim/types';
 import { serviceFee, serviceBand, pirateFactors } from '../sim/people';
@@ -12,10 +12,10 @@ import { farmFertility, treesNear, closedRows } from '../sim/economy';
 import { portrait, portraitImg, portraitIdFor, type PortraitSpec } from './portraits';
 import { audio } from '../audio/audio';
 import { thumbOrQueue, THUMB_PLACEHOLDER } from './thumbs';
-import { regionReachable, transitTime } from '../sim/sea';
+import { regionReachable, transitTime, rationsNeeded } from '../sim/sea';
 import { MONTH } from '../sim/time';
 import { EDICT } from '../sim/data/edicts';
-import { coinPick, pennants, spoilsBar, goodChip } from './controls';
+import { coinPick, pennants, spoilsBar, goodChip, provisionRow, type ProvCell } from './controls';
 
 const NEED_NAMES: Record<string, string> = { feast: 'Grub', drink: 'Grog', company: 'Company', gamble: 'Wagers', rest: 'Rest', stash: 'Stash', food: 'Food', prayer: 'Prayer', anarchy: 'Freedom', defense: 'Safety' };
 
@@ -488,6 +488,21 @@ export class Inspector {
       if (def.id === 'dock') {
         const s = b.ship ? g.ships.get(b.ship) : null;
         body.push(html`<section class="sect"><h4 class="eng">Berth</h4>${s ? html`<button class="pick" data-act="gotoS:${s.id}">${icon('ship', 18)}<span class="nm">${s.name}<small>${SHIPS[s.type].name}</small></span><span class="chip">${shipStatusName(s.status)}</span></button>` : html`<div class="seg-note">Empty. Every ship needs a free dock.</div>`}</section>`);
+        // provisions: her own stores while she is in port, and what the haulers have brought to the pier
+        const inPort = !!s && (s.status === 'docked' || s.status === 'boarding' || s.status === 'repairing');
+        const rows = [];
+        let short: string[] = [];
+        if (s && inPort) {
+          const cells = this.shipStores(s);
+          short = cells.filter((c) => c.short).map((c) => c.name.toLowerCase());
+          rows.push(provisionRow(icon('ship', 18), `<b>Aboard the ${s.name}</b><br>Her stores, filled up to what a ${SHIPS[s.type].name.toLowerCase()} carries`, `Aboard the ${s.name}`, cells));
+        }
+        rows.push(provisionRow(icon('anchor', 18), `<b>On the pier</b><br>${inPort ? 'Haulers bring her stores here and they go straight aboard.' : `Between voyages the haulers stock a ship's worth here, ready for a quick turnaround.`}`, 'On the pier', PROVISIONS.map(([good]) => {
+          const have = Math.floor(b.inv[good] ?? 0);
+          const name = GOOD_NAMES[good];
+          return { good, name, have, cap: inPort ? undefined : DOCK_STOCK[good], tip: `<b>${name}</b><br>${have} on the pier${inPort ? ' · loaded aboard as soon as she has room' : ` · the haulers stock up to ${DOCK_STOCK[good]}`}` };
+        })));
+        body.push(html`<section class="sect"><h4 class="eng">Provisions${inPort ? html`<span class="aside ${short.length ? 'bad' : ''}">${short.length ? `Short of ${short.join(', ')}` : 'Ready for sea'}</span>` : ''}</h4>${rows}</section>`);
       }
       if (def.id === 'boatyard' || def.id === 'shipyard') {
         if (b.building_ship) body.push(html`<section class="sect"><h4 class="eng">On the slipway</h4><div class="meters"><span>${SHIPS[b.building_ship.type].name}</span>${bar(b.building_ship.progress, 'brass')}<span>${pct(b.building_ship.progress)}</span></div></section>`);
@@ -674,6 +689,27 @@ export class Inspector {
   }
 
   // ------------------------------------------------------------------------------------------------ ship
+  /**
+   * A ship's provisions as cells for provisionRow: each store against what her class carries. In port the rations
+   * carry a notch at what Set sail asks for the round trip on her present orders, and a store below what her
+   * orders need (rations for the trip, cannons to pound, cannons and muskets to harass) is marked short.
+   */
+  private shipStores(s: Ship): ProvCell[] {
+    const g = this.app.game;
+    const d = SHIPS[s.type];
+    const inPort = s.status === 'docked' || s.status === 'boarding' || s.status === 'repairing';
+    const rations = inPort ? Math.max(1, Math.ceil(rationsNeeded(g, s))) : 0;
+    const cruise = inPort && s.mission === 'cruise';
+    return PROVISIONS.map(([good, key]) => {
+      const have = Math.floor(s[key]);
+      const cap = d[key];
+      const name = GOOD_NAMES[good];
+      const need = good === 'ration' ? rations : cruise && ((good === 'cannon' && s.orders !== 'board') || (good === 'musket' && s.orders === 'harass')) ? 1 : 0;
+      const why = good === 'ration' ? `${need} for the round trip` : `her tactics need at least ${need}`;
+      return { good, name, have, cap, need: good === 'ration' ? need : undefined, short: need > 0 && s[key] < need, tip: `<b>${name}</b><br>${have} of ${cap} aboard${need ? ` · ${why}` : ''}` };
+    });
+  }
+
   private ship(s: Ship): View {
     const g = this.app.game;
     const d = SHIPS[s.type];
@@ -690,7 +726,8 @@ export class Inspector {
     const supp = (label: string, have: number, max: number) => html`<span>${label}</span>${bar(have / Math.max(1, max))}<span>${Math.floor(have)}/${max}</span>`;
     const crewAboard = s.crew.filter((id) => g.people.get(id)?.task.kind === 'atsea').length;
     const stores = html`<section class="sect"><h4 class="eng">Crew & stores</h4><div class="meters two">
-      ${supp('Crew', s.crew.length, d.men + d.officers)}${supp('Hull', s.hull * 100, 100)}${supp('Rations', s.rations, d.rations)}${supp('Cutlasses', s.cutlasses, d.cutlasses)}${supp('Muskets', s.muskets, d.muskets)}${supp('Cannons', s.cannons, d.cannons)}</div>
+      ${supp('Crew', s.crew.length, d.men + d.officers)}${supp('Hull', s.hull * 100, 100)}</div>
+      <div class="provs-gap">${provisionRow(icon('ship', 18), `<b>Aboard</b><br>Her stores, filled up to what a ${d.name.toLowerCase()} carries`, 'Stores aboard', this.shipStores(s))}</div>
       ${s.status === 'boarding' ? html`<div class="seg-note">${crewAboard} of ${s.crew.length} hands aboard.</div>` : ''}</section>`;
     // in port the orders come first (that is what the player is here to set); at sea the stores and the voyage
     if (!inPort) body.push(stores);

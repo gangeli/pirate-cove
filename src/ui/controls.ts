@@ -59,3 +59,19 @@ export function goodChip(good: string, name: string, stock: number, opts: { need
   const ring = opts.ring != null ? html`<i class="ring" style="--p:${Math.round(Math.max(0, Math.min(1, opts.ring)) * 100)}%"></i>` : '';
   return html`<span class="gchip ${opts.cls ?? ''}" data-tip="${opts.tip ?? `${name}: ${stock} in store`}" aria-label="${name} ${stock}">${ring}${goodIcon(good, 20)}${opts.need ? html`<sup>×${opts.need}</sup>` : ''}<b>${stock}</b></span>`;
 }
+
+/** one provision in a store: what is there, how much it holds (`cap`), and the least a voyage needs (`need`) */
+export type ProvCell = { good: string; name: string; have: number; cap?: number; need?: number; short?: boolean; tip: string };
+
+/**
+ * A row of provisions as goods icons with their counts: a fill bar under each shows how full the store is, a notch
+ * marks what the next voyage needs, and a good she is short of is inked red. `mark` (an icon) says whose store it is.
+ */
+export function provisionRow(mark: Raw, markTip: string, aria: string, cells: ProvCell[]): Raw {
+  return html`<div class="provrow" role="group" aria-label="${aria}"><span class="pmark" data-tip="${markTip}">${mark}</span>${cells.map((c) => {
+    const have = Math.floor(c.have);
+    const fill = c.cap ? Math.max(0, Math.min(1, c.have / c.cap)) : 0;
+    const need = c.cap && c.need ? Math.max(0, Math.min(1, c.need / c.cap)) : 0;
+    return html`<span class="prov ${c.short ? 'short' : ''}" data-tip="${c.tip}" aria-label="${c.name} ${have}${c.cap ? ` of ${c.cap}` : ''}">${goodIcon(c.good, 20)}<b>${have}</b>${c.cap ? html`<small>/${c.cap}</small><i class="pbar"><i style="width:${Math.round(fill * 100)}%"></i>${need ? html`<i class="need" style="left:${Math.round(need * 100)}%"></i>` : ''}</i>` : ''}</span>`;
+  })}</div>`;
+}

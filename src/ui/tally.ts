@@ -70,6 +70,10 @@ let thumbOf: ((def: string) => string | null) | null = null;
 export function useThumbs(fn: (def: string) => string | null): void {
   thumbOf = fn;
 }
+/** a building's thumbnail, if one is drawn yet */
+export function buildingThumb(def: string): string | null {
+  return thumbOf?.(def) ?? null;
+}
 
 const FOLK: Record<FolkKind, [string, string, string]> = {
   // icon, one, many

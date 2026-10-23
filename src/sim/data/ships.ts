@@ -29,6 +29,14 @@ export const SHIPS: Record<ShipType, ShipDef> = {
 };
 /** what a captain fit to command each class asks to sign on: a snow's skipper comes cheap, a galleon's does not */
 export const CAPTAIN_COST: Record<ShipType, number> = { snow: 400, schooner: 500, sloop: 700, brigantine: 900, frigate: 1200, galleon: 1500 };
+/**
+ * What a ship is provisioned with before she sails: the good the haulers bring to her dock, and her store of it
+ * (filled up to her class's carrying capacity, the ShipDef field of the same name).
+ */
+export const PROVISIONS = [['ration', 'rations'], ['cutlass', 'cutlasses'], ['musket', 'muskets'], ['cannon', 'cannons']] as const;
+export type ProvisionKey = (typeof PROVISIONS)[number][1];
+/** between voyages a dock stockpiles about a ship's worth of these, ready for a quick turnaround */
+export const DOCK_STOCK: Record<(typeof PROVISIONS)[number][0], number> = { ration: 40, cutlass: 10, musket: 10, cannon: 12 };
 export const SHIP_LIST: ShipType[] = ['snow', 'schooner', 'sloop', 'brigantine', 'frigate', 'galleon'];
 
 export type Mission = 'cruise' | 'raid' | 'kidnap' | 'explore' | 'foster_war';

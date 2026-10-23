@@ -91,6 +91,11 @@ export function rationRate(s: Ship): number {
   // explorers hop from cay to cay and live off turtles, fish and fruit, so stores stretch twice as far
   return ((s.crew.length + 1) * 0.3 * (s.mission === 'explore' ? 0.5 : 1)) / MONTH;
 }
+/** rations for the round trip on her present orders, with a tenth to spare: what Set sail asks to have aboard */
+export function rationsNeeded(g: Game, s: Ship): number {
+  const out = s.mission === 'raid' || s.mission === 'kidnap' ? MONTH * 0.8 : transitTime(g, s, s.region);
+  return out * 2 * rationRate(s) * 1.1;
+}
 /** can a ship reach a region (cleared/adjacent rule + rations) */
 export function regionReachable(g: Game, s: Ship, region: number): { ok: boolean; reason?: string } {
   const r = g.regions[region];
@@ -212,8 +217,7 @@ export function launchShip(g: Game, id: number, force: boolean): CmdResult {
   if (s.crew.length < minCrew) return { ok: false, reason: `Not enough hands to man the rigging (need ${minCrew}).` };
   if (s.rations < 1) return { ok: false, reason: 'No sea rations aboard.' };
   {
-    const out = s.mission === 'raid' || s.mission === 'kidnap' ? MONTH * 0.8 : transitTime(g, s, s.region);
-    const need = out * 2 * rationRate(s) * 1.1;
+    const need = rationsNeeded(g, s);
     if (s.rations < need) return { ok: false, reason: `Not enough rations for the round trip (${Math.ceil(need)} needed, ${Math.floor(s.rations)} aboard).` };
   }
   if (s.mission === 'cruise') {

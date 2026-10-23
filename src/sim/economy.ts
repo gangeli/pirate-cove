@@ -6,7 +6,7 @@ import { SMUGGLER_PRICE } from './data/goods';
 import type { Building, Person, Task } from './types';
 import { onBuilt } from './placement';
 import { housingPass, goTo } from './people';
-import { SHIPS } from './data/ships';
+import { SHIPS, DOCK_STOCK } from './data/ships';
 import { NATIONS } from './data/kings';
 import { Terrain } from './map';
 
@@ -117,8 +117,7 @@ function haulWants(g: Game, b: Building): [Good, number][] {
   }
   if (def.id === 'dock' && (!b.ship || g.ships.get(b.ship)?.status === 'atsea' || g.ships.get(b.ship)?.status === 'departing' || g.ships.get(b.ship)?.status === 'returning')) {
     // between voyages the dock stockpiles a ship's worth of stores, ready for a quick turnaround
-    const stock: [Good, number][] = [['ration', 40], ['cutlass', 10], ['musket', 10], ['cannon', 12]];
-    for (const [good, cap] of stock) if ((b.inv[good] ?? 0) < cap * 0.6) out.push([good, Math.min(10, cap - (b.inv[good] ?? 0))]);
+    for (const [good, cap] of Object.entries(DOCK_STOCK) as [Good, number][]) if ((b.inv[good] ?? 0) < cap * 0.6) out.push([good, Math.min(10, cap - (b.inv[good] ?? 0))]);
   }
   if (def.id === 'dock' && b.ship) {
     const s = g.ships.get(b.ship);
@@ -399,13 +398,24 @@ function outputFull(b: Building): boolean {
   return (b.inv[out] ?? 0) >= storageOf(def) * 0.95;
 }
 
-function canDoJob(p: Person, job: Job): boolean {
+/** whether `p` can fill a worker place of `job` (captives by trade and sex, skeletons only haul) */
+export function canDoJob(p: Person, job: Job): boolean {
   if (p.kind === 'skeleton') return job === 'hauler';
   if (p.kind !== 'captive' || p.rebel) return false;
   if (p.skilled) return p.profession === job;
   if (SKILLED_ONLY.includes(job)) return false;
   const sx = JOB_SEX[job];
   return !sx || sx === p.sex;
+}
+
+/** a captive or skeleton out of work whom hiring would take on */
+export function freeHand(p: Person): boolean {
+  return (p.kind === 'captive' || p.kind === 'skeleton') && !p.job && p.task.kind !== 'dead' && p.task.kind !== 'escape' && !p.rebel;
+}
+
+/** a pirate ashore, out of work and willing, whom hiring would make an overseer or guard */
+export function freePirate(p: Person): boolean {
+  return p.kind === 'pirate' && !p.ship && !p.shoreJob && !p.captain && p.mood === 'ok' && p.task.kind !== 'atsea' && p.task.kind !== 'dead' && p.task.kind !== 'escape' && !p.rebel;
 }
 
 function employ(g: Game): void {
@@ -422,9 +432,8 @@ function employ(g: Game): void {
   const free: Person[] = [];
   const freePirates: Person[] = [];
   for (const p of g.people.values()) {
-    if (p.task.kind === 'dead' || p.task.kind === 'escape' || p.rebel) continue;
-    if ((p.kind === 'captive' || p.kind === 'skeleton') && !p.job) free.push(p);
-    if (p.kind === 'pirate' && !p.ship && !p.shoreJob && !p.captain && p.mood === 'ok' && p.task.kind !== 'atsea') freePirates.push(p);
+    if (freeHand(p)) free.push(p);
+    if (freePirate(p)) freePirates.push(p);
   }
   // women are scarce for the many female-only jobs: keep them free when a man can do the job
   let femaleDemand = 0;

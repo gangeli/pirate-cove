@@ -8,6 +8,8 @@ import type { Message } from '../sim/types';
 import { audio } from '../audio/audio';
 import { Minimap } from './minimap';
 import { ADVISOR_NAME } from '../sim/advisor';
+import { workforce, type Workforce } from '../sim/workforce';
+import { workforceTip } from './workforce';
 
 /** the switch at the head of the island's two books: the log and the edicts are one entry on the bar */
 export function bookSwitch(cur: 'log' | 'edicts'): Raw {
@@ -32,6 +34,14 @@ export class Hud {
   private hintTimer = 0;
   advisorMode: 'full' | 'brief' | 'off' = 'full';
   private touchHintFor = '';
+  /** the element whose tip is showing, and when a tip drawn on opening (`data-tipfn`) was last redrawn */
+  private tipFor: HTMLElement | null = null;
+  private tipDrawn = 0;
+  private showTip: (t: HTMLElement) => void = () => {};
+  /** a touch that opened a tap-first tip, so the click that follows it does not also act */
+  private tapTipAt = 0;
+  /** the workforce figures, worked out once per moment of game time and only while a tip shows them */
+  private wf: { t: number; v: Workforce } | null = null;
 
   constructor(private app: App) {
     const ui = app.root;
@@ -52,8 +62,8 @@ export class Hud {
     delegate(this.top, {
       gold: () => app.log.open('finances'),
       hoard: () => app.log.open('overview'),
-      pirates: () => app.log.open('pirates'),
-      captives: () => app.log.open('captives'),
+      pirates: () => this.tapTipped() || app.log.open('pirates'),
+      captives: () => this.tapTipped() || app.log.open('captives'),
       mood: () => app.log.open('satisfaction'),
     });
     delegate(this.adv, {
@@ -76,11 +86,15 @@ export class Hud {
       },
     });
     // tooltips
-    let tipFor: HTMLElement | null = null, tipText = '';
-    const showTip = (t: HTMLElement) => {
-      tipFor = t;
+    let tipText = '';
+    const showTip = (this.showTip = (t: HTMLElement) => {
+      this.tipFor = t;
       tipText = t.dataset.tip!;
-      this.tip.innerHTML = tipText;
+      // a tip with figures worked out when it opens (rather than kept up to date on every refresh)
+      const fn = t.dataset.tipfn;
+      this.tip.innerHTML = (fn && this.tipContent(fn)) || tipText;
+      this.tipDrawn = performance.now();
+      toggleClass(this.tip, 'parch', !!fn);
       this.tip.classList.remove('hidden');
       const r = t.getBoundingClientRect();
       const tw = this.tip.offsetWidth, th = this.tip.offsetHeight;
@@ -89,16 +103,16 @@ export class Hud {
       x = Math.max(4, Math.min(innerWidth - tw - 4, x));
       // positioned with a transform: no layout pass for the move itself
       this.tip.style.transform = `translate(${Math.round(x)}px,${Math.round(y)}px)`;
-    };
+    });
     document.addEventListener('pointerover', (ev) => {
       if (ev.pointerType === 'touch') return; // touch: tips open on a tap instead (below)
       const t = (ev.target as HTMLElement)?.closest?.('[data-tip]') as HTMLElement | null;
       if (!t) {
-        tipFor = null;
+        this.tipFor = null;
         return toggleClass(this.tip, 'hidden', true);
       }
       // moving between children of the same tipped element: nothing to do (no re-layout)
-      if (t === tipFor && t.dataset.tip === tipText && !this.tip.classList.contains('hidden')) return;
+      if (t === this.tipFor && t.dataset.tip === tipText && !this.tip.classList.contains('hidden')) return;
       showTip(t);
     });
     // on touch screens there is no hover: tapping something that only explains itself (an icon, a figure, a number,
@@ -110,8 +124,16 @@ export class Hud {
       const t = target?.closest?.('[data-tip]') as HTMLElement | null;
       const acts = target?.closest?.('button, a, input, select, label, summary, [data-act]');
       clearTimeout(tipTimer);
-      if (!t || (acts && !t.classList.contains('tipi'))) {
-        tipFor = null;
+      // a tap-first control (the top bar's pirates and captives): the first tap shows its tip, a second one acts
+      if (t?.classList.contains('tipfirst')) {
+        const open = t === this.tipFor && !this.tip.classList.contains('hidden');
+        if (open) {
+          this.tipFor = null;
+          return toggleClass(this.tip, 'hidden', true);
+        }
+        this.tapTipAt = performance.now();
+      } else if (!t || (acts && !t.classList.contains('tipi'))) {
+        this.tipFor = null;
         return toggleClass(this.tip, 'hidden', true);
       }
       showTip(t);
@@ -294,6 +316,22 @@ export class Hud {
     }, secs * 1000);
   }
 
+  /** the click after a touch that opened a tap-first tip: swallowed, so the first tap only explains */
+  private tapTipped(): boolean {
+    const t = this.tapTipAt;
+    this.tapTipAt = 0;
+    return performance.now() - t < 800;
+  }
+
+  /** html for a `data-tipfn` tip, worked out as it opens */
+  private tipContent(fn: string): string {
+    const [kind, arg] = fn.split(':');
+    if (kind !== 'wf' || (arg !== 'pirate' && arg !== 'captive')) return '';
+    const g = this.app.game;
+    if (this.wf?.t !== g.time) this.wf = { t: g.time, v: workforce(g) };
+    return workforceTip(arg, this.wf.v[arg]);
+  }
+
   /** top-bar elements, built once; update() only touches text and attributes that changed */
   private topEls: Record<string, HTMLElement> | null = null;
 
@@ -302,15 +340,15 @@ export class Hud {
       <div class="res" data-act="gold">${icon('coin', 24)}<div><div class="v" data-k="gold"></div><small>treasury</small></div></div>
       <div class="res" data-tip="<b>Lumber</b><br>Total stored at your sawmills.">${icon('lumber', 24)}<div><div class="v" data-k="lumber"></div><small>lumber</small></div></div>
       <div class="res" data-act="hoard">${icon('chest', 24)}<div><div class="v" data-k="hoard"></div><small>hoard</small></div></div>
-      <div class="res" data-act="pirates">${icon('pirate', 22)}<div><div class="v" data-k="pirates"></div><small>pirates</small></div></div>
-      <div class="res" data-act="captives" data-tip="<b>Captives</b>">${icon('captive', 22)}<div><div class="v" data-k="captives"></div><small>captives</small></div></div>
+      <div class="res tipfirst" data-act="pirates" data-tip="<b>Pirates</b>" data-tipfn="wf:pirate">${icon('pirate', 22)}<div><div class="v" data-k="pirates"></div><small>pirates</small></div></div>
+      <div class="res tipfirst" data-act="captives" data-tip="<b>Captives</b>" data-tipfn="wf:captive">${icon('captive', 22)}<div><div class="v" data-k="captives"></div><small>captives</small></div></div>
       <div class="mood" data-act="mood">
         <label>Happiness</label><div class="m hp"><div data-k="hap"></div></div>
         <label>Resignation</label><div class="m rs"><div data-k="res"></div></div>
       </div>`);
     const q = (sel: string) => this.top.querySelector(sel) as HTMLElement;
     const els: Record<string, HTMLElement> = {
-      goldRes: q('[data-act="gold"]'), hoardRes: q('[data-act="hoard"]'), piratesRes: q('[data-act="pirates"]'), mood: q('.mood'),
+      goldRes: q('[data-act="gold"]'), hoardRes: q('[data-act="hoard"]'), mood: q('.mood'),
       dv: this.clock.querySelector('.dv') as HTMLElement, dl: this.clock.querySelector('.dl') as HTMLElement,
       undo: this.undoBtn, undoWhat: this.undoBtn.querySelector('.what') as HTMLElement,
     };
@@ -321,13 +359,12 @@ export class Hud {
   update(): void {
     const g = this.app.game;
     const e = (this.topEls ??= this.buildTop());
-    let pirates = 0, atSea = 0, hapSum = 0, captives = 0, resSum = 0, resN = 0;
+    let pirates = 0, hapSum = 0, captives = 0, resSum = 0, resN = 0;
     for (const p of g.people.values()) {
       if (p.task.kind === 'dead') continue;
       if (p.kind === 'pirate') {
         pirates++;
         hapSum += p.happiness;
-        if (p.task.kind === 'atsea') atSea++;
       } else if (p.kind === 'captive') {
         captives++;
         resSum += p.resignation;
@@ -345,7 +382,9 @@ export class Hud {
     setText(e.lumber, fmt(g.lumber()));
     setAttr(e.hoardRes, 'data-tip', `<b>Your Hoard</b><br>${g.buildingCount('cave') ? `${Math.round(g.hoardRate * 100)}% of all income is skimmed into your Pirate Cave. This is your score.` : 'Build a Pirate Cave to start your personal hoard.'}`);
     setText(e.hoard, fmt(g.hoard));
-    setAttr(e.piratesRes, 'data-tip', `<b>Pirates</b><br>${atSea} at sea`);
+    // an open workforce tip follows the island about once a second while the game runs
+    const tf = this.tipFor;
+    if (tf?.dataset.tipfn && !this.tip.classList.contains('hidden') && performance.now() - this.tipDrawn > 1000 && this.wf?.t !== g.time) this.showTip(tf);
     setText(e.pirates, String(pirates));
     setText(e.captives, String(captives));
     setAttr(e.mood, 'data-tip', `<b>Pirate Happiness</b> ${Math.round(hap * 100)}%<br><b>Captive Resignation</b> ${Math.round(res * 100)}%`);

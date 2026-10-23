@@ -108,6 +108,7 @@ section.
 - [x] Influence as small subdued icons ("Defense +35 · 2 tiles") [UI agent]
 - [x] Buttons styled to their purpose: navigation, primary, transactional, social or moral, destructive (Kill, Scuttle and Demolish unmistakably dangerous); toggles look like toggles [UI agent]
 - [x] Letters and reports (e.g. "Night Heron Returns"): icon results (a coin pile for gold, one figure per recruit, skilled profession badges, losses), apply to every message type and the log [UI agent] (every sim letter carries display-only facts: invasions and their outcome, raids on the island, ships launched, sailed, lost, edicts and their costs and effects, ransoms, escapes, rebellions, Powers, game over with the score as bars; drawn in letters, toasts and the Letters tab. The sim has no trade or monthly-report letters)
+- [x] Hovering (tapping on phones) the top bar's pirates or captives shows the workforce: one figure per hand (at work, idle, sulking or rebel), one empty place per open post, how many short or spare, and the three buildings shortest of hands [UI agent] (counts follow hiring's own rules: closed and unpaid places and building sites don't count; skilled-only places, women's posts and skeleton haulers are matched as hiring would)
 
 ## Mobile
 - [x] Address bar covering the bottom buttons (sizes follow the visible viewport)
