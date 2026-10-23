@@ -566,9 +566,13 @@ export function terrainMaterial(tex: Record<string, THREE.Texture>, nrm: Record<
     If(uOverlayOn.greaterThan(0.5), () => {
       // bold, readable overlay: the ground goes grey and dim, the tint goes on nearly opaque and glows a little
       const ov = overlay.sample(xz.div(uMapN)).level(0).toVar();
+      // (roads keep their own colour, the tint only grazes them, and a darker edge outlines them)
       const lum = dot(col, vec3(0.3, 0.59, 0.11));
-      col.assign(mix(vec3(lum.mul(0.45).add(0.04)), ov.rgb, clamp(ov.a.mul(0.95), 0.0, 1.0)));
-      outGlow.assign(ov.rgb.mul(ov.a).mul(0.32));
+      const base = mix(vec3(lum.mul(0.45).add(0.04)), col, roadW.mul(0.85));
+      const keep = float(1.0).sub(roadW.mul(0.8));
+      col.assign(mix(base, ov.rgb, clamp(ov.a.mul(0.95), 0.0, 1.0).mul(keep)));
+      col.mulAssign(float(1.0).sub(clamp(roadW.mul(roadW.oneMinus()).mul(4.0), 0.0, 1.0).mul(0.4)));
+      outGlow.assign(ov.rgb.mul(ov.a).mul(0.32).mul(keep));
     });
     diffuseColor.rgb.mulAssign(col);
     // normals: blend the layers' maps, then a world-aligned tangent frame (terrain uv = world xz)

@@ -284,9 +284,14 @@ if (uOverlayOn > 0.5) {
   // shadows and dusk don't swallow it
   vec4 ov = texture2D(uRoads, overlayUV(vWPos.xz / uMapN));
   ov.rgb = srgbToLinear(ov.rgb);
+  // roads stay readable through it (you place buildings against them): they keep their own colour, the tint
+  // only grazes them, and a darker edge outlines them against any tint
   float lum = dot(col, vec3(0.3, 0.59, 0.11));
-  col = mix(vec3(lum * 0.45 + 0.04), ov.rgb, clamp(ov.a * 0.95, 0.0, 1.0));
-  gOv = ov.rgb * ov.a * 0.32;
+  vec3 base = mix(vec3(lum * 0.45 + 0.04), col, roadW * 0.85);
+  float ova = clamp(ov.a * 0.95, 0.0, 1.0) * (1.0 - 0.8 * roadW);
+  col = mix(base, ov.rgb, ova);
+  col *= 1.0 - clamp(roadW * (1.0 - roadW) * 4.0, 0.0, 1.0) * 0.4;
+  gOv = ov.rgb * ov.a * 0.32 * (1.0 - 0.8 * roadW);
 }
 diffuseColor.rgb *= col;
 `,
