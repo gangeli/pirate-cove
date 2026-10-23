@@ -203,7 +203,7 @@ void main(){
 const SEA_TILES = typeof location !== 'undefined' && /[?&]nocull=1/.test(location.search) ? 1 : 12;
 
 /** heights (R) and an open-sea mask (G) for the s x s vertex grid: water below sea level reached from the edge */
-function heightAndSea(vh: Float32Array, s: number): Uint16Array {
+export function heightAndSea(vh: Float32Array, s: number): Uint16Array {
   const sea = new Uint8Array(s * s);
   const q: number[] = [];
   for (let i = 0; i < s; i++)
