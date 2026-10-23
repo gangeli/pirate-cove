@@ -222,7 +222,8 @@ function heightAndSea(vh: Float32Array, s: number): Uint16Array {
   // would ride those vertices' swell; the rest of the land counts as sea, so the open coast keeps its surf
   const calm = new Uint8Array(s * s);
   for (let k = 0; k < s * s; k++) if (vh[k] < 0 && !sea[k]) calm[k] = 1;
-  const reach = Math.ceil(((s - 1) * 8) / 384) + 2;
+  // (grown in the four directions, it spreads as a diamond: twice the cell covers a vertex diagonally across one)
+  const reach = 2 * Math.ceil(((s - 1) * 8) / 384) + 2;
   for (let pass = 0; pass < reach; pass++) {
     const grow: number[] = [];
     for (let k = 0; k < s * s; k++) {
