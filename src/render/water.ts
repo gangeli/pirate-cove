@@ -153,8 +153,9 @@ void main(){
     float shore = 1.0 - smoothstep(0.0, 1.4, depth);
     float bands = sin(depth*7.0 - uTime*2.2 + fbm(vWPos.xz*0.6)*6.0)*0.5+0.5;
     float foamN = fbm(vWPos.xz*2.5 + uTime*0.3);
-    foam = shore * smoothstep(0.45, 0.9, bands*0.6 + foamN*0.6) * mix(0.3, 1.0, open);
-    foam += (1.0 - smoothstep(0.0, 0.25, depth)) * smoothstep(0.35, 0.6, foamN);
+    // (a lake only laps a little at its edge: a small pond is shallow all over and would turn white)
+    foam = shore * smoothstep(0.45, 0.9, bands*0.6 + foamN*0.6) * mix(0.12, 1.0, open);
+    foam += (1.0 - smoothstep(0.0, 0.25, depth)) * smoothstep(0.35, 0.6, foamN) * mix(0.2, 1.0, open);
   }
   // open-sea whitecaps
   if (depth > 3.0) foam += smoothstep(0.78, 0.92, fbm(vWPos.xz*0.35 + uTime*0.05)) * 0.25 * smoothstep(3.0, 10.0, depth) * open;
@@ -216,11 +217,13 @@ function heightAndSea(vh: Float32Array, s: number): Uint16Array {
       if (!sea[j] && vh[j] < 0) (sea[j] = 1), q.push(j);
     }
   }
-  // calm = inland water, grown two vertices onto the land around it so the lake's own shoreline is calm too; the rest
-  // of the land counts as sea, so the open coast keeps its surf
+  // calm = inland water, grown onto the land around it by more than one cell of the water mesh (its vertices lie
+  // n*8/384 tiles apart): a pond smaller than a cell sits between vertices on dry land, and the surface across it
+  // would ride those vertices' swell; the rest of the land counts as sea, so the open coast keeps its surf
   const calm = new Uint8Array(s * s);
   for (let k = 0; k < s * s; k++) if (vh[k] < 0 && !sea[k]) calm[k] = 1;
-  for (let pass = 0; pass < 2; pass++) {
+  const reach = Math.ceil(((s - 1) * 8) / 384) + 2;
+  for (let pass = 0; pass < reach; pass++) {
     const grow: number[] = [];
     for (let k = 0; k < s * s; k++) {
       if (calm[k] || vh[k] < 0) continue;
