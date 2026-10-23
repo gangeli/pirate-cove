@@ -181,7 +181,7 @@ export class World {
   }
 
   private constructor(readonly canvas: HTMLCanvasElement, quality: Partial<Quality>, renderer: AnyRenderer, gpu: GpuInfo, nodes: NodesModule | null) {
-    this.quality = { ...QUALITY_DEFAULTS, ...quality };
+    this.quality = this.baseQuality = { ...QUALITY_DEFAULTS, ...quality };
     this.renderer = renderer;
     this.nodes = nodes;
     this.backend = gpu.backend;
